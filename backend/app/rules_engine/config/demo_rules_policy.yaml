@@ -1,0 +1,133 @@
+# =============================================================================
+# DEMO SYNTHETIC RULE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION LIMITS.
+# =============================================================================
+#
+# Every threshold below is a synthetic demo assumption for the LubriSense AI reference
+# implementation (Phase 9 brief), not a validated industrial specification. Real
+# deployments must replace this file with thresholds derived from real failure history,
+# validated engineering limits, and reliability-engineering review.
+#
+# Deviation multipliers reuse the same robust (median/MAD) standardized-distance
+# convention as Phase 8's `demo_baseline_policy.yaml` `deviation:` block — a rule's
+# "above/below baseline" language is driven by `app.baselines.domain.deviation.
+# compute_deviation`'s own classification, not a second, independently-tuned threshold.
+
+policy_version: "1"
+
+# --- Windowing (brief §19) — how much recent telemetry a rule evaluates, per category.
+# Not one global window. ---
+window_minutes:
+  default: 30.0
+  by_category:
+    LUBRICATION_CYCLE: 60.0
+    RESERVOIR: 360.0 # 6h — reservoir trend needs a longer horizon than a point rule
+    BEARING_CONDITION: 60.0
+
+# --- Debounce / hysteresis (brief §20/§29) — a rule finding must fire on this many
+# *consecutive* worker evaluation cycles before CANDIDATE is promoted to ACTIVE (a
+# consecutive-cycle counter, not an exact N-of-M sliding window — see
+# docs/RULES_ENGINE.md "Debounce and hysteresis"). Recovery is fixed at two consecutive
+# clean cycles (ACTIVE -> RECOVERING -> RESOLVED), matching Phase 7's own precedent, and is
+# not separately configurable per rule (brief's own "do not overcomplicate"). ---
+debounce:
+  default: 3
+  by_finding_type:
+    RESERVOIR_LEVEL_LOW: 2 # a threshold crossing, not a noisy deviation — confirm faster
+    CYCLE_COMPLETION_FAILURE: 2
+
+# --- Minimum sample requirement — a rule needs at least this many eligible readings in its
+# window before it may fire at all (protects against sparse/just-onboarded sensors
+# fabricating evidence from 1-2 points). ---
+min_sample_count: 5
+
+# --- Single-signal deviation rules (brief §11) — for a STANDARD-metric-kind baseline
+# (PRESSURE, FLOW, PUMP_CURRENT, PUMP_RUNTIME, BEARING_TEMPERATURE, VIBRATION_*, RPM, LOAD)
+# this reuses Phase 8's own `app.baselines.services.deviation_service.evaluate` and its
+# WITHIN_EXPECTED_RANGE/MILD_DEVIATION/STRONG_DEVIATION classification directly — the same
+# mild/strong multipliers below back that call. For RESERVOIR_TREND/CYCLE_METRIC-kind
+# baselines (reservoir depletion rate, cycle duration), which `deviation_service` does not
+# cover, the same multipliers classify `app.baselines.domain.anchor.mad_distance` against
+# the stored baseline directly (`app.rules_engine.domain.deviation`). MILD maps to
+# MODERATE evidence strength, STRONG maps to STRONG.
+deviation:
+  mild_multiplier: 2.0
+  strong_multiplier: 4.0
+
+# --- Reservoir (brief §10 items 8-9) ---
+reservoir:
+  low_level_warning_percent: 20.0
+  low_level_critical_percent: 8.0
+  # RESERVOIR_DEPLETION_ABNORMAL: current depletion rate exceeds the reservoir-trend
+  # baseline's own expected rate by this multiple.
+  depletion_rate_abnormal_multiplier: 1.75
+
+# --- Cycle-level rules (brief §10 items 3, 6-7) — deviation against Phase 8's CYCLE_METRIC
+# baseline. ---
+cycle:
+  pressure_build_slow_mad_multiplier: 2.0
+  duration_above_baseline_mad_multiplier: 2.0
+  completion_failure_rate_warning: 0.2 # >=20% of recent cycles FAILED/PARTIAL
+  completion_failure_rate_critical: 0.5
+
+# --- Cross-signal pattern rules (brief §12-§15) — required corroborating evidence combo
+# per pattern. Every listed single-signal finding_type must be at least CANDIDATE-or-later
+# (i.e. currently firing) for the pattern to be evaluated at all. ---
+cross_signal:
+  restriction:
+    requires: [FLOW_BELOW_CONTEXTUAL_BASELINE, PRESSURE_ABOVE_CONTEXTUAL_BASELINE]
+    supporting: [PUMP_CURRENT_ABOVE_BASELINE, PUMP_RUNTIME_ABOVE_BASELINE]
+  leakage:
+    requires: [FLOW_BELOW_CONTEXTUAL_BASELINE, RESERVOIR_DEPLETION_ABNORMAL]
+    excludes: [PRESSURE_ABOVE_CONTEXTUAL_BASELINE] # the defining distinction from restriction
+  pump_degradation:
+    requires: [PRESSURE_BUILD_SLOW]
+    supporting: [PUMP_CURRENT_ABOVE_BASELINE, PUMP_RUNTIME_ABOVE_BASELINE, FLOW_BELOW_CONTEXTUAL_BASELINE]
+    excludes: [PRESSURE_ABOVE_CONTEXTUAL_BASELINE] # restriction raises peak pressure; degradation slows the rise
+  lubrication_path_degradation:
+    # Generic catch-all (brief §15): fires when >= this many distinct lubrication-system
+    # single-signal findings are active but none of the more specific patterns above
+    # matched cleanly.
+    minimum_distinct_signals: 2
+
+# --- Bearing-condition rules (brief §16-§17) ---
+bearing:
+  # A machine's lubrication-system signals (flow/pressure/pump current/pump runtime/cycle
+  # duration/completion) must ALL be within-expected-range (no active single-signal
+  # lubrication-system finding) for INDEPENDENT_BEARING_CONDITION_PATTERN to fire — this is
+  # the mandatory differentiator from a lubrication-caused bearing consequence (brief §39).
+  lubrication_signal_types:
+    [
+      FLOW_BELOW_CONTEXTUAL_BASELINE,
+      PRESSURE_ABOVE_CONTEXTUAL_BASELINE,
+      PRESSURE_BUILD_SLOW,
+      PUMP_CURRENT_ABOVE_BASELINE,
+      PUMP_RUNTIME_ABOVE_BASELINE,
+      CYCLE_DURATION_ABOVE_BASELINE,
+      CYCLE_COMPLETION_FAILURE,
+    ]
+
+# --- Severity mapping (brief §23/§24) — base severity from evidence strength, then
+# criticality may raise it by at most one level. Criticality never creates evidence, only
+# reweights the severity of evidence that already exists (see docs/RULES_ENGINE.md
+# "Criticality awareness"). ---
+severity:
+  base_by_evidence_strength:
+    LOW: INFO
+    MODERATE: WARNING
+    STRONG: HIGH
+  # A HIGH/CRITICAL-criticality component's STRONG-evidence finding escalates one level;
+  # every other combination keeps the base severity.
+  escalate_when_criticality_in: [HIGH, CRITICAL]
+  escalate_when_evidence_strength_in: [STRONG]
+
+# --- Quality gating (brief §4) ---
+quality:
+  # A window's readings from an ELIGIBLE_WITH_CAUTION sensor are still used, but the
+  # resulting evidence_strength is capped at MODERATE even if the deviation itself would
+  # otherwise classify as STRONG (brief: "evidence strength reduced or annotated").
+  caution_caps_evidence_strength_at: MODERATE
+  # If fewer than this fraction of a machine's relevant sensors are ELIGIBLE (not
+  # INELIGIBLE) in the evaluation window, emit INSUFFICIENT_TRUSTED_DATA instead of any
+  # equipment-condition finding for that machine this cycle.
+  minimum_eligible_sensor_fraction: 0.5

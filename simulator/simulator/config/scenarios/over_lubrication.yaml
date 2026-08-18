@@ -1,0 +1,36 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §6 and docs/SCENARIO_ENGINE.md §5. This is simulation
+# only — nothing here operates real machinery or changes a real controller's configuration
+# (CLAUDE.md "Workflow Intelligence" boundary); it changes the *simulated* pump/controller's
+# per-cycle delivered volume.
+
+name: over_lubrication
+scenario_type: OVER_LUBRICATION
+target_type: LUBRICATION_SYSTEM
+description: >
+  Excess lubricant delivered per cycle. Multiplies both raw and delivered flow during
+  FLOW_DELIVERY (simulator.physics.cycle), so the reservoir depletes faster than the
+  healthy consumption model predicts even though nothing is restricted or leaking, and
+  contributes a small extra bearing-temperature term (friction/heat from excess lubricant)
+  — distinct from Leakage (which reduces, not increases, useful delivery) and from Low
+  Reservoir (which is a starting-condition effect, not an ongoing delivery-volume change).
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: LINEAR
+  onset_seconds: 10800.0  # 3 simulated hours
+
+lifecycle:
+  developing_threshold: 0.2
+  severe_threshold: null  # catalog default is WARNING only, not a CRITICAL escalation
+
+recovery:
+  enabled: false
+
+effect_params:
+  max_extra_volume_fraction: 1.2  # up to +120% delivered volume per cycle at full severity

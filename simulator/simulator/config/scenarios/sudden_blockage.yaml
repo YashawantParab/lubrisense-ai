@@ -1,0 +1,36 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §4 and docs/SCENARIO_ENGINE.md §5.
+
+name: sudden_blockage
+scenario_type: SUDDEN_BLOCKAGE
+target_type: CIRCUIT
+description: >
+  Abrupt, near-total circuit obstruction. Uses the same restriction_factor pathway as
+  Gradual Restriction (simulator.physics.circuit) but with a STEP progression and a much
+  higher max_restriction_factor: required_pressure exceeds the pump's physical
+  max_pressure_bar, so the lubrication cycle cannot reach PRESSURE_BUILD's target and times
+  out FAILED — a real consequence of the existing physics, not a scripted "flow = 0."
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: STEP  # Phase 3 brief §5 explicitly permits an instantaneous jump "when simulating
+              # a fault" — this is that exception; restriction jumps to full severity the
+              # instant the scenario activates.
+  onset_seconds: 0.0
+
+lifecycle:
+  developing_threshold: 0.3
+  severe_threshold: 0.6  # reached immediately given the STEP progression
+
+recovery:
+  enabled: false
+
+effect_params:
+  # ratio = 1 + 0.95*6.0 = 6.7 -> required_pressure ~= 60 bar, far above max_pressure_bar
+  # (18 bar) — the pump physically cannot reach the cycle's pressure-build target.
+  max_restriction_factor: 0.95

@@ -1,0 +1,32 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §8 and docs/SCENARIO_ENGINE.md §5.
+
+name: pump_degradation
+scenario_type: PUMP_DEGRADATION
+target_type: PUMP
+description: >
+  Progressive mechanical/electrical pump wear. Shifts the target `pump.efficiency` relaxes
+  toward downward (simulator.physics.pump.step_efficiency) — a lower efficiency slows
+  pressure-rise time and reduces achievable flow through the existing
+  circuit/cycle physics, exactly matching the catalog's "current/runtime trend relative to
+  delivered pressure" signature, without a second parallel "degradation" state.
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: EXPONENTIAL
+  onset_seconds: 172800.0  # 2 simulated days: demo-scaled stand-in for "weeks"
+
+lifecycle:
+  developing_threshold: 0.2
+  severe_threshold: 0.7
+
+recovery:
+  enabled: false
+
+effect_params:
+  max_efficiency_loss: 0.4  # efficiency drops from ~0.97 toward ~0.57 at full severity

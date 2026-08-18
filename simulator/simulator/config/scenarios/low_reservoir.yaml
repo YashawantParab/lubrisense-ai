@@ -1,0 +1,38 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §7 and docs/SCENARIO_ENGINE.md §6. A one-shot
+# initial-condition effect, not a continuous per-tick force: at activation the reservoir is
+# set to a low starting level, then normal (unmodified) consumption physics plus
+# `simulator.physics.reservoir.availability_factor` (the pump cannot draw flow it does not
+# have) let the consequences — reduced delivery, degraded cycles — emerge on their own,
+# exactly as the phase brief requires ("do not artificially force unrelated sensor
+# changes").
+
+name: low_reservoir
+scenario_type: LOW_RESERVOIR
+target_type: RESERVOIR
+description: >
+  Reservoir starts already low/critical rather than full; normal consumption and the
+  existing availability-factor pathway (not a new mechanism) produce reduced flow and
+  degraded cycle delivery as the level continues to fall.
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: STEP  # the initial-condition set happens once, at activation
+  onset_seconds: 0.0
+
+lifecycle:
+  developing_threshold: 0.0
+  severe_threshold: 0.9
+
+recovery:
+  enabled: false  # recovery is the standalone refill mechanism (§24), not scenario decay
+
+effect_params:
+  # severity interpolates the one-shot starting level between 100% (severity 0) and this
+  # floor (severity 1.0) — see simulator.scenarios.effects's LOW_RESERVOIR branch.
+  min_target_level_percent: 4.0

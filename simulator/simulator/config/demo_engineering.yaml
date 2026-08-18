@@ -1,0 +1,193 @@
+# =============================================================================
+# DEMO SYNTHETIC ENGINEERING ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION LIMITS.
+# =============================================================================
+#
+# Every numeric value below is a synthetic demo assumption created for the LubriSense AI
+# reference implementation (see docs/DOMAIN_MODEL.md §2.3, docs/SIMULATOR.md §12). They are
+# illustrative of physical *shape* only — which signals move, in which direction, over what
+# kind of timescale — and are not derived from, and must never be presented as, a validated
+# industrial specification or any proprietary manufacturer's data. Real deployments must
+# replace this file with validated, asset-specific engineering limits.
+#
+# Units are explicit per docs/SIMULATOR.md §9: pressure=bar, flow=cm3/min, level=percent,
+# current=A, runtime=seconds, temperature=degC, vibration=mm/s, rpm=rpm, load=percent.
+
+config_version: "1"
+
+simulation:
+  default_step_seconds: 5.0
+  default_speed_multiplier: 1.0
+
+machine:
+  # Illustrative nominal full-load rpm per machine type — a demo assumption, not a real
+  # nameplate value.
+  nominal_rpm:
+    CONVEYOR: 980.0
+    MOTOR: 1450.0
+    FAN: 1750.0
+    PUMP: 1180.0
+    COMPRESSOR: 3000.0
+    CRUSHER: 650.0
+  load_lag_time_constant_s: 45.0
+  ambient_temperature_c:
+    mean: 22.0
+    daily_amplitude_c: 4.0
+    noise_std_c: 0.25
+
+operating_profile:
+  # Two demo shifts per simulated day, with a gap between them so STOPPED periods occur.
+  shift_windows_hours:
+    - [6.0, 14.0]
+    - [15.0, 22.0]
+  ramp_up_seconds: 60.0
+  ramp_down_seconds: 45.0
+  load_target_change_interval_s: 900.0
+  load_bounds_percent: [15.0, 95.0]
+  load_band_low_max: 45.0
+  load_band_high_min: 75.0
+
+reservoir:
+  default_capacity_l: 10.0
+  low_level_warning_percent: 15.0
+  critical_level_percent: 6.0
+  empty_level_percent: 1.0
+
+pump:
+  base_operating_pressure_bar: 9.0
+  max_pressure_bar: 18.0
+  nominal_flow_capacity_cm3_min: 90.0
+  pressure_rise_time_constant_s: 6.0
+  pressure_decay_time_constant_s: 10.0
+  current_idle_a: 0.05
+  current_running_base_a: 1.4
+  current_pressure_gain_a_per_bar: 0.12
+  efficiency_default: 0.97
+  efficiency_noise_std: 0.004
+
+circuit:
+  base_resistance: 1.0
+  resistance_gain_restriction: 6.0
+  leakage_pressure_loss_gain: 0.3
+  default_restriction_factor: 0.02
+  default_leakage_factor: 0.01
+  restriction_noise_std: 0.01
+
+cycle:
+  interval_minutes: 20.0
+  max_duration_s: 90.0
+  pressure_build_target_ratio: 0.9
+  piston_stroke_period_s: 4.0
+  success_delivery_ratio: 0.85
+  partial_delivery_ratio: 0.5
+  base_volume_per_cycle_cm3: 45.0
+
+bearing:
+  temperature_baseline_c: 38.0
+  temperature_load_gain_c: 16.0
+  temperature_ambient_gain: 0.3
+  temperature_lubrication_gain_c: 14.0
+  temperature_lag_time_constant_s: 600.0
+  # Independent-mechanical-fault and over-lubrication contributions to the same lagged
+  # temperature target (docs/SCENARIO_ENGINE.md §5) — both 0 has no effect (Phase 3
+  # behavior unchanged); scaled by (1 - health) and over-lubrication severity respectively.
+  temperature_degradation_gain_c: 6.0
+  temperature_over_lubrication_gain_c: 3.0
+  vibration_baseline_mm_s: 1.1
+  vibration_load_gain_mm_s: 0.8
+  vibration_lubrication_gain_mm_s: 1.8
+  vibration_lag_time_constant_s: 900.0
+  vibration_peak_to_rms_ratio: 1.6
+  vibration_degradation_gain_mm_s: 3.0
+  lubrication_recovery_step: 0.06
+  lubrication_decay_step: 0.10
+  health_degradation_per_hour_starved: 0.0006
+  health_recovery_per_hour_lubricated: 0.00003
+  # Independent Bearing Fault (docs/SCENARIO_ENGINE.md §5): time constant for `health` to
+  # relax toward the fault's severity-driven target — decoupled from the starvation-driven
+  # health dynamics above.
+  independent_wear_tau_s: 1800.0
+
+# Per-measurement-type sensor model: noise_std/bias_std are in the sensor's own unit
+# (Gaussian, applied around the true physical value); resolution is the smallest
+# distinguishable increment (simulates ADC/reporting quantization); valid_range clips
+# physically-impossible sensor output. See docs/SIMULATOR.md §11.
+sensors:
+  PRESSURE:
+    unit: bar
+    noise_std: 0.05
+    bias_std: 0.03
+    resolution: 0.01
+    valid_range: [0.0, 25.0]
+  FLOW:
+    unit: cm3/min
+    noise_std: 3.0
+    bias_std: 2.0
+    resolution: 0.1
+    valid_range: [0.0, 500.0]
+  RESERVOIR_LEVEL:
+    unit: percent
+    noise_std: 0.3
+    bias_std: 0.2
+    resolution: 0.1
+    valid_range: [0.0, 100.0]
+  PUMP_CURRENT:
+    unit: A
+    noise_std: 0.03
+    bias_std: 0.02
+    resolution: 0.01
+    valid_range: [0.0, 10.0]
+  PUMP_RUNTIME:
+    unit: seconds
+    noise_std: 0.0
+    bias_std: 0.0
+    resolution: 1.0
+    valid_range: [0.0, 999999999.0]
+  CYCLE_COMPLETION:
+    unit: boolean
+    noise_std: 0.0
+    bias_std: 0.0
+    resolution: 1.0
+    valid_range: [0.0, 1.0]
+  PISTON_MOVEMENT:
+    unit: count
+    noise_std: 0.0
+    bias_std: 0.0
+    resolution: 1.0
+    valid_range: [0.0, 999999.0]
+  LUBRICANT_TEMPERATURE:
+    unit: degC
+    noise_std: 0.2
+    bias_std: 0.15
+    resolution: 0.1
+    valid_range: [-10.0, 90.0]
+  VIBRATION_RMS:
+    unit: mm/s
+    noise_std: 0.04
+    bias_std: 0.03
+    resolution: 0.01
+    valid_range: [0.0, 30.0]
+  VIBRATION_PEAK:
+    unit: mm/s
+    noise_std: 0.06
+    bias_std: 0.04
+    resolution: 0.01
+    valid_range: [0.0, 60.0]
+  BEARING_TEMPERATURE:
+    unit: degC
+    noise_std: 0.3
+    bias_std: 0.2
+    resolution: 0.1
+    valid_range: [-20.0, 150.0]
+  RPM:
+    unit: rpm
+    noise_std: 2.0
+    bias_std: 1.0
+    resolution: 1.0
+    valid_range: [0.0, 10000.0]
+  LOAD:
+    unit: percent
+    noise_std: 0.5
+    bias_std: 0.3
+    resolution: 0.1
+    valid_range: [0.0, 120.0]

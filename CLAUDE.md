@@ -236,7 +236,7 @@ All engineering ranges and thresholds must be configurable.
 
 Synthetic ranges must be explicitly labelled as demo assumptions.
 
-Do not present them as SKF specifications.
+Do not present them as proprietary industrial specifications.
 
 ---
 
@@ -827,7 +827,7 @@ TELEMETRY
 
 This is a production-grade reference implementation using synthetic data.
 
-Do not claim real deployment readiness inside SKF until the following are replaced or validated:
+Do not claim real deployment readiness inside an enterprise customer's production environment until the following are replaced or validated:
 
 - actual sensors
 - actual lubrication controller interfaces

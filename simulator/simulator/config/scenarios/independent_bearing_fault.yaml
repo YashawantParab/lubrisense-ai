@@ -1,0 +1,37 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §12 and docs/SCENARIO_ENGINE.md §5. Critical property:
+# this scenario NEVER touches lubrication_effectiveness, restriction_factor, leakage_factor,
+# pump state, or reservoir state — only bearing.health, via a dedicated decay path
+# (simulator.physics.bearing.apply_independent_wear) fully decoupled from the
+# starvation-driven health dynamics every other bearing-affecting scenario uses. This is
+# what keeps lubrication-system signals broadly healthy while vibration/temperature rise —
+# the exact distinction docs/FAILURE_MODE_CATALOG.md §12 exists to make.
+
+name: independent_bearing_fault
+scenario_type: INDEPENDENT_BEARING_FAULT
+target_type: BEARING
+description: >
+  Machine-condition deterioration (misalignment, imbalance, fatigue, ...) unrelated to
+  lubrication. bearing.health degrades toward a severity-driven floor; vibration and
+  temperature respond through their existing (1 - health) degradation terms
+  (simulator.physics.bearing) while every lubrication-path signal remains untouched.
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: LINEAR
+  onset_seconds: 172800.0  # 2 simulated days
+
+lifecycle:
+  developing_threshold: 0.15
+  severe_threshold: 0.6
+
+recovery:
+  enabled: false  # an unaddressed mechanical fault does not resolve itself
+
+effect_params:
+  max_health_loss: 0.7  # health falls from 1.0 toward ~0.3 at full severity

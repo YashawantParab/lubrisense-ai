@@ -1,0 +1,47 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+
+# Build artifacts
+dist/
+build/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Simulator generated output (Phase 3) — never commit generated datasets, only the
+# committed sample under simulator/docs assets if any. See docs/SIMULATOR.md.
+simulator/data/
+simulator/**/*.jsonl
+simulator/**/*.png
+
+# Edge local buffer (Phase 5) — SQLite store-and-forward state and its gateway-identity
+# lock file, never committed. See docs/EDGE_ARCHITECTURE.md §7. NOT *.lock generally —
+# that would incorrectly ignore uv.lock/package-lock.json. edge/data/reference_run_summary.json
+# IS committed.
+edge/data/edge/
+*.db
+*.db-shm
+*.db-wal
+edge/data/edge/*.lock

@@ -1,0 +1,34 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §10 and docs/SCENARIO_ENGINE.md §7. `true_value`
+# continues to be computed every tick (the physical world keeps going); only the
+# `observed_value` for this one sensor is withheld (quality=MISSING), never replaced with 0
+# or any other fabricated number.
+
+name: sensor_dropout
+scenario_type: SENSOR_DROPOUT
+target_type: SENSOR
+description: >
+  A single sensor stops reporting, intermittently by default (rather than remaining out
+  forever), while every other sensor on the machine continues normally — the key
+  distinction from Network Failure, which affects the whole machine at once.
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: INTERMITTENT
+  onset_seconds: 0.0
+  period_s: 1800.0   # 30-minute windows
+  duty_cycle: 0.3    # missing ~30% of the time within each window
+
+lifecycle:
+  developing_threshold: 0.0
+  severe_threshold: null  # binary presence/absence has no "severe" gradient
+
+recovery:
+  enabled: false
+
+effect_params: {}

@@ -1,0 +1,35 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §9 and docs/SCENARIO_ENGINE.md §5, §7. Affects only
+# `observed_value` (via the sensor's bias) — `true_value` and every hidden physical-state
+# variable are completely untouched, so a Sensor Drift dataset's ground truth stays
+# "NORMAL" apart from the `scenarios` entry itself (docs/SYNTHETIC_DATA_MODEL.md).
+
+name: sensor_drift
+scenario_type: SENSOR_DRIFT
+target_type: SENSOR
+description: >
+  A sensor's calibration slowly diverges from ground truth. Grows the sensor's effective
+  bias by a fraction of its own configured valid_range per simulator.scenarios.effects — a
+  magnitude that means something the same way for a pressure sensor (bar) and an RPM sensor
+  (rpm), rather than one absolute number that would not.
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: LINEAR
+  onset_seconds: 259200.0  # 3 simulated days: demo-scaled stand-in for "weeks-months"
+
+lifecycle:
+  developing_threshold: 0.1
+  severe_threshold: null  # a data-quality issue, not a machine-condition escalation
+
+recovery:
+  enabled: false
+
+effect_params:
+  max_bias_fraction_of_range: 0.15
+  sign: 1.0  # positive drift; set to -1.0 (via --scenario-plan) for negative drift

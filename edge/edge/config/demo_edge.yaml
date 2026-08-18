@@ -1,0 +1,63 @@
+# =============================================================================
+# DEMO SYNTHETIC ENGINEERING ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION LIMITS.
+# =============================================================================
+#
+# Default edge configuration for the flagship reference machine (docs/SIMULATOR.md),
+# bound to its real seeded Gateway row (`GW-RIDGE-CRUSH`, backend/scripts/seed_demo_data.py
+# `seed_gateways`). Rule thresholds below are illustrative demo assumptions only — see
+# docs/EDGE_ARCHITECTURE.md and simulator/simulator/config/demo_engineering.yaml for the
+# same disclaimer applied to the physics side of this reference implementation.
+
+config_version: "1"
+
+gateway_id: "eb34fc54-619f-5373-b14d-77c157a50a05"
+gateway_code: "GW-RIDGE-CRUSH"
+tenant_id: "bbdd114e-b5a7-5890-a5bd-9e8c787a5fe0"
+asset_code: "L1-7B43-M000"
+
+poll_interval_seconds: 5.0
+
+rule_thresholds:
+  range_thresholds:
+    - measurement_type: PRESSURE
+      min_value: 0.0
+      max_value: 25.0
+    - measurement_type: RESERVOIR_LEVEL
+      min_value: 0.0
+      max_value: 100.0
+    - measurement_type: BEARING_TEMPERATURE
+      min_value: -20.0
+      max_value: 120.0
+    - measurement_type: VIBRATION_RMS
+      min_value: 0.0
+      max_value: 30.0
+    - measurement_type: PUMP_CURRENT
+      min_value: 0.0
+      max_value: 20.0
+  reservoir_critical_percent: 10.0
+  pump_running_current_a: 1.0
+  pressure_near_zero_bar: 0.2
+  lubrication_cycle_failure_seconds: 900.0
+  critical_measurement_types:
+    - RESERVOIR_LEVEL
+    - PRESSURE
+    - PUMP_CURRENT
+  sensor_fault_debounce_ticks: 3
+
+buffer:
+  db_path: "./data/edge/{gateway_id}.db"
+  max_buffered_events: 100000
+  max_buffer_age_seconds: 604800
+
+transport:
+  mode: "noop"
+  broker_host: "localhost"
+  broker_port: 1883
+  topic_template: "lubrisense/v1/{tenant_id}/{gateway_id}/telemetry"
+  qos: 1
+  client_id: null
+
+clock_offset_seconds: 0.0
+firmware_version: "0.9.0-demo"
+controller_version: "0.1.0"

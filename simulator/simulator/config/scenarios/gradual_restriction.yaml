@@ -1,0 +1,45 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §3 for the intended qualitative signal signature and
+# docs/SCENARIO_ENGINE.md §5 for how `effect_params` map onto the physics layer. Every
+# number here is a simulation coefficient chosen to demonstrate believable *shape* — not a
+# validated engineering limit for any real lubrication system.
+
+name: gradual_restriction
+scenario_type: GRADUAL_RESTRICTION
+target_type: CIRCUIT
+description: >
+  Progressive narrowing of a circuit's flow path. restriction_factor rises smoothly toward
+  effect_params.max_restriction_factor over progression.onset_seconds; the existing
+  reduced-order circuit model (simulator.physics.circuit) then derives higher required
+  pressure and lower delivered flow from that single hidden-state change — the scenario
+  never touches a sensor value directly.
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: SIGMOID
+  onset_seconds: 43200.0  # 12 simulated hours: a demo-scaled stand-in for the catalog's
+                           # real-world "days-weeks" onset (docs/FAILURE_MODE_CATALOG.md §3)
+
+lifecycle:
+  developing_threshold: 0.15
+  severe_threshold: 0.6
+
+recovery:
+  enabled: false  # a developing restriction does not clear itself
+
+effect_params:
+  # Chosen so early/moderate severity shows a believable rising-pressure/falling-flow trend
+  # with cycles still completing (required_pressure comfortably under the pump's
+  # max_pressure_bar, 18 bar), while severity approaching 1.0 pushes required_pressure just
+  # past what the pump can reach — cycles begin timing out PARTIAL/FAILED only late in the
+  # progression. This is what produces the required lubrication-path-before-bearing
+  # temporal ordering (docs/SCENARIO_ENGINE.md §5, §9): early pressure/flow deviation is
+  # immediate; delivery degradation (and the bearing's lagged response to it) only appears
+  # once severity is well advanced.
+  max_restriction_factor: 0.22
+

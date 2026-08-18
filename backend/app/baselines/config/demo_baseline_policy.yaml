@@ -1,0 +1,126 @@
+# =============================================================================
+# DEMO SYNTHETIC BASELINE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION LIMITS.
+# =============================================================================
+#
+# Every threshold below is a synthetic demo assumption for the LubriSense AI reference
+# implementation (Phase 8 brief), not a validated industrial specification. Real
+# deployments must replace this file with thresholds derived from real sensor behavior,
+# validated engineering limits, and actual asset operating history.
+#
+# `engineering_reference.value_ranges`/`expected_unit` are copied from (and must be kept in
+# sync with) simulator/simulator/config/demo_engineering.yaml's `sensors:` block and
+# backend/app/data_quality/config/demo_quality_policy.yaml's `validity:` block — the
+# baseline engine deliberately does not import the simulator package at runtime, matching
+# the data-quality engine's own precedent (ADR-059).
+
+policy_version: "1"
+
+# --- STATIC_ENGINEERING_REFERENCE (brief §4) — never learned, never overwritten by
+# learned behavior; a coarse "typical operating band" derived from each sensor's own
+# physically-possible range, used only as the last fallback rung. ---
+engineering_reference:
+  value_ranges:
+    PRESSURE: [0.0, 25.0]
+    FLOW: [0.0, 500.0]
+    RESERVOIR_LEVEL: [0.0, 100.0]
+    PUMP_CURRENT: [0.0, 10.0]
+    PUMP_RUNTIME: [0.0, 999999999.0]
+    CYCLE_COMPLETION: [0.0, 1.0]
+    PISTON_MOVEMENT: [0.0, 999999.0]
+    LUBRICANT_TEMPERATURE: [-10.0, 90.0]
+    VIBRATION_RMS: [0.0, 30.0]
+    VIBRATION_PEAK: [0.0, 60.0]
+    BEARING_TEMPERATURE: [-20.0, 150.0]
+    RPM: [0.0, 10000.0]
+    LOAD: [0.0, 120.0]
+  expected_unit:
+    PRESSURE: bar
+    FLOW: cm3/min
+    RESERVOIR_LEVEL: percent
+    PUMP_CURRENT: A
+    PUMP_RUNTIME: seconds
+    CYCLE_COMPLETION: boolean
+    PISTON_MOVEMENT: count
+    LUBRICANT_TEMPERATURE: degC
+    VIBRATION_RMS: mm/s
+    VIBRATION_PEAK: mm/s
+    BEARING_TEMPERATURE: degC
+    RPM: rpm
+    LOAD: percent
+
+# --- Sensor-type strategy (brief §7): every sensor always gets a STATIC_ENGINEERING_REFERENCE
+# and a ROLLING_ASSET_BASELINE profile; this table says which sensor types ALSO get a
+# CONTEXTUAL_ASSET_BASELINE (segmented) profile. RESERVOIR_LEVEL uses metric_kind
+# RESERVOIR_TREND instead of a plain numeric distribution (brief §24). ---
+contextual_measurement_types:
+  [PRESSURE, FLOW, PUMP_CURRENT, VIBRATION_RMS, VIBRATION_PEAK, BEARING_TEMPERATURE, RPM, LOAD]
+
+reservoir_trend_measurement_types: [RESERVOIR_LEVEL]
+
+# --- Context dimensions used per measurement type (brief §8/§9/§10/§11) — operating_state
+# doubles as the load/RPM dimension (see app.baselines.domain.context module docstring);
+# temperature is not used as a conditioning dimension for any sensor type in this reference
+# implementation (no distinct ambient-temperature measurement type exists). ---
+context_dimensions:
+  PRESSURE: [operating_state, cycle_phase]
+  FLOW: [operating_state, cycle_phase]
+  PUMP_CURRENT: [operating_state, cycle_phase]
+  VIBRATION_RMS: [operating_state]
+  VIBRATION_PEAK: [operating_state]
+  BEARING_TEMPERATURE: [operating_state]
+  RPM: [operating_state]
+  LOAD: [operating_state]
+
+# Contextual profiles are only built for these "stable" operating states (brief §8) —
+# STARTING/SHUTTING_DOWN/MAINTENANCE are transitional and excluded from segmentation
+# (still included in the unsegmented ROLLING_ASSET_BASELINE).
+stable_operating_states: [STOPPED, RUNNING_LOW_LOAD, RUNNING_NORMAL_LOAD, RUNNING_HIGH_LOAD]
+
+# Cycle-phase bucket (brief §11/§37): ACTIVE if the reading exceeds this idle threshold,
+# else IDLE — see app.baselines.strategies.contextual.
+cycle_phase_idle_threshold:
+  PRESSURE: 0.5
+  FLOW: 5.0
+  PUMP_CURRENT: 0.3
+
+# --- Rolling window (brief §20) — sensor-type-aware, not one global window. ---
+rolling_window_seconds:
+  default: 86400.0 # 24h
+  by_measurement_type:
+    RESERVOIR_LEVEL: 604800.0 # 7d — trend needs multiple refill cycles to be meaningful
+    PUMP_RUNTIME: 604800.0
+
+# --- Minimum sample requirement (brief §14) — sensor-type-aware. ---
+min_sample_count:
+  default: 30
+  by_measurement_type:
+    RESERVOIR_LEVEL: 20
+    CYCLE_COMPLETION: 10
+    PUMP_RUNTIME: 10
+
+# --- Refresh cadence (brief §29) — sensor-type-aware, not identical for every profile. ---
+refresh_interval_seconds:
+  default: 900.0 # 15 min
+  by_measurement_type:
+    RESERVOIR_LEVEL: 3600.0 # 1h
+    PUMP_RUNTIME: 3600.0
+
+# --- Staleness (brief §44) — sensor-type-aware. ---
+stale_after_seconds:
+  default: 3600.0 # 1h
+  by_measurement_type:
+    RESERVOIR_LEVEL: 21600.0 # 6h
+
+# --- Contamination control (brief §39/§40/§41) — a new candidate must remain within
+# `candidate_divergence_mad_multiplier` MAD of the *previous* candidate snapshot across
+# `required_stable_cycles` consecutive worker cycles before it is promoted to replace the
+# ACTIVE statistics. See docs/BASELINES.md "Contamination control". ---
+stability_gate:
+  required_stable_cycles: 2
+  candidate_divergence_mad_multiplier: 3.0
+
+# --- Baseline deviation helper (brief §23) ---
+deviation:
+  mild_multiplier: 2.0
+  strong_multiplier: 4.0

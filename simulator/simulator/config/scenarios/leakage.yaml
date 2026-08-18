@@ -1,0 +1,35 @@
+# =============================================================================
+# DEMO SYNTHETIC FAILURE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION FAILURE THRESHOLDS.
+# =============================================================================
+# See docs/FAILURE_MODE_CATALOG.md §5 and docs/SCENARIO_ENGINE.md §5. Distinct from
+# Gradual Restriction: leakage_factor reduces *delivered* flow at the destination while
+# raw_flow_cm3_min (what the pump draws from the reservoir) stays governed only by
+# restriction/efficiency — required_pressure is unaffected, so pressure stays flat/normal
+# while flow at the lubrication point drops, the opposite pressure signature from
+# restriction (simulator.physics.circuit module docstring).
+
+name: leakage
+scenario_type: LEAKAGE
+target_type: CIRCUIT
+description: >
+  Lubricant lost between the pump and the lubrication point. Only leakage_factor is
+  affected — restriction_factor, and therefore required_pressure, stay at their healthy
+  baseline, which is what makes this physically distinguishable from Gradual Restriction.
+
+default_start_seconds: 0.0
+default_severity_max: 1.0
+
+progression:
+  type: LINEAR
+  onset_seconds: 21600.0  # 6 simulated hours
+
+lifecycle:
+  developing_threshold: 0.2
+  severe_threshold: 0.7
+
+recovery:
+  enabled: false
+
+effect_params:
+  max_leakage_factor: 0.6

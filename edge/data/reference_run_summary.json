@@ -1,0 +1,56 @@
+{
+  "gateway_id": "25b52fde-56f0-4f3f-8993-7be03ad849f1",
+  "trend": [
+    {
+      "label": "healthy",
+      "t": 2.06,
+      "buffer_depth": 0,
+      "connectivity_state": "ONLINE",
+      "metrics": {
+        "acquired": 40,
+        "buffered": 40,
+        "sent": 40,
+        "replayed": 0,
+        "failures": 0,
+        "duplicates_prevented": 0,
+        "warnings": 0,
+        "buffer_overflow_count": 0,
+        "config_changes": 1
+      }
+    },
+    {
+      "label": "outage",
+      "t": 6.82,
+      "buffer_depth": 79,
+      "connectivity_state": "DEGRADED",
+      "metrics": {
+        "acquired": 120,
+        "buffered": 120,
+        "sent": 40,
+        "replayed": 0,
+        "failures": 1,
+        "duplicates_prevented": 0,
+        "warnings": 0,
+        "buffer_overflow_count": 0,
+        "config_changes": 1
+      }
+    },
+    {
+      "label": "recovered",
+      "t": 12.45,
+      "buffer_depth": 0,
+      "connectivity_state": "ONLINE",
+      "metrics": {
+        "acquired": 120,
+        "buffered": 120,
+        "sent": 120,
+        "replayed": 1,
+        "failures": 1,
+        "duplicates_prevented": 0,
+        "warnings": 0,
+        "buffer_overflow_count": 0,
+        "config_changes": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+# =============================================================================
+# DEMO SYNTHETIC DATA QUALITY ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION LIMITS.
+# =============================================================================
+#
+# Every threshold below is a synthetic demo assumption for the LubriSense AI reference
+# implementation (Phase 7 brief §23), not a validated industrial specification. Real
+# deployments must replace this file with thresholds derived from actual sensor
+# datasheets, network SLAs, and validated engineering limits.
+#
+# `validity.value_ranges`/`validity.expected_unit` are copied from (and must be kept in
+# sync with) simulator/simulator/config/demo_engineering.yaml's `sensors:` block — the
+# data-quality engine deliberately does not import the simulator package at runtime
+# (ADR-059's own-wire-contract precedent: this service must work identically against a
+# real, non-simulated deployment that has no simulator config at all).
+
+policy_version: "1"
+
+# --- Timeliness (brief §12) ---
+lateness:
+  late_threshold_seconds: 30.0
+  very_late_threshold_seconds: 120.0
+
+# --- Staleness (brief §13) — sensor-type-aware expected cadence, not one global threshold ---
+staleness:
+  expected_interval_seconds:
+    PRESSURE: 10.0
+    FLOW: 10.0
+    RESERVOIR_LEVEL: 30.0
+    PUMP_CURRENT: 10.0
+    PUMP_RUNTIME: 30.0
+    CYCLE_COMPLETION: 60.0
+    PISTON_MOVEMENT: 30.0
+    LUBRICANT_TEMPERATURE: 30.0
+    VIBRATION_RMS: 10.0
+    VIBRATION_PEAK: 10.0
+    BEARING_TEMPERATURE: 30.0
+    RPM: 10.0
+    LOAD: 10.0
+  # A stream is STALE once (now - last_reading_age) exceeds expected_interval * this
+  # multiplier — not the instant the next expected reading is merely due, which would
+  # false-positive on ordinary jitter.
+  stale_multiplier: 3.0
+
+# --- Clock offset/drift (brief §14) ---
+clock:
+  offset_warning_seconds: 5.0
+  drift_window_minutes: 30.0
+  drift_slope_warning_seconds_per_minute: 0.05
+
+# --- Out-of-range (brief §15) — copied from demo_engineering.yaml `sensors:*.valid_range` ---
+validity:
+  value_ranges:
+    PRESSURE: [0.0, 25.0]
+    FLOW: [0.0, 500.0]
+    RESERVOIR_LEVEL: [0.0, 100.0]
+    PUMP_CURRENT: [0.0, 10.0]
+    PUMP_RUNTIME: [0.0, 999999999.0]
+    CYCLE_COMPLETION: [0.0, 1.0]
+    PISTON_MOVEMENT: [0.0, 999999.0]
+    LUBRICANT_TEMPERATURE: [-10.0, 90.0]
+    VIBRATION_RMS: [0.0, 30.0]
+    VIBRATION_PEAK: [0.0, 60.0]
+    BEARING_TEMPERATURE: [-20.0, 150.0]
+    RPM: [0.0, 10000.0]
+    LOAD: [0.0, 120.0]
+  expected_unit:
+    PRESSURE: bar
+    FLOW: cm3/min
+    RESERVOIR_LEVEL: percent
+    PUMP_CURRENT: A
+    PUMP_RUNTIME: seconds
+    CYCLE_COMPLETION: boolean
+    PISTON_MOVEMENT: count
+    LUBRICANT_TEMPERATURE: degC
+    VIBRATION_RMS: mm/s
+    VIBRATION_PEAK: mm/s
+    BEARING_TEMPERATURE: degC
+    RPM: rpm
+    LOAD: percent
+
+# --- Sensor-drift-suspected (brief §19) ---
+sensor_drift:
+  window_minutes: 180.0
+  min_samples: 20
+  bias_fraction_of_range_warning: 0.05
+  bias_fraction_of_range_error: 0.12
+
+# --- Stuck-sensor-suspected (brief §20) ---
+stuck_sensor:
+  window_minutes: 20.0
+  min_samples: 8
+  # Measurement types where a run of identical values is often legitimate on its own
+  # (e.g. a boolean/count signal) — still gated by operating-state awareness in the rule
+  # itself, this list only affects how strict the base check is.
+  tolerant_types: [CYCLE_COMPLETION, PISTON_MOVEMENT, PUMP_RUNTIME]
+
+# --- Spike / rate-of-change (brief §21) — max plausible per-reading change, as a fraction
+# of that measurement type's own valid_range span ---
+spike:
+  rate_of_change_fraction_of_range:
+    PRESSURE: 0.4
+    FLOW: 0.5
+    RESERVOIR_LEVEL: 0.05
+    PUMP_CURRENT: 0.4
+    LUBRICANT_TEMPERATURE: 0.05
+    VIBRATION_RMS: 0.5
+    VIBRATION_PEAK: 0.6
+    BEARING_TEMPERATURE: 0.05
+    RPM: 0.3
+    LOAD: 0.3
+
+# --- Duplicate-pattern (brief §10) ---
+duplicate_pattern:
+  lookback_minutes: 10.0
+
+# --- Window-level evaluation cadence (brief §6) ---
+window_evaluation_interval_seconds: 60.0
+
+# --- Eligibility / quality_state mapping (brief §26/§27) — the single place severity maps
+# to the two categorical, explainable output states; no numeric score (see
+# TECHNICAL_DECISIONS.md, no-numeric-quality-score ADR) ---
+eligibility_mapping:
+  CRITICAL: { quality_state: UNUSABLE, eligibility: INELIGIBLE }
+  ERROR: { quality_state: UNUSABLE, eligibility: INELIGIBLE }
+  WARNING: { quality_state: USABLE_WITH_CAUTION, eligibility: ELIGIBLE_WITH_CAUTION }
+  INFO: { quality_state: TRUSTED, eligibility: ELIGIBLE }
+  NONE: { quality_state: TRUSTED, eligibility: ELIGIBLE }

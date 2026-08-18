@@ -1,0 +1,328 @@
+name: lubrisense-ai
+
+x-backend-env: &backend-env
+  APP_NAME: ${APP_NAME:-lubrisense-backend}
+  APP_VERSION: ${APP_VERSION:-0.1.0}
+  APP_ENV: ${APP_ENV:-local}
+  APP_HOST: 0.0.0.0
+  APP_PORT: 8000
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-lubrisense}:${POSTGRES_PASSWORD:-lubrisense}@postgres:5432/${POSTGRES_DB:-lubrisense}
+  DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+  DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+  REDIS_URL: redis://redis:6379/0
+  MQTT_HOST: mosquitto
+  MQTT_PORT: 1883
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  KAFKA_TELEMETRY_TOPIC: ${KAFKA_TELEMETRY_TOPIC:-lubrisense.telemetry.v1}
+  KAFKA_DLQ_TOPIC: ${KAFKA_DLQ_TOPIC:-lubrisense.telemetry.dlq.v1}
+  KAFKA_CONSUMER_GROUP_ID: ${KAFKA_CONSUMER_GROUP_ID:-lubrisense-telemetry-consumer}
+  MQTT_TOPIC_PATTERN: ${MQTT_TOPIC_PATTERN:-lubrisense/v1/+/+/telemetry}
+  PIPELINE_BATCH_SIZE: ${PIPELINE_BATCH_SIZE:-500}
+  PIPELINE_BATCH_TIMEOUT_SECONDS: ${PIPELINE_BATCH_TIMEOUT_SECONDS:-2.0}
+  PIPELINE_RETRY_MAX_BACKOFF_SECONDS: ${PIPELINE_RETRY_MAX_BACKOFF_SECONDS:-30.0}
+  PIPELINE_SUPPORTED_SCHEMA_VERSIONS: ${PIPELINE_SUPPORTED_SCHEMA_VERSIONS:-1}
+  PIPELINE_BRIDGE_SPOOL_PATH: /data/mqtt_bridge_spool.db
+  PIPELINE_BRIDGE_SPOOL_DRAIN_INTERVAL_SECONDS: ${PIPELINE_BRIDGE_SPOOL_DRAIN_INTERVAL_SECONDS:-5.0}
+  MQTT_BRIDGE_HEALTH_PORT: 8081
+  TELEMETRY_CONSUMER_HEALTH_PORT: 8082
+  DATA_QUALITY_CONSUMER_GROUP_ID: ${DATA_QUALITY_CONSUMER_GROUP_ID:-lubrisense-data-quality}
+  DATA_QUALITY_WORKER_HEALTH_PORT: 8083
+  DATA_QUALITY_WINDOW_EVALUATION_INTERVAL_SECONDS: ${DATA_QUALITY_WINDOW_EVALUATION_INTERVAL_SECONDS:-60.0}
+  BASELINE_WORKER_HEALTH_PORT: 8084
+  BASELINE_REFRESH_INTERVAL_SECONDS: ${BASELINE_REFRESH_INTERVAL_SECONDS:-300.0}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+  TRUSTED_HOSTS: ${TRUSTED_HOSTS:-*}
+  CORRELATION_ID_HEADER: X-Correlation-ID
+
+services:
+  postgres:
+    image: timescale/timescaledb-ha:pg16
+    container_name: lubrisense-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lubrisense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lubrisense}
+      POSTGRES_DB: ${POSTGRES_DB:-lubrisense}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lubrisense} -d ${POSTGRES_DB:-lubrisense}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - lubrisense-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: lubrisense-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - lubrisense-net
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: lubrisense-mosquitto
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+      - "${MQTT_WS_PORT:-9001}:9001"
+    volumes:
+      - ./infrastructure/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - lubrisense-net
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: lubrisense-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: LubriSenseKRaftClusterId1
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lubrisense-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lubrisense-backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lubrisense-net
+
+  mqtt-bridge:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lubrisense-mqtt-bridge
+    restart: unless-stopped
+    command: ["python", "-m", "app.pipeline.mqtt_bridge"]
+    environment:
+      <<: *backend-env
+    volumes:
+      - mqtt_bridge_data:/data
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8081/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lubrisense-net
+
+  telemetry-consumer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lubrisense-telemetry-consumer
+    restart: unless-stopped
+    command: ["python", "-m", "app.pipeline.consumer"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8082/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lubrisense-net
+
+  data-quality-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lubrisense-data-quality-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.data_quality.worker"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8083/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lubrisense-net
+
+  baseline-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lubrisense-baseline-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.baselines.workers.worker"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8084/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lubrisense-net
+
+  rules-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lubrisense-rules-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.rules_engine.workers.worker"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8085/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lubrisense-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lubrisense-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_APP_ENV: ${NEXT_PUBLIC_APP_ENV:-local}
+      NEXT_PUBLIC_DEMO_TENANT_ID: ${NEXT_PUBLIC_DEMO_TENANT_ID:-bbdd114e-b5a7-5890-a5bd-9e8c787a5fe0}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lubrisense-net
+
+  edge:
+    build:
+      context: .
+      dockerfile: edge/Dockerfile
+    container_name: lubrisense-edge
+    restart: unless-stopped
+    profiles: ["edge"]
+    environment:
+      EDGE_GATEWAY_CODE: ${EDGE_GATEWAY_CODE:-GW-RIDGE-CRUSH}
+      EDGE_TENANT_ID: ${EDGE_TENANT_ID:-bbdd114e-b5a7-5890-a5bd-9e8c787a5fe0}
+      EDGE_ASSET_CODE: ${EDGE_ASSET_CODE:-L1-7B43-M000}
+      EDGE_BROKER_HOST: mosquitto
+      EDGE_BROKER_PORT: "1883"
+      EDGE_DB_PATH: /repo/edge/data/edge/{gateway_id}.db
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lubrisense}:${POSTGRES_PASSWORD:-lubrisense}@postgres:5432/${POSTGRES_DB:-lubrisense}
+    volumes:
+      - edge_data:/repo/edge/data
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - lubrisense-net
+
+networks:
+  lubrisense-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  edge_data:
+  redis_data:
+  mosquitto_data:
+  mosquitto_log:
+  kafka_data:
+  mqtt_bridge_data:
