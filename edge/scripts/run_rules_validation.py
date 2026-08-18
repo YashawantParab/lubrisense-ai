@@ -92,7 +92,7 @@ def main() -> int:
     source = SimulatorTelemetrySource(
         asset_code=config.asset_code,
         database_url=DATABASE_URL,
-        step_seconds=3.0,
+        step_seconds=300.0,
         scenario_instances=[instance],
     )
     transport = MqttTransport(
@@ -108,7 +108,16 @@ def main() -> int:
     run_started_wall_clock = time.time()
     runtime.start()
     try:
-        runtime.run_ticks(50, sleep_between_seconds=0.05)
+        # The configured demo shift starts six simulated hours after midnight. Five-minute
+        # event-time steps cover startup plus an observed lubrication cycle at modest
+        # message volume, so downstream validation sees more than idle readings.
+        runtime.run_ticks(84, sleep_between_seconds=0.01)
+        drain_deadline = time.monotonic() + 180.0
+        while runtime.health_snapshot().buffer_depth > 0 and time.monotonic() < drain_deadline:
+            time.sleep(0.1)
+        remaining = runtime.health_snapshot().buffer_depth
+        if remaining:
+            raise RuntimeError(f"edge buffer did not drain within 180s ({remaining} pending)")
     finally:
         runtime.stop()
         source.close()
@@ -117,15 +126,16 @@ def main() -> int:
 
     # Give the real Phase 6 pipeline (MQTT -> bridge -> Kafka -> consumer) a moment to
     # persist the batch before querying.
-    time.sleep(8.0)
+    time.sleep(10.0)
 
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT count(*) FROM telemetry WHERE machine_id = %s "
-            "AND source_timestamp >= to_timestamp(%s) AND measurement_type = 'PRESSURE'",
+            "SELECT count(*), min(source_timestamp), max(source_timestamp) "
+            "FROM telemetry WHERE machine_id = %s AND persisted_timestamp >= to_timestamp(%s) "
+            "AND measurement_type = 'PRESSURE'",
             (str(machine_id), run_started_wall_clock - 5.0),
         )
-        pressure_row_count = cur.fetchone()[0]
+        pressure_row_count, source_start, source_end = cur.fetchone()
     if pressure_row_count > 0:
         _pass(
             f"real scenario telemetry landed in TimescaleDB via the real pipeline "
@@ -136,10 +146,8 @@ def main() -> int:
 
     conn.close()
 
-    scenario_start_iso = time.strftime(
-        "%Y-%m-%dT%H:%M:%S", time.gmtime(run_started_wall_clock - 5.0)
-    )
-    scenario_end_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time()))
+    scenario_start_iso = source_start.isoformat() if source_start else ""
+    scenario_end_iso = source_end.isoformat() if source_end else ""
 
     print("")
     if FAILURES == 0:

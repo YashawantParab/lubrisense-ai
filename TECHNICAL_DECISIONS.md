@@ -4345,6 +4345,234 @@ Not expected to revisit — would only change if Phase 7/8's own equivalent deci
 
 ---
 
+# ADR-084 — One Shared Point-in-Time Feature Engine for Historical and Online Use
+
+### Status
+
+ACCEPTED
+
+### Context
+
+Separate offline and online formulas create train/serve skew and make leakage fixes easy to
+apply to only one path.
+
+### Decision
+
+`FeatureEngine.compute` plus the database-free `compute_feature_values` core is the only
+implementation. Historical CLI, periodic materialization, online latest computation, and
+tests all delegate to it.
+
+### Alternatives Considered
+
+Separate SQL training transforms and a Python serving transform; rejected because semantic
+parity would rely on duplicated implementation and tests rather than shared code.
+
+### Why This Option
+
+Parity is structural. Differences are limited to selecting the as-of timestamp and whether
+the resulting vector is persisted.
+
+### Consequences
+
+Both workloads share the same Python performance envelope and version-release lifecycle.
+
+### Revisit When
+
+Fleet-scale training requires a distributed execution backend; that backend must still
+execute or compile the same registered definitions.
+
+---
+
+# ADR-085 — Source-Time Windows and Strict As-Of Filtering
+
+### Status
+
+ACCEPTED
+
+### Context
+
+Buffered/replayed events can be persisted long after the physical observation. Arrival-time
+windows would misplace those values and permit historical leakage.
+
+### Decision
+
+All physical feature windows use `source_timestamp`, inclusive at T, never
+`persisted_timestamp`. Source loading enforces `source_timestamp <= T`, baselines with
+future physical window ends are excluded, and rule evidence must have been active by T.
+
+### Alternatives Considered
+
+Persisted-time windows and post-query filtering; rejected because both can scan/use future
+physical data incorrectly.
+
+### Why This Option
+
+Matches Phase 6's hypertable event-time decision (ADR-054) and real inference availability.
+
+### Consequences
+
+Late arrivals do not retroactively enter an already-materialized vector unless that vector
+is deliberately recomputed; idempotent storage then keeps the prior logical vector unchanged.
+
+### Revisit When
+
+A correction/version mechanism for late historical restatement is designed.
+
+---
+
+# ADR-086 — Preserve Missingness and Reuse Existing Trust Owners
+
+### Status
+
+ACCEPTED
+
+### Context
+
+Zero-filling absent/bad sensors creates false physical evidence. Re-deriving quality or
+baseline status in Phase 10 would diverge from Phase 7/8 ownership.
+
+### Decision
+
+Numeric equipment features require Phase 7 `ELIGIBLE`/`ELIGIBLE_WITH_CAUTION` plus a GOOD,
+non-null reading. Missing/suppressed values are absent from `feature_values` and listed in
+`missing_features`; explicit availability/quality features remain. Baselines must be Phase
+8 ACTIVE. Phase 9 findings are evidence features only.
+
+### Alternatives Considered
+
+Generic zero fill, forward fill, a feature-owned quality score, and candidate/stale baseline
+fallback; all rejected as either misleading or a duplicate trust policy.
+
+### Why This Option
+
+Keeps the existing quality/baseline/rule contracts authoritative and makes uncertainty
+model-visible without fabricating normal values.
+
+### Consequences
+
+Later models must explicitly support nulls or apply a separately versioned training-time
+imputation transform. Phase 10 performs no complex imputation.
+
+### Revisit When
+
+A specific model requires a validated, versioned imputation strategy.
+
+---
+
+# ADR-087 — Code Registry with Explicit Semantic and Feature-Set Versions
+
+### Status
+
+ACCEPTED
+
+### Context
+
+Phase 10 needs maintainable definitions and set membership but not a commercial feature
+store or a mutable authoring database.
+
+### Decision
+
+Definitions are immutable Python data in `app.features.definitions`, exposed read-only by
+API and rendered to `docs/FEATURE_CATALOG.md`. Each definition and each set has its own
+semantic version.
+
+### Alternatives Considered
+
+Database-authored registry and an external feature-store product; rejected as operational
+scope without a current authoring or serving requirement.
+
+### Why This Option
+
+Definitions are reviewed, tested, deployed, and reproduced with code while remaining
+machine-readable.
+
+### Consequences
+
+Definition changes require a code release and deliberate version bump.
+
+### Revisit When
+
+Non-developer feature authoring or independent feature deployment becomes a requirement.
+
+---
+
+# ADR-088 — Hybrid On-Demand and Idempotent Materialized Feature Storage
+
+### Status
+
+ACCEPTED
+
+### Context
+
+Persisting every intermediate statistic multiplies storage, while recomputing every
+historical training matrix loses auditability and is expensive.
+
+### Decision
+
+Latest online vectors compute on demand. Historical/training and scheduled validation
+snapshots persist as one denormalized JSONB `feature_vector` row with provenance. A
+deterministic UUID plus a logical unique constraint prevents duplicates; conflicts never
+overwrite the existing row.
+
+### Alternatives Considered
+
+Compute-only and materialize-everything; rejected respectively for weak reproducibility and
+unnecessary storage/query amplification.
+
+### Why This Option
+
+Preserves training evidence where valuable without turning Phase 10 into a feature-store
+platform.
+
+### Consequences
+
+JSONB feature-value analytics may require extraction or export for large training jobs.
+
+### Revisit When
+
+Materialization volume or model-training access patterns justify columnar/offline storage.
+
+---
+
+# ADR-089 — Periodic Feature Worker with Bulk Per-Vector Source Queries
+
+### Status
+
+ACCEPTED
+
+### Context
+
+Most features are multi-minute/hour windows and depend on periodic baselines/rules. An
+event-triggered calculation would race dependencies and repeatedly recompute the same window.
+
+### Decision
+
+A periodic worker materializes latest vectors. One source-repository call bulk-loads the
+maximum telemetry window, quality state, ACTIVE baselines, quality issues, rules, and asset
+context; computation performs no query per feature. The worker exposes liveness, DB-backed
+readiness, metrics, and per-machine/set failure isolation.
+
+### Alternatives Considered
+
+Kafka-per-event computation and one SQL query per feature; rejected for dependency races and
+obvious query explosion.
+
+### Why This Option
+
+Matches Phase 8/9's periodic intelligence-worker precedent and scales query count with
+vectors, not definition count.
+
+### Consequences
+
+Freshness is bounded by the worker interval; online callers can compute a fresher vector on
+demand.
+
+### Revisit When
+
+Sub-minute online feature freshness becomes necessary.
+
+---
+
 # Pending Decisions (Deferred to Later Phases)
 
 Resolved by Phase 1 and removed from this list: exact service boundaries within `backend/`
@@ -4395,6 +4623,11 @@ design (ADR-077), rules worker architecture (ADR-078), per-candidate isolation g
 (ADR-079), rules quality-gating/baseline-trust reuse strategy (ADR-080), evidence-strength/
 severity separation (ADR-081), cross-signal pattern differentiation strategy (ADR-082),
 rules reprocessing design (ADR-083).
+
+Resolved by Phase 10 and removed from this list: shared feature architecture/train-serve
+parity (ADR-084), point-in-time/event-time semantics (ADR-085), quality/baseline/rule usage
+and missing values (ADR-086), registry/feature-set versioning (ADR-087), hybrid materialized
+storage/idempotency (ADR-088), and periodic bulk-query worker architecture (ADR-089).
 Health-score calculation strategy (below) remains open — Phase 7 deliberately does not
 compute one (ADR-065); that entry still applies to a future condition-intelligence phase.
 

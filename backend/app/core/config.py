@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     rules_worker_health_port: int = Field(default=8085, alias="RULES_WORKER_HEALTH_PORT")
     rules_worker_cycle_seconds: float = Field(default=300.0, alias="RULES_WORKER_CYCLE_SECONDS")
 
+    # Phase 10: periodic materialization of selected point-in-time feature vectors.
+    feature_worker_health_port: int = Field(default=8086, alias="FEATURE_WORKER_HEALTH_PORT")
+    feature_worker_cycle_seconds: float = Field(
+        default=900.0, alias="FEATURE_WORKER_CYCLE_SECONDS"
+    )
+
     cors_allowed_origins: str = Field(default="http://localhost:3000", alias="CORS_ALLOWED_ORIGINS")
     trusted_hosts: str = Field(default="*", alias="TRUSTED_HOSTS")
 

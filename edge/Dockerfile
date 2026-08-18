@@ -24,6 +24,7 @@ COPY edge/pyproject.toml edge/README.md ./edge/
 RUN cd edge && uv sync --no-dev
 
 COPY edge/edge ./edge/edge
+COPY edge/scripts ./edge/scripts
 
 # --- runtime: minimal image, non-root user ---
 FROM python:3.12-slim AS runtime
@@ -35,8 +36,10 @@ WORKDIR /repo
 COPY --from=builder /repo/simulator/simulator ./simulator/simulator
 COPY --from=builder /repo/edge/.venv ./edge/.venv
 COPY --from=builder /repo/edge/edge ./edge/edge
+COPY --from=builder /repo/edge/scripts ./edge/scripts
 
 ENV PATH="/repo/edge/.venv/bin:$PATH" \
+    PYTHONPATH="/repo/edge:/repo/simulator" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 

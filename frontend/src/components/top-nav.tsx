@@ -7,16 +7,17 @@ const LINKS = [
   { href: "/data-quality", label: "Data Quality" },
   { href: "/baselines", label: "Baselines" },
   { href: "/rules", label: "Rule Findings" },
+  { href: "/features", label: "Features" },
 ];
 
 export function TopNav() {
   return (
     <nav className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
+      <div className="mx-auto flex max-w-5xl items-center gap-6 overflow-x-auto px-6 py-3">
         <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           LubriSense AI
         </span>
-        <div className="flex gap-4">
+        <div className="flex shrink-0 gap-4">
           {LINKS.map((link) => (
             <Link
               key={link.href}

@@ -1,0 +1,16 @@
+# DEMO SYNTHETIC FEATURE-ENGINEERING ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION LIMITS.
+policy_version: "1.0.0"
+maximum_lookback_seconds: 86400
+maximum_rows_per_vector: 200000
+denominator_epsilon: 0.000001
+late_arrival_seconds: 60.0
+deviation_mad_multiplier: 2.0
+pressure_cycle_idle_threshold: 1.0
+slope_max_points: 101
+worker_cycle_seconds: 900.0
+load_low_upper_percent: 35.0
+load_normal_upper_percent: 75.0
+rpm_stopped_upper: 1.0
+rpm_low_upper: 500.0
+rpm_nominal_upper: 2000.0

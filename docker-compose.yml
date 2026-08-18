@@ -32,6 +32,8 @@ x-backend-env: &backend-env
   DATA_QUALITY_WINDOW_EVALUATION_INTERVAL_SECONDS: ${DATA_QUALITY_WINDOW_EVALUATION_INTERVAL_SECONDS:-60.0}
   BASELINE_WORKER_HEALTH_PORT: 8084
   BASELINE_REFRESH_INTERVAL_SECONDS: ${BASELINE_REFRESH_INTERVAL_SECONDS:-300.0}
+  FEATURE_WORKER_HEALTH_PORT: 8086
+  FEATURE_WORKER_CYCLE_SECONDS: ${FEATURE_WORKER_CYCLE_SECONDS:-900.0}
   CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
   TRUSTED_HOSTS: ${TRUSTED_HOSTS:-*}
   CORRELATION_ID_HEADER: X-Correlation-ID
@@ -257,6 +259,27 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8085/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lubrisense-net
+
+  feature-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lubrisense-feature-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.features.workers.worker"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8086/health')\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -8,6 +8,7 @@ from app.api.v1 import (
     baselines,
     customers,
     data_quality,
+    features,
     hierarchy,
     lubrication_systems,
     machines,
@@ -34,3 +35,4 @@ api_v1_router.include_router(telemetry.router)
 api_v1_router.include_router(data_quality.router)
 api_v1_router.include_router(baselines.router)
 api_v1_router.include_router(rules.router)
+api_v1_router.include_router(features.router)

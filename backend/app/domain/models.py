@@ -1189,3 +1189,63 @@ class RuleFinding(Base, TenantScopedMixin, TimestampMixin):
     last_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 — Feature Engineering
+# ---------------------------------------------------------------------------
+
+
+class FeatureVector(Base, TenantScopedMixin, TimestampMixin):
+    """Immutable logical model-input snapshot with full computation provenance.
+
+    `id` is deterministic for the logical key, and the matching unique constraint is a
+    second database-level idempotency guard. Existing vectors are never updated in place.
+    """
+
+    __tablename__ = "feature_vector"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        UniqueConstraint(
+            "tenant_id",
+            "machine_id",
+            "entity_key",
+            "feature_set",
+            "feature_set_version",
+            "as_of_timestamp",
+            name="uq_feature_vector_logical",
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    component_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    entity_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    feature_set: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    feature_set_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    as_of_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+    feature_values: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    missing_features: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    quality_summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    source_window: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    baseline_versions: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    rule_versions: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    feature_definition_versions: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    feature_policy_version: Mapped[str] = mapped_column(String(20), nullable=False)

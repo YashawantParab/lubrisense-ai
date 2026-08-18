@@ -9,11 +9,11 @@ Condition-Driven Intelligent Lubrication Platform
 
 # Current Phase
 
-PHASE 9 — RULE ENGINE
+PHASE 10 — FEATURE ENGINEERING
 
 Status:
 
-COMPLETE — pending human review/acceptance sign-off
+COMPLETE — implementation and automated/live verification complete; pending human review
 
 ---
 
@@ -1111,7 +1111,66 @@ DecisionEngine, incidents, RAG, agents, CMMS integration, the final product UI.
 
 ## Phase 10 — Feature Engineering
 
-NOT STARTED
+COMPLETE
+
+Delivered:
+
+- dedicated `backend/app/features/` package with domain snapshots, 133 versioned feature
+  definitions, registry, four feature sets, shared engine, repositories, materialization,
+  worker, policy, and CLI
+- event-time, point-in-time computation using only `source_timestamp <= as_of`; controlled
+  future-row test proves no leakage
+- quality gating requiring Phase 7 eligibility plus per-reading GOOD/non-null values;
+  ineligible/dropout/network-loss values are suppressed and exposed as quality/missingness
+- ACTIVE-only Phase 8 baseline resolution with profile/version/config/fallback provenance
+- Phase 9 rule evidence as explicit evidence indicators only, never labels or diagnoses
+- current, rolling robust statistics, baseline deviation/relative, trend/rate, cycle,
+  cross-signal, temporal, quality, context, availability, and rule-evidence groups
+- deterministic `FeatureVector` contract and migration `7f10a9c4e2d1`; idempotency enforced
+  by deterministic UUID and `uq_feature_vector_logical`
+- hybrid compute/materialize strategy, historical CLI, online latest service, periodic worker
+  with DB readiness and Phase 10 metrics
+- tenant-scoped read APIs for latest/history/detail/registry/sets and minimal `/features`
+  frontend inspection view
+- `docs/FEATURE_ENGINEERING.md`, generated `docs/FEATURE_CATALOG.md`, and ADR-084–ADR-089
+
+Verification completed:
+
+- feature-focused tests: 23 passed (20 pure registry/computation tests plus 3 database/API
+  integration tests); controlled future insertion leaves the vector at T unchanged,
+  historical/online paths are equivalent, repeated computation is deterministic, and
+  repeated persistence is idempotent
+- final full regressions: backend 245 passed, simulator 139 passed, edge 69 passed; backend,
+  simulator, and edge lint/type checks clean; frontend ESLint and TypeScript clean
+- production frontend build passed inside Docker with `/features` in the route manifest;
+  live `/features`, registry, set, and latest-vector endpoints returned HTTP 200
+- live flagship `LUBRICATION_ANOMALY_V1` set version `1.0.2`: 94 values, 39 explicit
+  missing features, five ACTIVE baseline lineages recorded, FLOW availability false, quality
+  state CAUTION; no unavailable sensor was fabricated
+- real Phase 4 gradual restriction ran through edge -> MQTT -> Kafka -> TimescaleDB, producing
+  84 observed pressure rows over a complete operating/cycle window; ten point-in-time vectors
+  showed pressure robust deviation about 1.57 -> 803.77, pump current 1.42 A -> 3.55 A,
+  current deviation duration 0 -> 600 seconds, and bearing deviation about 4.70 -> 11.80 later while FLOW
+  remained explicitly unavailable
+- the live run found and fixed an event-order assumption in temporal-duration calculation;
+  final provenance review also aligned same-type current values to their own sensor baseline.
+  Affected definitions/sets were bumped through `1.0.2`, preserving existing vectors instead
+  of overwriting them
+- controlled leakage, pump-degradation, independent-bearing, healthy stability, quality
+  gating, caution inclusion, denominator guard, and heterogeneous-asset signatures all pass;
+  live sensor drift, dropout, and network-failure scenarios all pass through the real pipeline
+- historical performance run: 48 requested/inserted vectors, 4,285 cumulative telemetry rows
+  scanned, 1,850 features generated in 2.473643 s; identical rerun inserted zero vectors in
+  2.16769 s. Dense restriction run: 10 timestamps, 95,660 cumulative rows scanned, 933
+  features generated in 17.338122 s
+- deployed feature worker `/health` alive, `/ready` database reachable, zero computation
+  failures; migration `7f10a9c4e2d1` is Alembic head
+- live Phase 6 pipeline outage/idempotency harness, Phase 7 quality harness, Phase 8 baseline
+  harness, and Phase 9 rules harness all pass; final Compose status shows every service healthy
+- repository-wide case-insensitive industrial-lubrication-vendor scan: zero genuine matches
+
+Explicitly not implemented: ML training/inference, Kalman/state estimation, Condition
+Intelligence, DecisionEngine, incidents, RAG, agents, CMMS, or final ML UI.
 
 ---
 
@@ -2200,25 +2259,12 @@ Phase 7:
 
 # Next Action
 
-Phase 7 acceptance criteria have been met and verified against the live Docker Compose
-stack (not inferred): `make verify` green end to end (backend 132/132 tests including 54
-new data-quality unit tests, simulator 139/139, edge 69/69, frontend build/lint/typecheck
-clean, `mqtt-verify`/`kafka-verify`/`pipeline-verify`/`data-quality-verify` all passing live
-against real Kafka/MQTT/Postgres and a real running `data-quality-worker`),
-`scripts/verify_data_quality.sh`'s 11 synthetic cases passing end to end via real MQTT
-publish through the real pipeline, and `edge/scripts/run_scenario_validation.py` proving
-SENSOR_DROPOUT and NETWORK_FAILURE detection against real Phase 4 scenario physics (with
-SENSOR_DRIFT's known, disclosed, non-functional window-dilution limitation in this specific
-long-lived demo environment — see docs/DATA_QUALITY.md §14). One real, pre-existing bug
-unrelated to Phase 7's own scope was found and fixed during migration work: three
-`lubrication_system` use_alter foreign keys that Phase 2's migration intended but never
-actually created, and that Phase 6's migration then misdiagnosed as a false positive and
-suppressed again — see the corrected ADR-022 and the Phase 7 entry above. Awaiting explicit
-instruction to begin Phase 8 (Baseline Engine). Do not begin Phase 8 implementation until
-that instruction is given.
+Phase 10 acceptance criteria are implemented and verified. Await explicit instruction before
+starting Phase 11. Do not implement model training or inference as part of Phase 10 follow-up.
 
 ---
 
 # Last Updated
 
-2026-08-18 — Phase 7 data quality engine complete.
+2026-08-18 — Phase 10 feature engineering implemented; final regression and live-stack
+verification record follows in the Phase 10 completion report.
