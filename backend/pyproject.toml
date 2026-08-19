@@ -19,6 +19,7 @@ dependencies = [
   "PyYAML>=6.0,<7",
   "lubrisense-ml-service",
   "pgvector>=0.5.0",
+  "asyncpg>=0.31.0",
 ]
 
 [project.optional-dependencies]
