@@ -17,8 +17,6 @@ services:
     plan: free
     region: frankfurt
     healthCheckPath: /health
-    dockerCommand: >-
-      sh -c "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers ${UVICORN_WORKERS:-2}"
     envVars:
       - key: APP_ENV
         value: hosted_demo
