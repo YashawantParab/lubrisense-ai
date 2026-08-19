@@ -6,6 +6,52 @@ on:
   pull_request:
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Fast checks — no service containers, no dependency installs. Runs first so an
+  # obvious hygiene violation (a prohibited name, a leaked-looking secret pattern)
+  # fails the build before the much slower integration jobs even start.
+  # ---------------------------------------------------------------------------
+  hygiene:
+    name: Repository hygiene (prohibited-name / secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prohibited-name scan
+        run: |
+          set -e
+          # Anthropic/Claude hits inside comments that cite this repo's own CLAUDE.md
+          # governance file are expected and excluded; anything else fails the build.
+          if grep -rniE "anthropic|claude" \
+              --include="*.ts" --include="*.tsx" --include="*.py" --include="*.md" \
+              frontend/src backend/app docs 2>/dev/null \
+              | grep -v "CLAUDE\.md" | grep -q .; then
+            echo "Prohibited-name scan found an unexpected reference:"
+            grep -rniE "anthropic|claude" \
+              --include="*.ts" --include="*.tsx" --include="*.py" --include="*.md" \
+              frontend/src backend/app docs 2>/dev/null | grep -v "CLAUDE\.md"
+            exit 1
+          fi
+          echo "Prohibited-name scan: clean."
+
+      - name: Secret pattern scan
+        run: |
+          set -e
+          PATTERN='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{10,}|AIza[0-9A-Za-z_-]{35}'
+          if grep -rnE "$PATTERN" \
+              --include="*.ts" --include="*.tsx" --include="*.py" --include="*.md" \
+              --include="*.yml" --include="*.yaml" --include="*.json" --include="*.env*" \
+              --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.git . 2>/dev/null \
+              | grep -q .; then
+            echo "Secret pattern scan found a likely credential — failing the build:"
+            grep -rnE "$PATTERN" \
+              --include="*.ts" --include="*.tsx" --include="*.py" --include="*.md" \
+              --include="*.yml" --include="*.yaml" --include="*.json" --include="*.env*" \
+              --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.git . 2>/dev/null
+            exit 1
+          fi
+          echo "Secret pattern scan: clean."
+
   backend:
     name: Backend (lint, typecheck, test)
     runs-on: ubuntu-latest
@@ -45,6 +91,8 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: "0.5.9"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
 
       - name: Install dependencies
         working-directory: backend
@@ -56,8 +104,10 @@ jobs:
 
       - name: Type check (mypy)
         working-directory: backend
-        run: uv run mypy app
+        run: uv run mypy app scripts
 
+      # The CI postgres service always starts empty, so this step proves the migration
+      # chain reaches head on a clean database (Phase 34 brief §34.4).
       - name: Run database migrations
         working-directory: backend
         run: uv run alembic upgrade head
@@ -98,3 +148,186 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  ml-service:
+    name: ml-service (lint, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.9"
+          enable-cache: true
+          cache-dependency-glob: "ml-service/uv.lock"
+
+      - name: Install dependencies
+        working-directory: ml-service
+        run: uv sync --extra dev
+
+      - name: Lint (ruff)
+        working-directory: ml-service
+        run: uv run ruff check .
+
+      - name: Type check (mypy)
+        working-directory: ml-service
+        run: uv run mypy ml_service
+
+      - name: Test (pytest)
+        working-directory: ml-service
+        run: uv run pytest
+
+  simulator:
+    name: simulator (lint, typecheck, test)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: timescale/timescaledb-ha:pg16
+        env:
+          POSTGRES_USER: lubrisense
+          POSTGRES_PASSWORD: lubrisense
+          POSTGRES_DB: lubrisense
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lubrisense -d lubrisense"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg://lubrisense:lubrisense@localhost:5432/lubrisense
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.9"
+          enable-cache: true
+
+      - name: Install backend dependencies (for migrate + seed)
+        working-directory: backend
+        run: uv sync --extra dev
+
+      - name: Run migrations
+        working-directory: backend
+        run: uv run alembic upgrade head
+
+      - name: Seed demo data
+        working-directory: backend
+        run: uv run python scripts/seed_demo_data.py
+
+      - name: Install simulator dependencies
+        working-directory: simulator
+        run: uv sync --extra dev
+
+      - name: Lint (ruff)
+        working-directory: simulator
+        run: uv run ruff check .
+
+      - name: Type check (mypy)
+        working-directory: simulator
+        run: uv run mypy simulator
+
+      - name: Test (pytest)
+        working-directory: simulator
+        env:
+          DATABASE_URL: postgresql://lubrisense:lubrisense@localhost:5432/lubrisense
+        run: uv run pytest
+
+  edge:
+    name: edge (lint, typecheck, test)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: timescale/timescaledb-ha:pg16
+        env:
+          POSTGRES_USER: lubrisense
+          POSTGRES_PASSWORD: lubrisense
+          POSTGRES_DB: lubrisense
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lubrisense -d lubrisense"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mosquitto:
+        image: eclipse-mosquitto:2
+        ports:
+          - 1883:1883
+        # The default eclipse-mosquitto image refuses anonymous connections without a
+        # config file; the backend's own infrastructure/mosquitto config allows the
+        # local demo listener. GitHub Actions service containers can't mount a
+        # docker-compose bind volume, so the container is started via a plain `docker
+        # run` step below instead of the `services:` block for this one dependency.
+        options: >-
+          --health-cmd "true"
+
+    env:
+      DATABASE_URL: postgresql+psycopg://lubrisense:lubrisense@localhost:5432/lubrisense
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Mosquitto with anonymous access allowed (CI-only config)
+        run: |
+          docker rm -f ci-mosquitto 2>/dev/null || true
+          docker run -d --name ci-mosquitto -p 1883:1883 \
+            -v "${{ github.workspace }}/infrastructure/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" \
+            eclipse-mosquitto:2
+          sleep 2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.9"
+          enable-cache: true
+
+      - name: Install backend dependencies (for migrate)
+        working-directory: backend
+        run: uv sync --extra dev
+
+      - name: Run migrations
+        working-directory: backend
+        run: uv run alembic upgrade head
+
+      - name: Install edge dependencies
+        working-directory: edge
+        run: uv sync --extra dev
+
+      - name: Lint (ruff)
+        working-directory: edge
+        run: uv run ruff check .
+
+      - name: Type check (mypy)
+        working-directory: edge
+        run: uv run mypy edge
+
+      # edge/tests/conftest.py connects to the broker at a hardcoded localhost:1883 —
+      # no MQTT env var to override; matches how `make edge-test` runs locally too.
+      - name: Test (pytest)
+        working-directory: edge
+        env:
+          DATABASE_URL: postgresql://lubrisense:lubrisense@localhost:5432/lubrisense
+        run: uv run pytest
+
+  docker-build:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile -t lubrisense-ci/backend .
+
+      - name: Build frontend image
+        run: docker build -f frontend/Dockerfile -t lubrisense-ci/frontend .
+
+      - name: Build edge image
+        run: docker build -f edge/Dockerfile -t lubrisense-ci/edge .

@@ -1,0 +1,23 @@
+# DEMO SYNTHETIC RETRIEVAL ASSUMPTIONS.
+# NOT A VALIDATED PRODUCTION RETRIEVAL/RANKING POLICY.
+#
+# See docs/RAG_KNOWLEDGE_SYSTEM.md for the full rationale.
+
+policy_version: "1.0.0"
+
+# Combined score = similarity_weight * cosine_similarity + lexical_weight * lexical_overlap
+# (Phase 18 brief §18.8 — semantic retrieval + simple lexical scoring). Cosine similarity
+# is `1 - cosine_distance`, clipped to [0, 1]; lexical_overlap is the fraction of query
+# tokens also present in the chunk (see `app.knowledge.embeddings.provider.
+# lexical_overlap_score`).
+similarity_weight: 0.6
+lexical_weight: 0.4
+
+# Explainable sufficiency thresholds (Phase 18 brief §18.11) — never a fabricated
+# confidence percentage. Calibrated against this reference implementation's small,
+# topically-distinct demo corpus (docs/RAG_KNOWLEDGE_SYSTEM.md "Synthetic knowledge
+# corpus").
+sufficient_min_score: 0.30
+partial_min_score: 0.12
+
+max_results: 5

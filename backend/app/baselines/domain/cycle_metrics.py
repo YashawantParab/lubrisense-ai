@@ -46,7 +46,11 @@ class CycleBaselineStatistics:
     duration_mad: float
     median_peak_pressure: float
     median_rise_time_seconds: float | None
-    completion_success_rate: float
+    completion_success_rate: float | None
+    """`None` when no `CYCLE_COMPLETION` telemetry exists at all for this window (e.g. the
+    machine's topology has no completion sensor) — absence of a completion signal is not
+    itself evidence of failure. `0.0` is reserved for the case where completion telemetry
+    *is* present but genuinely never confirms a cycle."""
 
     def to_dict(self) -> dict[str, float | int]:
         return asdict(self)
@@ -123,5 +127,5 @@ def compute_cycle_baseline(
         duration_mad=duration_mad,
         median_peak_pressure=_stats.median(peaks),
         median_rise_time_seconds=_stats.median(rise_times) if rise_times else None,
-        completion_success_rate=successes / len(durations),
+        completion_success_rate=(successes / len(durations)) if completion else None,
     )

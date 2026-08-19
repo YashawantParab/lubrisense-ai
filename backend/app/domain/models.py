@@ -26,6 +26,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
@@ -50,26 +51,53 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.enums import (
+    AgentMessageRole,
+    AgentToolCallStatus,
     AssessmentScope,
+    AuditActorType,
     BaselineMetricKind,
     BaselineState,
     BaselineStrategyType,
+    CapabilityLevel,
     ClockStatus,
+    CMMSWorkOrderStatus,
     CommercialStatus,
     CommissioningState,
+    CommissioningStatus,
+    CompatibilityStatus,
+    ConditionConfidence,
+    ConditionLifecycle,
+    ConditionSeverity,
+    ConditionType,
     Criticality,
+    DecisionLifecycle,
+    DecisionPriority,
+    DocumentStatus,
+    DocumentType,
     Eligibility,
     EvidenceStrength,
+    FeedbackClassification,
+    ForecastHorizon,
+    IncidentEventType,
+    IncidentState,
     IssueSeverity,
     IssueStatus,
     LubricationSystemType,
     MachineStatus,
     MachineType,
+    MaintenanceActionType,
+    MaintenanceState,
+    MLConfidenceCategory,
+    MLInferenceStatus,
+    MLResultKind,
     OperationalStatus,
+    PrognosticStatus,
     QualityDimension,
     QualityIssueType,
     QualityState,
     QuarantineReason,
+    RecommendedAction,
+    RecommendedWindow,
     RuleCategory,
     RuleFindingSeverity,
     RuleFindingState,
@@ -78,8 +106,15 @@ from app.domain.enums import (
     SensorType,
     ServiceTier,
     StalenessStatus,
+    StateTrend,
+    StateType,
+    StateUncertaintyCategory,
+    TechnicianFindingResult,
     TelemetryQuality,
     TenantStatus,
+)
+from app.domain.enums import (
+    DeviceType as DeviceTypeEnum,
 )
 from app.domain.enums import (
     SensorQualityState as SensorQualityStateEnum,
@@ -1249,3 +1284,942 @@ class FeatureVector(Base, TenantScopedMixin, TimestampMixin):
         JSONB, nullable=False, default=dict, server_default="{}"
     )
     feature_policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class MLInferenceResult(Base, TenantScopedMixin, TimestampMixin):
+    """Persisted `ml-service` inference output (Phase 11 brief §42) — ML EVIDENCE, not a
+    diagnosis, incident, or decision (see docs/ML_ARCHITECTURE.md "Core principle"). Every
+    row is fully reproducible: `model_id`/`model_version` resolve back to one
+    `ml-service` registry artifact, and `feature_vector_id` resolves back to one immutable
+    Phase 10 `FeatureVector`.
+
+    One table serves both `ANOMALY` and `CLASSIFICATION` result kinds (discriminated by
+    `result_kind`) rather than two near-identical tables — the shared columns (provenance,
+    quality, explanation) dominate, and kind-specific columns are simply nullable for the
+    other kind.
+    """
+
+    __tablename__ = "ml_inference_result"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        Index(
+            "ix_ml_inference_result_tenant_machine_model_time",
+            "tenant_id",
+            "machine_id",
+            "model_id",
+            text("as_of_timestamp DESC"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    feature_vector_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    model_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    model_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    result_kind: Mapped[MLResultKind] = mapped_column(_enum_column(MLResultKind), nullable=False)
+    status: Mapped[MLInferenceStatus] = mapped_column(
+        _enum_column(MLInferenceStatus), nullable=False
+    )
+    as_of_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+    anomaly_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    anomalous: Mapped[bool | None] = mapped_column(nullable=True)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    predicted_class: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    class_probabilities: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    confidence_category: Mapped[MLConfidenceCategory | None] = mapped_column(
+        _enum_column(MLConfidenceCategory), nullable=True
+    )
+
+    features_used: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    missing_features: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    quality_summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    explanation: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+
+
+class StateEstimate(Base, TenantScopedMixin, TimestampMixin):
+    """Persisted Kalman-filter state estimate (Phase 12 brief §16-§17) — condition
+    EVIDENCE, not a diagnosis. Every row is fully reproducible: `feature_vector_id`
+    resolves back to one immutable Phase 10 `FeatureVector`, and
+    `estimator_id`/`estimator_version`/`config_version` resolve back to the exact filter
+    configuration that produced it.
+
+    Unlike `MLInferenceResult` (Phase 11, stateless point-in-time scoring), a state
+    estimate is inherently sequential — its prior/posterior depend on the previous
+    estimate for the same `(machine_id, state_type, estimator_version)`. Rows are
+    append-only and never updated in place; idempotency is enforced on
+    `(tenant_id, machine_id, state_type, as_of_timestamp, estimator_version)` so replaying
+    the same historical window twice does not duplicate estimates (Phase 12 brief §17).
+    """
+
+    __tablename__ = "state_estimate"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        UniqueConstraint(
+            "tenant_id",
+            "machine_id",
+            "state_type",
+            "as_of_timestamp",
+            "estimator_version",
+            name="uq_state_estimate_logical",
+        ),
+        Index(
+            "ix_state_estimate_tenant_machine_type_time",
+            "tenant_id",
+            "machine_id",
+            "state_type",
+            text("as_of_timestamp DESC"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    component_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    state_type: Mapped[StateType] = mapped_column(_enum_column(StateType), nullable=False)
+    as_of_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+    state_value: Mapped[float] = mapped_column(Float, nullable=False)
+    state_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    trend: Mapped[StateTrend] = mapped_column(_enum_column(StateTrend), nullable=False)
+    uncertainty: Mapped[StateUncertaintyCategory] = mapped_column(
+        _enum_column(StateUncertaintyCategory), nullable=False
+    )
+    covariance_summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+
+    estimator_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    estimator_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    config_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    feature_set: Mapped[str] = mapped_column(String(80), nullable=False)
+    feature_set_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    feature_vector_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+
+    dt_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    prediction_only: Mapped[bool] = mapped_column(nullable=False, default=False)
+    observations_used: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    observations_missing: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    quality_summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 — Condition Intelligence
+# ---------------------------------------------------------------------------
+
+
+class ConditionAssessment(Base, TenantScopedMixin, TimestampMixin):
+    """Persisted `ConditionEngine` output (Phase 13 brief §13.5) — a SYNTHESIS judgment
+    over `RuleFinding`/`MLInferenceResult`/`StateEstimate`/quality evidence, never a new
+    primary evidence source itself. Append-only: every `ConditionEngine.assess()` call
+    inserts a fresh row (mirrors `MLInferenceResult`/`StateEstimate`'s own "recompute and
+    persist" pattern) — `lifecycle_state` captures how this assessment relates to the
+    immediately preceding one for the same machine, so history is a readable timeline, not
+    a single mutated row.
+    """
+
+    __tablename__ = "condition_assessment"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        Index(
+            "ix_condition_assessment_tenant_machine_time",
+            "tenant_id",
+            "machine_id",
+            text("as_of_timestamp DESC"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    component_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+
+    condition_type: Mapped[ConditionType] = mapped_column(
+        _enum_column(ConditionType, length=50), nullable=False, index=True
+    )
+    lifecycle_state: Mapped[ConditionLifecycle] = mapped_column(
+        _enum_column(ConditionLifecycle), nullable=False
+    )
+    severity: Mapped[ConditionSeverity] = mapped_column(
+        _enum_column(ConditionSeverity), nullable=False
+    )
+    confidence: Mapped[ConditionConfidence] = mapped_column(
+        _enum_column(ConditionConfidence), nullable=False
+    )
+
+    as_of_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    first_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    evidence_summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    rule_finding_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    ml_result_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    state_estimate_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    quality_context: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    baseline_versions: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    instrumentation_coverage: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    limitations: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    recommended_next_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 15 — Prognostics
+# ---------------------------------------------------------------------------
+
+
+class PrognosticAssessment(Base, TenantScopedMixin, TimestampMixin):
+    """Persisted `PrognosticEngine` output (Phase 15 brief §15.4) — one row per
+    `(state_type, horizon)` forecast, derived from the Phase 12 `StateEstimate` this
+    forecast extrapolates. Append-only, same rationale as `ConditionAssessment`."""
+
+    __tablename__ = "prognostic_assessment"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        Index(
+            "ix_prognostic_assessment_tenant_machine_state_time",
+            "tenant_id",
+            "machine_id",
+            "state_type",
+            "horizon",
+            text("as_of_timestamp DESC"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    component_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    state_estimate_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+
+    state_type: Mapped[StateType] = mapped_column(_enum_column(StateType), nullable=False)
+    horizon: Mapped[ForecastHorizon] = mapped_column(_enum_column(ForecastHorizon), nullable=False)
+    status: Mapped[PrognosticStatus] = mapped_column(_enum_column(PrognosticStatus), nullable=False)
+
+    as_of_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    current_state: Mapped[float] = mapped_column(Float, nullable=False)
+    trend: Mapped[StateTrend] = mapped_column(_enum_column(StateTrend), nullable=False)
+    predicted_state_at_horizon: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estimated_threshold_crossing_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    uncertainty: Mapped[StateUncertaintyCategory] = mapped_column(
+        _enum_column(StateUncertaintyCategory), nullable=False
+    )
+    data_sufficient: Mapped[bool] = mapped_column(nullable=False)
+
+    limitations: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    engine_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    config_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 14 — Decision Intelligence
+# ---------------------------------------------------------------------------
+
+
+class DecisionAssessment(Base, TenantScopedMixin, TimestampMixin):
+    """Persisted `DecisionEngine` output (Phase 14 brief §14.3) — the only layer whose
+    output is meant to trigger a human maintenance action, and therefore the only layer
+    with an explicit `human_review_required` gate and a lifecycle that never silently
+    overwrites a prior recommendation (`lifecycle_state`, §14.12)."""
+
+    __tablename__ = "decision_assessment"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        Index(
+            "ix_decision_assessment_tenant_machine_time",
+            "tenant_id",
+            "machine_id",
+            text("as_of_timestamp DESC"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    component_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    condition_assessment_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    prognostic_assessment_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+
+    priority: Mapped[DecisionPriority] = mapped_column(
+        _enum_column(DecisionPriority), nullable=False
+    )
+    recommended_action: Mapped[RecommendedAction] = mapped_column(
+        _enum_column(RecommendedAction, length=50), nullable=False
+    )
+    recommended_window: Mapped[RecommendedWindow] = mapped_column(
+        _enum_column(RecommendedWindow, length=40), nullable=False
+    )
+    risk_if_deferred: Mapped[str] = mapped_column(Text, nullable=False)
+    human_review_required: Mapped[bool] = mapped_column(nullable=False, default=True)
+
+    evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    confidence: Mapped[ConditionConfidence] = mapped_column(
+        _enum_column(ConditionConfidence), nullable=False
+    )
+    limitations: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
+    lifecycle_state: Mapped[DecisionLifecycle] = mapped_column(
+        _enum_column(DecisionLifecycle), nullable=False, default=DecisionLifecycle.ACTIVE
+    )
+    as_of_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 16 — Alert Correlation + Incident Management
+# ---------------------------------------------------------------------------
+
+
+class Incident(Base, TenantScopedMixin, TimestampMixin):
+    """One coherent operational problem for one machine/component/condition-family, not
+    one row per evaluation cycle (Phase 16 brief §16.1/§16.4). `correlation_key` is a
+    deterministic string (`app.incidents.services.correlation.build_correlation_key`) —
+    never opaque ML clustering. At most one non-terminal (state not in RESOLVED/CLOSED)
+    incident may exist per `(tenant, machine, correlation_key)` at a time
+    (`uq_incident_active_correlation_key`), mirroring `RuleFinding`'s own
+    `uq_rule_finding_active_scope` partial-unique-index idempotency pattern (ADR-078).
+    RESOLVED/CLOSED rows are never deleted or overwritten — a later recurrence (family no
+    longer matches an open incident) opens a fresh row with a fresh correlation key
+    instance."""
+
+    __tablename__ = "incident"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        Index(
+            "uq_incident_active_correlation_key",
+            "tenant_id",
+            "machine_id",
+            "correlation_key",
+            unique=True,
+            postgresql_where=text("state NOT IN ('RESOLVED', 'CLOSED')"),
+        ),
+        Index(
+            "ix_incident_tenant_machine_time", "tenant_id", "machine_id", text("created_at DESC")
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    component_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    correlation_key: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+
+    incident_type: Mapped[ConditionType] = mapped_column(
+        _enum_column(ConditionType, length=50), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[ConditionSeverity] = mapped_column(
+        _enum_column(ConditionSeverity), nullable=False
+    )
+    priority: Mapped[DecisionPriority] = mapped_column(
+        _enum_column(DecisionPriority), nullable=False
+    )
+    state: Mapped[IncidentState] = mapped_column(
+        _enum_column(IncidentState), nullable=False, default=IncidentState.OPEN, index=True
+    )
+
+    first_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    condition_assessment_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    decision_assessment_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    prognostic_assessment_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    rule_finding_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    ml_result_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    state_estimate_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    evidence_refs: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+
+    assigned_to: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class IncidentEvent(Base, TenantScopedMixin, TimestampMixin):
+    """Append-only incident timeline (Phase 16 brief §16.8). Never mutated or deleted —
+    `IncidentEvent` rows are the only place incident history is readable turn-by-turn;
+    `Incident` itself only ever reflects current state."""
+
+    __tablename__ = "incident_event"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("incident_id", "incident"),
+        Index("ix_incident_event_tenant_incident_time", "tenant_id", "incident_id", "created_at"),
+    )
+
+    incident_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    event_type: Mapped[IncidentEventType] = mapped_column(
+        _enum_column(IncidentEventType), nullable=False
+    )
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    details: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 17 — Maintenance Workflow
+# ---------------------------------------------------------------------------
+
+
+class MaintenanceCase(Base, TenantScopedMixin, TimestampMixin):
+    """Human-controlled maintenance workflow linked to one `Incident` (Phase 17 brief
+    §17.4). No physical maintenance action is ever executed automatically — this table
+    only ever records what a human recommended/planned/performed/found (§17.3). At most
+    one non-terminal (state not in COMPLETED/CANCELLED) case may exist per incident
+    (`uq_maintenance_case_active_incident`), the same partial-unique-index idempotency
+    pattern used throughout this platform."""
+
+    __tablename__ = "maintenance_case"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("incident_id", "incident"),
+        Index(
+            "uq_maintenance_case_active_incident",
+            "tenant_id",
+            "incident_id",
+            unique=True,
+            postgresql_where=text("state NOT IN ('COMPLETED', 'CANCELLED')"),
+        ),
+    )
+
+    incident_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    component_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    condition_assessment_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    decision_assessment_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+
+    recommended_action: Mapped[RecommendedAction] = mapped_column(
+        _enum_column(RecommendedAction, length=50), nullable=False
+    )
+    recommended_window: Mapped[RecommendedWindow] = mapped_column(
+        _enum_column(RecommendedWindow, length=40), nullable=False
+    )
+    priority: Mapped[DecisionPriority] = mapped_column(
+        _enum_column(DecisionPriority), nullable=False
+    )
+    human_review_required: Mapped[bool] = mapped_column(nullable=False, default=True)
+    state: Mapped[MaintenanceState] = mapped_column(
+        _enum_column(MaintenanceState), nullable=False, index=True
+    )
+
+    # Deterministic, template-based checklist snapshot (Phase 17 brief §17.5 — no RAG/LLM
+    # yet). `[{"text": str, "completed": bool}, ...]`. Embedded here rather than a separate
+    # `inspection_checklist` table since it is always read/written together with the case
+    # that owns it, matching `RuleFinding`'s own single-table-over-child-table rationale
+    # (ADR-078) — see ADR-129.
+    checklist: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    checklist_template_id: Mapped[str] = mapped_column(String(60), nullable=False)
+
+    feedback_classification: Mapped[FeedbackClassification | None] = mapped_column(
+        _enum_column(FeedbackClassification), nullable=True
+    )
+
+    planned_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class TechnicianFinding(Base, TenantScopedMixin, TimestampMixin):
+    """Append-only technician findings for one `MaintenanceCase` (Phase 17 brief §17.6).
+    Multiple findings may be recorded over the life of a case (an initial finding, a
+    follow-up); the case's `feedback_classification` reflects the case's overall outcome,
+    not any single finding."""
+
+    __tablename__ = "technician_finding"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("maintenance_case_id", "maintenance_case"),
+        Index("ix_technician_finding_tenant_case_time", "tenant_id", "maintenance_case_id"),
+    )
+
+    maintenance_case_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    result: Mapped[TechnicianFindingResult] = mapped_column(
+        _enum_column(TechnicianFindingResult, length=40), nullable=False
+    )
+    component: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    observed_issue: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    # Demo user placeholder — Phase 2's tenant-context ADR applies equally here: no real
+    # auth/identity exists yet, so this is a free-text identifier, never a FK to a users
+    # table that does not exist in this reference implementation.
+    technician_identifier: Mapped[str] = mapped_column(String(150), nullable=False)
+    attachments_metadata: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MaintenanceAction(Base, TenantScopedMixin, TimestampMixin):
+    """Append-only record of a maintenance action a human performed (Phase 17 brief
+    §17.7). Recording an action here is a record of what was done, never a system-issued
+    physical command — see CLAUDE.md "Workflow Intelligence" boundary."""
+
+    __tablename__ = "maintenance_action"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("maintenance_case_id", "maintenance_case"),
+        Index("ix_maintenance_action_tenant_case_time", "tenant_id", "maintenance_case_id"),
+    )
+
+    maintenance_case_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    action_type: Mapped[MaintenanceActionType] = mapped_column(
+        _enum_column(MaintenanceActionType, length=40), nullable=False
+    )
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class FeedbackRecord(Base, TenantScopedMixin, TimestampMixin):
+    """One feedback record per completed `MaintenanceCase` (Phase 17 brief §17.9-§17.12).
+    Preserves pointers to the original intelligence evidence even for FALSE_POSITIVE
+    outcomes (§17.10 — the intelligence result is never erased). Recording this NEVER
+    automatically retrains an ML model (ADR-131) — it is an audit/learning record for a
+    future, explicitly human-triggered retraining/evaluation phase, matching the
+    already-accepted no-auto-retraining rule from Phase 11/CLAUDE.md."""
+
+    __tablename__ = "feedback_record"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("maintenance_case_id", "maintenance_case"),
+    )
+
+    maintenance_case_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    incident_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    condition_assessment_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    decision_assessment_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+
+    classification: Mapped[FeedbackClassification] = mapped_column(
+        _enum_column(FeedbackClassification), nullable=False, index=True
+    )
+    confirmed_component: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    confirmed_finding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Real, fresh re-evaluation of the machine's condition after the recorded action —
+    # never the original pre-action condition — used only for transparency, never to
+    # silently auto-complete the case (Phase 17 brief §17.8).
+    post_action_condition_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 20 — CMMS Adapter
+# ---------------------------------------------------------------------------
+
+
+class DemoCMMSWorkOrder(Base, TenantScopedMixin, TimestampMixin):
+    """Locally-persisted demo work order (Phase 20 brief §20.2). Exactly one draft per
+    `MaintenanceCase` (`uq_demo_cmms_work_order_case`, Phase 20 brief §20.5 idempotency) —
+    never multiple accidental drafts for the same case. A real external CMMS submission is
+    always a distinct future step requiring explicit human approval (§20.4 draft-first);
+    this table only ever represents the local draft/demo side."""
+
+    __tablename__ = "demo_cmms_work_order"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("maintenance_case_id", "maintenance_case"),
+        UniqueConstraint("tenant_id", "maintenance_case_id", name="uq_demo_cmms_work_order_case"),
+    )
+
+    maintenance_case_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    external_reference: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    asset_reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    priority: Mapped[DecisionPriority] = mapped_column(
+        _enum_column(DecisionPriority), nullable=False
+    )
+    status: Mapped[CMMSWorkOrderStatus] = mapped_column(
+        _enum_column(CMMSWorkOrderStatus), nullable=False, default=CMMSWorkOrderStatus.DRAFT
+    )
+    recommended_window: Mapped[RecommendedWindow] = mapped_column(
+        _enum_column(RecommendedWindow, length=40), nullable=False
+    )
+    checklist: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 18 — Approved-Knowledge RAG Platform
+# ---------------------------------------------------------------------------
+
+#: Must match `app.knowledge.embeddings.provider.EMBEDDING_DIMENSIONS` — kept as a
+#: literal here (not imported) since `app.domain` is a dependency-free base layer every
+#: other package builds on; a dedicated test
+#: (`tests/knowledge/test_embeddings.py::test_embedding_dimension_matches_column`) pins
+#: the two constants together.
+_EMBEDDING_DIMENSIONS = 256
+
+
+class KnowledgeDocument(Base, TimestampMixin):
+    """Approved-knowledge source document (Phase 18 brief §18.1/§18.5). Deliberately NOT
+    `TenantScopedMixin` — `tenant_id` is nullable so a document can be either global
+    (visible to every tenant, the common case for generic industrial procedures) or
+    tenant-specific (nullable FK, not the composite-tenant-FK pattern, since this is a
+    root entity with no tenant-scoped parent to hang one off of — see ADR-139).
+
+    Versioning (Phase 18 brief §18.12): multiple rows may share `document_key` (a stable
+    slug identifying "the same document" across versions) with different `version`
+    values. At most one row per `(tenant_id, document_key)` may be `APPROVED` at a time
+    (`uq_knowledge_document_active_approved`) — approving a new version transitions the
+    previously-APPROVED row for the same key to `RETIRED`, the same supersede-not-delete
+    pattern `DecisionAssessment` already established (ADR-121), applied to documents.
+
+    `(document_key, version)` idempotency/uniqueness is scoped by `tenant_id`, not
+    global — a real bug found live: two different tenants ingesting a document under the
+    same `document_key`/`version` (e.g. two tenants both submitting a demo procedure
+    named identically) collided, and the second tenant's "idempotent ingest" silently
+    returned the FIRST tenant's row instead of creating its own (ADR-140).
+    """
+
+    __tablename__ = "knowledge_document"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "document_key", "version", name="uq_knowledge_document_key_version"
+        ),
+        Index(
+            "uq_knowledge_document_active_approved",
+            "tenant_id",
+            "document_key",
+            unique=True,
+            postgresql_where=text("status = 'APPROVED'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tenant.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+
+    document_key: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    document_type: Mapped[DocumentType] = mapped_column(
+        _enum_column(DocumentType, length=40), nullable=False, index=True
+    )
+    version: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[DocumentStatus] = mapped_column(
+        _enum_column(DocumentStatus), nullable=False, default=DocumentStatus.DRAFT, index=True
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Demo user placeholder — no real auth/identity exists yet (Phase 2 tenant-context
+    # ADR applies equally here), matching `TechnicianFinding.technician_identifier`.
+    approved_by: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class KnowledgeChunk(Base, TimestampMixin):
+    """One retrievable section of a `KnowledgeDocument` (Phase 18 brief §18.6).
+    Deterministic chunking by markdown heading — one chunk per section, preserving
+    `heading`/`section` for citations, never arbitrary tiny fragments. Never denormalizes
+    the parent document's `status`/`tenant_id` — the retriever always joins to
+    `KnowledgeDocument` for those, so a document's lifecycle transition (e.g. APPROVED ->
+    RETIRED) instantly and correctly affects every one of its chunks with no risk of a
+    stale denormalized copy."""
+
+    __tablename__ = "knowledge_chunk"
+    __table_args__ = (
+        UniqueConstraint("document_id", "ordinal", name="uq_knowledge_chunk_document_ordinal"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_document.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    section: Mapped[str] = mapped_column(String(150), nullable=False)
+    heading: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    character_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(_EMBEDDING_DIMENSIONS), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 19 — Guarded GenAI Agent
+# ---------------------------------------------------------------------------
+
+
+class AgentSession(Base, TenantScopedMixin, TimestampMixin):
+    """One guarded-assistant conversation (Phase 19 brief §19.1). `machine_id`/
+    `incident_id`/`case_id` are optional context, plain nullable columns (no FK) —
+    mirrors `RuleFinding.component_id`'s polymorphic-optional-context pattern, since a
+    session may reference any subset of these or none at all."""
+
+    __tablename__ = "agent_session"
+    __table_args__ = (tenant_unique(),)
+
+    machine_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    maintenance_case_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+
+
+class AgentMessage(Base, TenantScopedMixin, TimestampMixin):
+    """Append-only conversation transcript."""
+
+    __tablename__ = "agent_message"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("session_id", "agent_session"),
+        Index("ix_agent_message_tenant_session_time", "tenant_id", "session_id", "created_at"),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    role: Mapped[AgentMessageRole] = mapped_column(_enum_column(AgentMessageRole), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Structured payload mirroring `AgentResponse` (citations/tool_calls/draft_artifacts/
+    # limitations/human_review_required) for ASSISTANT messages; empty for USER messages.
+    response_payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+
+
+class AgentToolCall(Base, TenantScopedMixin, TimestampMixin):
+    """Append-only tool-call audit record (Phase 19 brief §19.10). Never persists
+    secrets — `arguments` is already-sanitized (ids/short strings only, never telemetry
+    payloads or credentials)."""
+
+    __tablename__ = "agent_tool_call"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("session_id", "agent_session"),
+        Index("ix_agent_tool_call_tenant_session_time", "tenant_id", "session_id", "created_at"),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    tool_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    arguments: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    status: Mapped[AgentToolCallStatus] = mapped_column(
+        _enum_column(AgentToolCallStatus), nullable=False
+    )
+    result_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 25 — Auditability
+# ---------------------------------------------------------------------------
+
+
+class AuditEvent(Base, TenantScopedMixin, TimestampMixin):
+    """Append-only "who did what, when, to which entity, and why" record (Phase 25
+    brief §25.1). Written only through `app.audit.service.AuditService.record()` — there
+    is deliberately no update/delete API anywhere in this package (§25.4). `actor_type`
+    distinguishes a real person (`HUMAN`) from a scheduler/worker (`SYSTEM`) and from the
+    guarded agent preparing a draft (`AGENT`) — a `SYSTEM` event is never recorded as if
+    a person performed it (§25.3). Never stores secrets — `before_summary`/
+    `after_summary`/`reason` are short, human-readable strings, never raw payloads or
+    credentials (ADR-152)."""
+
+    __tablename__ = "audit_event"
+    __table_args__ = (
+        tenant_unique(),
+        Index("ix_audit_event_tenant_entity", "tenant_id", "entity_type", "entity_id"),
+        Index("ix_audit_event_tenant_actor_time", "tenant_id", "actor_id", text("created_at DESC")),
+        Index("ix_audit_event_tenant_time", "tenant_id", text("created_at DESC")),
+        Index("ix_audit_event_correlation", "correlation_id"),
+    )
+
+    actor_id: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    actor_type: Mapped[AuditActorType] = mapped_column(_enum_column(AuditActorType), nullable=False)
+    role: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    action: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    entity_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    entity_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+
+    correlation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    before_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    after_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 30 — Customer Onboarding / Commissioning
+# ---------------------------------------------------------------------------
+
+
+class CommissioningSession(Base, TenantScopedMixin, TimestampMixin):
+    """A guided demo commissioning workflow for one machine (Phase 30 brief §30.1/§30.2)
+    — never real physical device discovery. Created together with its `Machine` (status
+    `COMMISSIONING`) so every subsequent step (sensor mapping, gateway assignment,
+    validation) has a real machine to attach to. `capability_level` and
+    `validation_issues` are recomputed by `validate()`, never hand-set."""
+
+    __tablename__ = "commissioning_session"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        composite_tenant_fk("gateway_id", "gateway", nullable=True),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    gateway_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    status: Mapped[CommissioningStatus] = mapped_column(
+        _enum_column(CommissioningStatus), nullable=False, default=CommissioningStatus.DRAFT
+    )
+    capability_level: Mapped[CapabilityLevel] = mapped_column(
+        _enum_column(CapabilityLevel), nullable=False, default=CapabilityLevel.NONE
+    )
+    validation_issues: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    steps_completed: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Phase 31 — Firmware / Configuration Management
+# ---------------------------------------------------------------------------
+
+
+class ConfigurationSnapshot(Base, TenantScopedMixin, TimestampMixin):
+    """One point-in-time configuration/firmware snapshot for one device (Phase 31 brief
+    §31.3). Never stores secrets — `config` is limited to non-sensitive operational
+    metadata (sampling interval, units, mapping). Superseding a snapshot never deletes
+    the prior one (`is_current` flips instead) — see `ConfigurationChange` for the
+    append-only transition record."""
+
+    __tablename__ = "configuration_snapshot"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        Index(
+            "uq_configuration_snapshot_current_device",
+            "tenant_id",
+            "device_type",
+            "device_id",
+            unique=True,
+            postgresql_where=text("is_current"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    device_type: Mapped[DeviceTypeEnum] = mapped_column(
+        _enum_column(DeviceTypeEnum), nullable=False, index=True
+    )
+    device_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    firmware_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    config: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    compatibility_status: Mapped[CompatibilityStatus] = mapped_column(
+        _enum_column(CompatibilityStatus), nullable=False, default=CompatibilityStatus.UNKNOWN
+    )
+    is_current: Mapped[bool] = mapped_column(nullable=False, default=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ConfigurationChange(Base, TenantScopedMixin, TimestampMixin):
+    """Append-only configuration/firmware change history (Phase 31 brief §31.4) — never
+    updated or deleted. `baseline_review_required` surfaces that a Phase 8 baseline may
+    need human review after this change; it never automatically transitions or destroys
+    existing `BaselineProfile` history (§31.6 — "do not automatically destroy existing
+    baseline history")."""
+
+    __tablename__ = "configuration_change"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        composite_tenant_fk("new_snapshot_id", "configuration_snapshot"),
+        composite_tenant_fk("previous_snapshot_id", "configuration_snapshot", nullable=True),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    device_type: Mapped[DeviceTypeEnum] = mapped_column(
+        _enum_column(DeviceTypeEnum), nullable=False
+    )
+    device_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    previous_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    new_snapshot_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    changed_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    baseline_review_required: Mapped[bool] = mapped_column(nullable=False, default=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

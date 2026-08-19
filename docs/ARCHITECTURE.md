@@ -1,7 +1,8 @@
 # LubriSense AI — Architecture
 
-Status: PHASE 0 — DRAFT FOR ACCEPTANCE
-Last updated: 2026-08-17
+Status: IMPLEMENTED REFERENCE (Phases 1-36 build out this chain end to end; see
+`IMPLEMENTATION_STATUS.md` for what is complete vs. in progress)
+Last updated: 2026-08-19
 
 This document defines the end-to-end system architecture: how a physical signal becomes a
 technician action and how that action becomes product learning, the responsibilities split

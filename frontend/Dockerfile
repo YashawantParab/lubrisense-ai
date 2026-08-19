@@ -10,6 +10,17 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# NEXT_PUBLIC_* variables are inlined into the client bundle at build time, not read at
+# container start — a plain docker-compose `environment:` entry has no effect on them
+# (see src/lib/env/public.ts). These build args are the only way a Docker-built image
+# picks up the demo tenant id/API base url/app env actually used by the frontend.
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_APP_ENV
+ARG NEXT_PUBLIC_DEMO_TENANT_ID
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    NEXT_PUBLIC_APP_ENV=${NEXT_PUBLIC_APP_ENV} \
+    NEXT_PUBLIC_DEMO_TENANT_ID=${NEXT_PUBLIC_DEMO_TENANT_ID}
 RUN npm run build
 
 # --- runtime: standalone output, non-root user ---

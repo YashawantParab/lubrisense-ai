@@ -1,0 +1,105 @@
+# DEMO SYNTHETIC STATE-ESTIMATION ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION PARAMETERS.
+#
+# Every number below is a labeled reference default for this synthetic-data reference
+# implementation (Phase 12 brief §14), calibrated only against HEALTHY runs (the
+# "calibration" dataset, Phase 12 brief §30) — never re-tuned against the fault-scenario
+# evaluation runs described in docs/STATE_ESTIMATION.md "Evaluation methodology". See that
+# document for the full explanation of the state-space model (x_k, F, H, Q, R, P) and why
+# each shape below was chosen.
+
+config_version: "1.0.0"
+estimator_version: "1.0.0"
+feature_set: STATE_ESTIMATION_V1
+feature_set_version: "1.0.1"
+
+# Gap / variable-dt handling (Phase 12 brief §8, §11).
+gap:
+  # A single predict step never advances dt by more than this many seconds, even if the
+  # real gap between two calls is longer — bounds the single-step process-noise jump for a
+  # very long outage to something finite and testable, rather than one enormous step.
+  max_dt_seconds: 21600.0     # 6h
+  # Below this, dt is treated as effectively zero (guards a caller passing two timestamps
+  # that are equal or reversed).
+  min_dt_seconds: 1.0
+  # Beyond this much *cumulative* time with no eligible observation at all, uncertainty is
+  # forced to HIGH regardless of the posterior covariance (Phase 12 brief §12: "do not
+  # maintain false confidence indefinitely") — a deterministic, easily-testable backstop on
+  # top of the natural covariance growth predict-only steps already produce.
+  max_prediction_only_gap_seconds: 86400.0   # 24h
+
+# Uncertainty category thresholds (Phase 12 brief §12), read against the posterior level
+# variance (P[0][0]) after each update/predict.
+uncertainty:
+  low_max_variance: 0.02      # std ~0.14 state-units
+  moderate_max_variance: 0.08 # std ~0.28 state-units; above this is HIGH
+
+states:
+  LUBRICATION_DELIVERY_STATE:
+    # Observation channels (Phase 12 brief §4). Each reads one already-baselined Phase 10
+    # `*.robust_deviation` feature (|delta_from_baseline| / MAD — already non-negative,
+    # already contextualized against the operating-state-segmented Phase 8 baseline, so this
+    # estimator does not need to re-derive operating-state normalization itself). Chosen in
+    # preference to raw cycle-timing features (`cycle.pressure_rise_time`, `cycle.duration`,
+    # ...), which have no existing Phase 8 baseline to normalize against — adding one here
+    # would mean re-implementing Phase 8's own baselining logic for this estimator alone; a
+    # natural v2 extension, not an oversight (docs/STATE_ESTIMATION.md "Limitations").
+    channels:
+      - feature_name: pressure.robust_deviation
+        mad_scale: 6.0        # a deviation of 6 MADs saturates evidence at 1.0
+        base_variance: 0.02
+      - feature_name: flow.robust_deviation
+        mad_scale: 6.0
+        base_variance: 0.02
+      - feature_name: pump_current.robust_deviation
+        mad_scale: 6.0
+        base_variance: 0.03
+      - feature_name: reservoir_level.robust_deviation
+        mad_scale: 8.0        # weaker/noisier delivery proxy than the hydraulic channels
+        base_variance: 0.05
+    caution_inflation_factor: 4.0   # ELIGIBLE_WITH_CAUTION -> 4x variance (2x stddev)
+    initial_level_variance: 0.1
+    initial_rate_variance: 0.001
+    process_noise:
+      # Independent per-second diffusion variance for level/rate (Q(dt) = diag(q_level*dt,
+      # q_rate*dt)) — deliberately NOT the textbook coupled white-noise-acceleration form
+      # (Q ~ dt^3/dt^2/dt cross terms), which is calibration-fragile across this system's
+      # very wide dt range (a live "latest" call a few seconds after the last one, vs. an
+      # hours-old historical-replay tick, vs. a multi-hour outage capped by max_dt_seconds
+      # above) — see docs/STATE_ESTIMATION.md "Kalman model" for the full justification.
+      q_level: 2.0e-7
+      q_rate: 1.0e-11
+    level_bounds: [0.0, 1.0]
+    rate_bound: 0.01           # state-units/second safety clip, not expected to be hit
+    trend_rate_threshold: 5.0e-5   # |posterior rate| above this -> DETERIORATING/IMPROVING
+    # Rate-retention half-life-style time constant (Phase 12 brief §11, §27) — over a gap
+    # much longer than this, the extrapolated rate decays toward 0 each predict step
+    # (g = exp(-dt/tau) in kalman.predict) rather than being extrapolated forever, so a
+    # multi-hour outage cannot swing the level estimate into a fabricated trend in either
+    # direction. 3600s means dt=1h retains ~37% of the last-known rate, dt=6h (this state's
+    # own max_dt_seconds cap) retains ~2.5%.
+    rate_decay_tau_seconds: 3600.0
+    minimum_observations: 1
+
+  BEARING_CONDITION_STATE:
+    # Deliberately disjoint from LUBRICATION_DELIVERY_STATE's channels (Phase 12 brief §5,
+    # §26) — bearing condition must be able to deteriorate while delivery evidence stays
+    # nominal, and vice versa.
+    channels:
+      - feature_name: bearing_temp.robust_deviation
+        mad_scale: 6.0
+        base_variance: 0.02
+      - feature_name: vibration_rms.robust_deviation
+        mad_scale: 5.0        # vibration is typically the crisper bearing-fault indicator
+        base_variance: 0.02
+    caution_inflation_factor: 4.0
+    initial_level_variance: 0.1
+    initial_rate_variance: 0.001
+    process_noise:
+      q_level: 2.0e-7
+      q_rate: 1.0e-11
+    level_bounds: [0.0, 1.0]
+    rate_bound: 0.01
+    trend_rate_threshold: 5.0e-5
+    rate_decay_tau_seconds: 3600.0
+    minimum_observations: 1

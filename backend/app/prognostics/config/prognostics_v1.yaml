@@ -1,0 +1,37 @@
+# DEMO SYNTHETIC PROGNOSTICS ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION TIMING OR REMAINING-USEFUL-LIFE ESTIMATES.
+#
+# See docs/PROGNOSTICS.md for the full rationale. Every horizon/threshold below is a
+# reference default appropriate to this system's accelerated demo telemetry cadence, never
+# a validated production maintenance interval.
+
+engine_version: "1.0.0"
+config_version: "1.0.0"
+
+# Forecast horizons (Phase 15 brief §15.5), in seconds.
+horizons:
+  ONE_HOUR: 3600.0
+  SIX_HOURS: 21600.0
+  TWENTY_FOUR_HOURS: 86400.0
+
+# A forecast is extrapolated directly from Phase 12's own posterior [level, rate] — no
+# separate trend-fitting model is re-derived (see docs/PROGNOSTICS.md "Forecast method").
+level_bounds: [0.0, 1.0]
+
+# Synthetic degradation threshold used only for the cautious "estimated crossing under
+# current trend" language (Phase 15 brief §15.6) — never presented as "failure will occur
+# at this time". Reuses the same value across both state types for v1 simplicity.
+degradation_threshold: 0.7
+
+# A threshold-crossing estimate further out than this is not reported at all — an
+# extrapolation that far out under a barely-positive rate is not a meaningfully "cautious"
+# estimate, it is noise dressed up as a forecast.
+max_crossing_horizon_seconds: 604800.0   # 7 days
+
+# Data-sufficiency gate (Phase 15 brief §15.7) -- below any of these, forecast_status is
+# NO_RELIABLE_FORECAST rather than a number.
+data_sufficiency:
+  minimum_history_count: 3
+  # A trend is "unstable" when the sign of `rate` differs between the current estimate and
+  # any of the last N-1 prior estimates used for the history check above.
+  rate_sign_flip_makes_unstable: true

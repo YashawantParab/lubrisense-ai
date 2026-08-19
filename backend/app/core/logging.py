@@ -19,6 +19,17 @@ from typing import Any
 
 from app.core.context import get_correlation_id
 
+# Every attribute a plain `logging.LogRecord` carries by default — used to find the
+# caller-supplied `extra={...}` keys on a record (Python's stdlib attaches `extra` kwargs
+# directly as attributes on the record, with no separate `.extra` dict to read).
+_STANDARD_LOG_RECORD_ATTRS = frozenset(
+    vars(logging.LogRecord("", 0, "", 0, "", (), None)).keys()
+) | {"message", "asctime"}
+
+_RESERVED_PAYLOAD_KEYS = frozenset(
+    {"timestamp", "level", "service", "message", "logger", "correlation_id", "exception"}
+)
+
 
 class JSONLogFormatter(logging.Formatter):
     def __init__(self, *, service_name: str = "lubrisense-backend") -> None:
@@ -38,7 +49,26 @@ class JSONLogFormatter(logging.Formatter):
             payload["correlation_id"] = correlation_id
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
+
+        # Caller-supplied `extra={...}` fields (e.g. `logger.warning(msg, extra={"sensor_id":
+        # ...})`) — previously silently dropped since this formatter never read them; each
+        # is namespaced under `extra` rather than merged into the top level so a caller can
+        # never accidentally overwrite `timestamp`/`level`/etc.
+        extra = {
+            key: value
+            for key, value in record.__dict__.items()
+            if key not in _STANDARD_LOG_RECORD_ATTRS and key not in _RESERVED_PAYLOAD_KEYS
+        }
+        if extra:
+            payload["extra"] = {
+                key: (value if _is_json_safe(value) else str(value))
+                for key, value in extra.items()
+            }
         return json.dumps(payload)
+
+
+def _is_json_safe(value: object) -> bool:
+    return isinstance(value, str | int | float | bool | type(None) | list | dict)
 
 
 class ConsoleLogFormatter(logging.Formatter):
@@ -49,6 +79,13 @@ class ConsoleLogFormatter(logging.Formatter):
             f"[{record.levelname:<8}] {record.name} "
             f"(correlation_id={correlation_id}): {record.getMessage()}"
         )
+        extra = {
+            key: value
+            for key, value in record.__dict__.items()
+            if key not in _STANDARD_LOG_RECORD_ATTRS and key not in _RESERVED_PAYLOAD_KEYS
+        }
+        if extra:
+            base += f" {extra}"
         if record.exc_info:
             base += "\n" + self.formatException(record.exc_info)
         return base

@@ -1,0 +1,41 @@
+# LUBRICATION_ANOMALY_V1 Isolation Forest config (Phase 11 brief §12-§14, §68).
+#
+# DEMO SYNTHETIC ML CONFIGURATION — hyperparameters and thresholds below are reference
+# defaults for this synthetic-data reference implementation, not validated for production
+# machinery (see docs/MODEL_CARD.md).
+
+model_id: LUBRICATION_ANOMALY_V1
+model_version: "1.0.0"
+feature_set: LUBRICATION_ANOMALY_V1
+feature_set_version: "1.0.2"
+seed: 42
+
+# Isolation Forest hyperparameters. n_estimators=200 is scikit-learn's own recommended
+# ceiling for diminishing returns; contamination is deliberately small and non-zero — the
+# model is trained on samples labeled NORMAL by ground truth, but that "healthy" population
+# still contains some sensor noise/borderline operating states, so a strictly zero
+# contamination would bias every score's internal offset. This is NOT how the decision
+# threshold is chosen — see target_validation_fpr below.
+n_estimators: 200
+contamination: 0.02
+
+# Threshold selection method (Phase 11 brief §26): the operating threshold on anomaly_score
+# is chosen on VALIDATION data only, as the score achieving this target false-positive rate
+# against VALIDATION's NORMAL-labeled samples. Never touches TEST.
+target_validation_fpr: 0.05
+
+# Minimum-feature requirement (Phase 11 brief §34) — if any of these numeric features is
+# missing at inference time, InferenceService returns INSUFFICIENT_FEATURES rather than a
+# forced score. Chosen as the four measurement types present across both the flagship and
+# every equipped reference machine.
+minimum_required_features:
+  - pressure.current
+  - pump_current.current
+  - bearing_temp.current
+  - vibration_rms.current
+
+# Detection-persistence evaluation parameters (Phase 11 brief §30) — evaluation only, not a
+# production alert debounce.
+persistence_n: 3
+persistence_m: 5
+severe_severity_threshold: 0.6

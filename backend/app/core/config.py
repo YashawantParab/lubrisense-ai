@@ -15,6 +15,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "development", "staging", "production"]
 
+_INSECURE_DEFAULT_DEMO_AUTH_SECRET = "local-dev-insecure-demo-auth-secret-do-not-use-in-production"
+
 
 class Settings(BaseSettings):
     """Application settings sourced from environment variables (or a `.env` file locally)."""
@@ -40,7 +42,15 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://lubrisense:lubrisense@localhost:5432/lubrisense",
         alias="DATABASE_URL",
     )
-    database_pool_size: int = Field(default=5, alias="DATABASE_POOL_SIZE")
+    # Phase 33 perf finding: request queueing under concurrent load turned out to be
+    # CPU-bound on a single uvicorn worker process, not DB-connection-starved (see
+    # backend/Dockerfile's `UVICORN_WORKERS` and docs/PERFORMANCE.md) — this pool size is
+    # deliberately per-worker-process, not per-container: at the default 4 workers, 10
+    # connections/worker = 40 total, leaving headroom under Postgres's 100-connection
+    # ceiling alongside the other pipeline-worker containers. Raising this further without
+    # also lowering `UVICORN_WORKERS` (or raising Postgres `max_connections`) would risk
+    # exhausting the database's connection ceiling, not improve throughput.
+    database_pool_size: int = Field(default=10, alias="DATABASE_POOL_SIZE")
     database_max_overflow: int = Field(default=10, alias="DATABASE_MAX_OVERFLOW")
     database_pool_timeout_seconds: int = Field(default=5, alias="DATABASE_POOL_TIMEOUT_SECONDS")
 
@@ -116,10 +126,64 @@ class Settings(BaseSettings):
         default=900.0, alias="FEATURE_WORKER_CYCLE_SECONDS"
     )
 
+    # Phase 11: the ml-service model registry's base directory. Training
+    # (`ml-service/scripts`/`ml_service.training.*`) runs on the host and writes here;
+    # the container mounts the same host directory read-only (docker-compose.yml) so the
+    # backend can load whatever the most recently trained/registered models are without
+    # baking model artifacts into the image or requiring a rebuild per training run. There
+    # is deliberately no automatic promotion/retraining loop here (CLAUDE.md "Maintenance
+    # Workflow": no auto-retraining from a single event) — this only controls where the
+    # registry already produced by a training run is read from.
+    ml_artifacts_dir: str = Field(
+        default="../ml-service/artifacts/models", alias="ML_ARTIFACTS_DIR"
+    )
+
     cors_allowed_origins: str = Field(default="http://localhost:3000", alias="CORS_ALLOWED_ORIGINS")
     trusted_hosts: str = Field(default="*", alias="TRUSTED_HOSTS")
 
     correlation_id_header: str = Field(default="X-Correlation-ID", alias="CORRELATION_ID_HEADER")
+
+    # Phase 24: demo/reference authorization — see app.auth and docs/SECURITY.md.
+    # "permissive" (the local/demo default) lets a request with no Authorization header
+    # fall back to a full-access principal, preserving backward compatibility with every
+    # pre-Phase-24 API caller (including this repo's own pre-Phase-24 test suite, which
+    # never sends a token). "strict" requires a valid bearer token on every request.
+    # `is_production` below refuses to start in "permissive" mode, or with the insecure
+    # default secret, in production — see the `model_post_init` validation.
+    auth_enforcement_mode: Literal["permissive", "strict"] = Field(
+        default="permissive", alias="AUTH_ENFORCEMENT_MODE"
+    )
+    demo_auth_secret: str = Field(
+        default=_INSECURE_DEFAULT_DEMO_AUTH_SECRET,
+        alias="DEMO_AUTH_SECRET",
+    )
+    demo_token_ttl_seconds: int = Field(default=3600, alias="DEMO_TOKEN_TTL_SECONDS")
+
+    # Phase 23: request-size guards for the two endpoints most exposed to unbounded
+    # client-supplied text (CLAUDE.md "Production Engineering Rules" — bound expensive
+    # endpoints explicitly rather than trusting client good behavior).
+    agent_message_max_length: int = Field(default=2000, alias="AGENT_MESSAGE_MAX_LENGTH")
+    knowledge_document_max_content_length: int = Field(
+        default=200_000, alias="KNOWLEDGE_DOCUMENT_MAX_CONTENT_LENGTH"
+    )
+
+    def model_post_init(self, __context: object) -> None:
+        """Fail fast on invalid production-relevant configuration (Phase 23 brief
+        §23.7) rather than silently starting with an unsafe default."""
+        if self.app_env == "production":
+            problems: list[str] = []
+            if self.auth_enforcement_mode != "strict":
+                problems.append("AUTH_ENFORCEMENT_MODE must be 'strict' in production")
+            if self.demo_auth_secret == _INSECURE_DEFAULT_DEMO_AUTH_SECRET:
+                problems.append("DEMO_AUTH_SECRET must be overridden in production")
+            if "*" in self.cors_allowed_origins_list:
+                problems.append("CORS_ALLOWED_ORIGINS must not be '*' in production")
+            if "*" in self.trusted_hosts_list:
+                problems.append("TRUSTED_HOSTS must not be '*' in production")
+            if problems:
+                raise ValueError(
+                    "Invalid production configuration: " + "; ".join(problems)
+                )
 
     @property
     def pipeline_supported_schema_versions_set(self) -> set[str]:

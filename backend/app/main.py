@@ -23,6 +23,7 @@ from app.core.logging import configure_logging
 from app.core.middleware import CorrelationIdMiddleware
 from app.infrastructure.database import Database
 from app.infrastructure.redis_client import RedisClient
+from app.observability.http_metrics import HTTPMetricsMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
         CorrelationIdMiddleware,
         header_name=settings.correlation_id_header,
     )
+    app.add_middleware(HTTPMetricsMiddleware)
 
     register_exception_handlers(app)
 

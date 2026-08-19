@@ -51,3 +51,15 @@ def test_incomplete_cycle_lowers_success_rate() -> None:
     assert result is not None
     assert result.cycle_count == 2
     assert result.completion_success_rate == 0.5
+
+
+def test_completion_success_rate_is_none_without_a_completion_signal() -> None:
+    # A topology with no `CYCLE_COMPLETION` sensor at all must not be reported as a
+    # confirmed 0% success rate — that would misrepresent "no signal" as "observed
+    # failure" and would make `check_cycle_completion_failure` fire permanently for any
+    # machine that simply lacks the sensor.
+    pressure = [_pressure(0, 0.1), _pressure(5, 8.0), _pressure(8, 7.0), _pressure(10, 0.1)]
+    result = compute_cycle_baseline(pressure, [], idle_threshold=0.5)
+    assert result is not None
+    assert result.cycle_count == 1
+    assert result.completion_success_rate is None

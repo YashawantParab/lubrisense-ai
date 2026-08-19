@@ -1,5 +1,6 @@
-"""Structured audit logging for identity, authorization, and configuration-changing events.
+"""Central auditability (Phase 25) — "who did what, when, to which entity, and why."
 
-Empty in Phase 1: there is no authenticated/authorized activity yet to audit. Introduced
-alongside auth in a later phase.
+`app.audit.service.AuditService.record()` is the only way an `AuditEvent` row is ever
+written; there is deliberately no update/delete method anywhere in this package (Phase 25
+brief §25.4 — append-only through normal application APIs). See docs/AUDITABILITY.md.
 """

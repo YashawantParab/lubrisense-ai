@@ -19,7 +19,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +29,20 @@ from app.domain.models import QualityIssue
 
 _ACTIVE_WINDOW_INDEX_ELEMENTS = ("tenant_id", "sensor_id", "rule_id", "rule_version")
 _ACTIVE_STATUSES = (IssueStatus.ACTIVE, IssueStatus.RECOVERING)
+
+# Real bug found in Phase 35 comprehensive testing: Postgres's ON CONFLICT partial-index
+# arbiter match requires the predicate to be a *constant-foldable* expression, identical
+# to the index's own stored predicate — a bind-parameterized `.in_([...])` (what
+# `QualityIssue.__table__.c.status.in_([s.value for s in _ACTIVE_STATUSES])` compiles to)
+# can only be evaluated at execution time, so Postgres cannot statically verify it matches
+# `uq_quality_issue_active_window_scope`'s predicate and raises `InvalidColumnReference:
+# there is no unique or exclusion constraint matching the ON CONFLICT specification` on
+# every single upsert. `_ACTIVE_STATUSES` is a fixed internal enum (never user input), so
+# inlining the values as SQL literals via `text()` is safe and is the standard fix for
+# this exact SQLAlchemy + Postgres partial-index-upsert limitation.
+_ACTIVE_WINDOW_INDEX_WHERE = text(
+    "status IN (" + ", ".join(f"'{status.value}'" for status in _ACTIVE_STATUSES) + ")"
+)
 
 
 class QualityIssueRepository:
@@ -116,9 +130,10 @@ class QualityIssueRepository:
         stmt = pg_insert(QualityIssue.__table__).values(**insert_values)  # type: ignore[arg-type]
         stmt = stmt.on_conflict_do_update(
             index_elements=_ACTIVE_WINDOW_INDEX_ELEMENTS,
-            # Must match the partial index's predicate on the *table's* column (not
-            # `excluded`) for Postgres to select it as the ON CONFLICT arbiter.
-            index_where=QualityIssue.__table__.c.status.in_([s.value for s in _ACTIVE_STATUSES]),
+            # Must be a literal (not bind-parameterized) predicate matching the partial
+            # index's own stored predicate for Postgres to select it as the ON CONFLICT
+            # arbiter — see `_ACTIVE_WINDOW_INDEX_WHERE`'s comment above.
+            index_where=_ACTIVE_WINDOW_INDEX_WHERE,
             set_={
                 "assessment_id": assessment_id,
                 "status": IssueStatus.ACTIVE,

@@ -6,7 +6,13 @@ LubriSense AI turns raw lubrication and machine-condition telemetry into mainten
 decisions technicians can trust, delivered early enough to act on, with the evidence and
 workflow needed to act quickly — and it improves every time a technician closes the loop.
 
-It is not a dashboard. It is a full industrial flow, built end to end:
+It is not a dashboard. It is a full industrial flow, implemented end to end:
+
+```
+Sensor → Signal → Condition → Decision → Action → Outcome → Learning
+```
+
+or, in more detail:
 
 ```
 Physical System → Sensors → Edge → Telemetry → Data Quality → Rules / ML
@@ -22,106 +28,104 @@ organized around three intelligence layers:
 
 AI is not the product. The product is a better maintenance decision, made earlier, with
 more confidence, with less manual effort. See `docs/PRODUCT_VISION.md` for the full product
-story, `docs/ARCHITECTURE.md` for the end-to-end architecture, `docs/DOMAIN_MODEL.md` for
-the personas/physical model/asset hierarchy, `docs/ASSET_HIERARCHY.md` for how that domain
-model is actually implemented (schema, tenancy, sensor attachment, seed data), `docs/EVENT_CATALOG.md` for the telemetry and
-event contracts, and `docs/FAILURE_MODE_CATALOG.md` for the initial synthetic failure
-library.
+story, `docs/ARCHITECTURE.md` for the end-to-end architecture (including the full mermaid
+diagram behind the flow above), `docs/DOMAIN_MODEL.md` for the personas/physical model/asset
+hierarchy, `docs/ASSET_HIERARCHY.md` for how that domain model is implemented, and
+`docs/FAILURE_MODE_CATALOG.md` for the synthetic failure library this reference platform
+demonstrates.
+
+**New here? Start with `docs/DEMO_GUIDE.md`** — a 60-90 second and a full 5-10 minute
+walkthrough of the flagship demo story, with real screenshots.
 
 This repository uses synthetic telemetry throughout. Every synthetic component is
 explicitly labeled and built behind a replaceable interface so it can be swapped for a real
-industrial integration later without redesigning the platform — see
-`docs/ARCHITECTURE.md` §10.
+industrial integration later without redesigning the platform — see `docs/ARCHITECTURE.md`
+§10 and `docs/INDUSTRIAL_ADOPTION.md` for exactly what that would take.
 
-## Current phase
+## Current status
 
-**Phase 2 — Domain Model + Asset Hierarchy.** Phase 1 established the runnable platform
-skeleton (FastAPI backend, Next.js frontend, PostgreSQL/TimescaleDB/pgvector, Redis, MQTT,
-Kafka, Docker Compose, CI). Phase 2 builds the real, tenant-scoped industrial domain model
-on top of it: Tenant → CustomerAccount → Site → Plant → ProductionLine → Machine →
-Bearing, plus the full lubrication-system chain (Reservoir/Pump/Controller/Distributor/
-Circuit/LubricationPoint) and tenant-safe Sensor/Gateway attachment — with a repository/
-service/API layer and a minimal hierarchy-navigation UI. It does **not** yet implement
-synthetic telemetry, physical simulation, rules, ML, or the final product dashboard — see
-`IMPLEMENTATION_STATUS.md` for the full phase plan and `docs/ASSET_HIERARCHY.md` for the
-domain-model implementation detail.
+Phases 1 through 36 are complete: the full chain above is implemented and demonstrated end
+to end on a real flagship asset (telemetry → baselines → deterministic rules → ML → state
+estimation (Kalman filtering) → condition/decision/prognostic intelligence → incident
+management → maintenance workflow → RAG-grounded assistant with citations → technician
+feedback → resolution), backed by real multi-tenant identity/auth/RBAC, auditability,
+observability, resilience/degradation handling, CI/CD, and a comprehensive test suite. See
+`IMPLEMENTATION_STATUS.md` for the phase-by-phase detail and `TECHNICAL_DECISIONS.md` for
+every architecture decision (ADR) made along the way, including honestly-documented known
+limitations.
 
 ## Services
 
 | Service | Purpose | Local port |
 |---|---|---|
-| `frontend` | Next.js platform-status page + asset-hierarchy/machine-detail/sensor-inventory UI (Phase 2); the final product UI comes in Phase 28 | `3000` |
-| `backend` | FastAPI platform API — health/readiness, system info (Phase 1); domain/intelligence logic in later phases | `8000` |
+| `frontend` | Next.js product UI — overview, fleet, machine detail, incidents, maintenance, knowledge, assistant, metrics, system/admin views | `3000` |
+| `backend` | FastAPI platform API — all domain/intelligence logic, condition/decision engines, incident/maintenance workflow, RAG, agent tools | `8000` |
+| `mqtt-bridge` | Ingests device/edge telemetry off MQTT and republishes onto Kafka | — |
+| `telemetry-consumer` | Consumes Kafka telemetry, validates/dedupes/persists to TimescaleDB | — |
+| `data-quality-worker` | Continuous sensor/stream data-quality evaluation (staleness, drift, stuck sensors, etc.) | — |
+| `baseline-worker` | Builds/maintains rolling and contextual sensor baselines | — |
+| `rules-worker` | Deterministic rule and cross-signal pattern evaluation | — |
+| `feature-worker` | Phase 10 feature computation feeding ML and state estimation | — |
+| `edge` | Reference edge-controller implementation (local rules, buffering, store-and-forward) | — |
 | `postgres` | PostgreSQL + TimescaleDB + pgvector (`timescale/timescaledb-ha:pg16`) | `5432` |
-| `redis` | Redis (connectivity only in Phase 1) | `6379` |
+| `redis` | Caching / rate limiting | `6379` |
 | `mosquitto` | MQTT broker (device/edge transport) | `1883` (+ `9001` websockets) |
 | `kafka` | Kafka, KRaft mode (internal platform event backbone) | `9092` |
 
-`ml-service/`, `simulator/`, and `edge/` exist as scaffolds with no Phase 1 runtime
-responsibility — see their individual `README.md` files for what they will own and when.
+`ml-service/` (model training/evaluation/registry) and `simulator/` (synthetic
+telemetry/physical-asset simulation) are separate, independently-run Python projects — see
+their own `README.md`/`docs/MLOPS.md`/`docs/SIMULATOR.md`.
 
 ## Prerequisites
 
 - Docker + Docker Compose
-- [uv](https://docs.astral.sh/uv/) (backend dependency/environment management)
+- [uv](https://docs.astral.sh/uv/) (backend/ml-service/simulator/edge dependency management)
 - Node.js 22+ and npm (frontend)
 
 ## Quick start
 
 ```bash
 cp .env.example .env
-docker compose up -d
-docker compose ps          # everything should report "healthy"
+make demo-reset
 ```
 
-Then, seed the demo asset hierarchy (deterministic, idempotent — safe to re-run):
-
-```bash
-cd backend && uv sync --extra dev
-DATABASE_URL="postgresql+psycopg://lubrisense:lubrisense@localhost:5432/lubrisense" \
-  uv run alembic upgrade head
-DATABASE_URL="postgresql+psycopg://lubrisense:lubrisense@localhost:5432/lubrisense" \
-  uv run python scripts/seed_demo_data.py
-```
+`make demo-reset` (equivalently `./scripts/demo-reset.sh`) brings the whole stack up,
+applies migrations, seeds the base demo asset hierarchy, seeds the approved knowledge
+corpus, and resets the flagship machine's full demo story — a known, deterministic,
+demo-ready state in one command. It is safe to run repeatedly.
 
 Then:
 
-- Frontend platform status: http://localhost:3000
-- Asset hierarchy: http://localhost:3000/hierarchy
-- Sensor inventory: http://localhost:3000/sensors
-- Backend health: http://localhost:8000/health
-- Backend readiness: http://localhost:8000/ready
-- Backend system info: http://localhost:8000/api/v1/system/info
-- Full asset hierarchy API (requires the seeded demo tenant's `X-Tenant-ID` header — see
-  `.env.example` / `docs/ASSET_HIERARCHY.md` §3.2): http://localhost:8000/api/v1/hierarchy
+- Product UI: http://localhost:3000
+- Flagship machine (the demo story): http://localhost:3000/machines/88551bef-3149-5a8d-9645-bcd9502f4795
+- Backend health / readiness / metrics: http://localhost:8000/health, `/ready`, `/metrics`
 
-For running services outside Docker, running tests, and a full walkthrough, see
-**`docs/DEVELOPER_SETUP.md`**.
+See **`docs/DEMO_GUIDE.md`** for a guided walkthrough, and **`docs/DEVELOPER_SETUP.md`** for
+running services outside Docker, running tests, and day-to-day development workflow.
 
 ## Verification commands
 
 ```bash
-make verify        # lint + typecheck + backend tests + frontend build + MQTT/Kafka checks
+make verify        # lint + typecheck + all test suites + frontend build + pipeline/rules/baseline/data-quality checks
+make demo-reset     # bring the stack to a known demo-ready state (idempotent)
 make backend-test   # backend pytest suite (requires postgres + redis running)
-make mqtt-verify    # MQTT publish/subscribe round trip
-make kafka-verify   # Kafka produce/consume round trip
+make test           # backend + simulator + edge + ml-service test suites
 ```
 
-See the `Makefile` for the full list of targets (`up`, `down`, `logs`, `migrate`, `lint`,
-`typecheck`, `test`, `build`).
+See the `Makefile` for the full list of targets, and `.github/workflows/ci.yml` for what
+runs in CI on every change (`docs/CI_CD.md`).
 
 ## Repository layout
 
 ```
 frontend/        Next.js product UI
-backend/         FastAPI platform backend (domain logic, APIs, persistence)
-ml-service/      Model training/evaluation/inference (later phase)
-simulator/       Synthetic telemetry / physical-asset simulation (later phase)
-edge/            Edge-controller reference implementation (later phase)
+backend/         FastAPI platform backend (domain logic, APIs, persistence, workers)
+ml-service/      Model training/evaluation/registry/promotion
+simulator/       Synthetic telemetry / physical-asset simulation
+edge/            Edge-controller reference implementation
 infrastructure/  Docker Compose service configuration (Mosquitto, etc.)
 docs/            Product, architecture, domain, event, and failure-mode documentation
-tests/           Cross-service integration tests (later phase)
-scripts/         Developer/operational tooling and verification scripts
+scripts/         Developer/operational tooling, verification scripts, demo-reset
 ```
 
 Full purpose of each directory: `docs/ARCHITECTURE.md` §11.
@@ -130,5 +134,9 @@ Full purpose of each directory: `docs/ARCHITECTURE.md` §11.
 
 - `CLAUDE.md` — project instructions and non-negotiable product/architecture rules
 - `LOOP.md` — how implementation work is executed and verified phase by phase
-- `IMPLEMENTATION_STATUS.md` — current phase and progress across all planned phases
-- `TECHNICAL_DECISIONS.md` — architecture decision records (ADRs)
+- `IMPLEMENTATION_STATUS.md` — phase-by-phase progress across the whole build
+- `TECHNICAL_DECISIONS.md` — architecture decision records (ADRs), including honestly-tracked
+  known limitations
+- `docs/DEMO_GUIDE.md` — guided product walkthrough
+- `docs/INDUSTRIAL_ADOPTION.md` — what is real vs. synthetic, and what a real deployment
+  would still require

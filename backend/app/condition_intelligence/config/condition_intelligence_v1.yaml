@@ -1,0 +1,112 @@
+# DEMO SYNTHETIC CONDITION-INTELLIGENCE ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION MAINTENANCE THRESHOLDS.
+#
+# Every mapping/threshold below is a labeled reference default for this synthetic-data
+# reference implementation (Phase 13 brief). See docs/CONDITION_INTELLIGENCE.md for the
+# full rationale.
+
+policy_version: "1.0.0"
+engine_version: "1.0.0"
+
+# Evidence-count/strength thresholds that decide confidence once a single condition_type
+# has "won" the vote tally (Phase 13 brief §13.6-§13.7) — explainable tiers, not an opaque
+# weighted sum:
+#   HIGH:     >=1 STRONG vote AND >=1 other corroborating source (a different source_type)
+#   MODERATE: (a lone STRONG vote) OR (>=2 SUPPORTING votes from >=2 distinct source types)
+#   LOW:      exactly 1 SUPPORTING vote and nothing else
+confidence:
+  high_requires_corroboration: true
+  moderate_min_supporting_sources: 2
+
+# Rule-finding-type -> condition hypothesis mapping (Phase 9's own already-validated
+# taxonomy, RuleFindingType). Cross-signal pattern findings (already multi-signal
+# corroborated inside the rules engine itself, ADR-082) vote STRONG; single-signal
+# findings vote SUPPORTING only.
+rule_finding_map:
+  # cross-signal patterns -- STRONG
+  FLOW_PRESSURE_RESTRICTION_PATTERN: {condition: DEVELOPING_RESTRICTION_PATTERN, strength: STRONG}
+  FLOW_PRESSURE_LEAKAGE_PATTERN: {condition: POSSIBLE_LEAKAGE_PATTERN, strength: STRONG}
+  PUMP_DEGRADATION_PATTERN: {condition: PUMP_PERFORMANCE_DEGRADATION, strength: STRONG}
+  LUBRICATION_PATH_DEGRADATION_PATTERN: {condition: LUBRICATION_DELIVERY_DEGRADATION, strength: STRONG}
+  INDEPENDENT_BEARING_CONDITION_PATTERN: {condition: INDEPENDENT_BEARING_CONDITION, strength: STRONG}
+  INSUFFICIENT_TRUSTED_DATA: {condition: SENSOR_OR_DATA_QUALITY_LIMITATION, strength: STRONG}
+  # single-signal -- SUPPORTING
+  PRESSURE_ABOVE_CONTEXTUAL_BASELINE: {condition: DEVELOPING_RESTRICTION_PATTERN, strength: SUPPORTING}
+  PRESSURE_BUILD_SLOW: {condition: DEVELOPING_RESTRICTION_PATTERN, strength: SUPPORTING}
+  FLOW_BELOW_CONTEXTUAL_BASELINE: {condition: DEVELOPING_RESTRICTION_PATTERN, strength: SUPPORTING}
+  CYCLE_DURATION_ABOVE_BASELINE: {condition: DEVELOPING_RESTRICTION_PATTERN, strength: SUPPORTING}
+  CYCLE_COMPLETION_FAILURE: {condition: DELIVERY_BLOCKAGE_PATTERN, strength: SUPPORTING}
+  PUMP_CURRENT_ABOVE_BASELINE: {condition: PUMP_PERFORMANCE_DEGRADATION, strength: SUPPORTING}
+  PUMP_RUNTIME_ABOVE_BASELINE: {condition: PUMP_PERFORMANCE_DEGRADATION, strength: SUPPORTING}
+  RESERVOIR_LEVEL_LOW: {condition: LOW_LUBRICANT_AVAILABILITY, strength: SUPPORTING}
+  RESERVOIR_DEPLETION_ABNORMAL: {condition: POSSIBLE_LEAKAGE_PATTERN, strength: SUPPORTING}
+  BEARING_TEMPERATURE_ABOVE_CONTEXTUAL_BASELINE: {condition: BEARING_CONDITION_DEGRADATION, strength: SUPPORTING}
+  VIBRATION_ABOVE_CONTEXTUAL_BASELINE: {condition: BEARING_CONDITION_DEGRADATION, strength: SUPPORTING}
+
+# A cross-signal restriction finding whose own RuleFindingSeverity is CRITICAL is treated
+# as blockage-pattern evidence instead of restriction-pattern evidence — reuses Phase 9's
+# own severity computation (which already factors in rate-of-onset, ADR-081) rather than
+# re-deriving "how fast is this happening" here.
+severity_override:
+  finding_type: FLOW_PRESSURE_RESTRICTION_PATTERN
+  when_severity: CRITICAL
+  condition: DELIVERY_BLOCKAGE_PATTERN
+
+# ML predicted-class -> condition hypothesis mapping (Phase 11's FAILURE_CLASSIFICATION_V1
+# label schema). Only contributes to the vote tally when the specific (model_id,
+# model_version) that produced the result is VALIDATED-or-later in the ml-service
+# registry AND confidence_category is MODERATE or HIGH (Phase 13 brief §13.3, §13.6) --
+# an EXPERIMENT-status model's output is still recorded in evidence_summary, but always
+# tagged EXPERIMENTAL (excluded from the tally) regardless of this map.
+ml_classification_map:
+  RESTRICTION: DEVELOPING_RESTRICTION_PATTERN
+  BLOCKAGE: DELIVERY_BLOCKAGE_PATTERN
+  LEAKAGE: POSSIBLE_LEAKAGE_PATTERN
+  PUMP_DEGRADATION: PUMP_PERFORMANCE_DEGRADATION
+  SENSOR_FAULT: SENSOR_OR_DATA_QUALITY_LIMITATION
+  INDEPENDENT_BEARING_ISSUE: INDEPENDENT_BEARING_CONDITION
+  NORMAL: NORMAL_OPERATION
+  # UNKNOWN is deliberately absent -- an UNKNOWN classification abstains, it never votes
+  # NORMAL or any fault type.
+
+# State-estimate vote thresholds (Phase 12's own posterior, reused not re-derived).
+state_estimate:
+  # A DETERIORATING trend below this level is treated as noise-level, not evidence -- the
+  # Kalman filter's own LOW/MODERATE/HIGH uncertainty gate already excludes untrustworthy
+  # ticks; this second floor additionally excludes trustworthy-but-tiny deviations.
+  minimum_meaningful_level: 0.15
+
+# Data-quality gate (Phase 13 brief §13.9) -- evaluated BEFORE evidence synthesis, takes
+# priority over every other rule.
+quality_gate:
+  # Fraction of a machine's registered sensors that must be in a genuinely unusable
+  # quality state (not just CAUTION) before quality-limitation is declared outright.
+  unusable_fraction_threshold: 0.5
+
+severity_rank:
+  INFO: 0
+  WARNING: 1
+  HIGH: 2
+  CRITICAL: 3
+
+# Condition-type -> default ConditionSeverity when no RuleFinding severity is available to
+# borrow directly (e.g. the condition was established purely from ML/state-estimate
+# evidence) -- a conservative default per condition family.
+default_severity:
+  NORMAL_OPERATION: INFO
+  LUBRICATION_DELIVERY_DEGRADATION: WARNING
+  DEVELOPING_RESTRICTION_PATTERN: WARNING
+  DELIVERY_BLOCKAGE_PATTERN: CRITICAL
+  POSSIBLE_LEAKAGE_PATTERN: WARNING
+  PUMP_PERFORMANCE_DEGRADATION: WARNING
+  LOW_LUBRICANT_AVAILABILITY: WARNING
+  BEARING_CONDITION_DEGRADATION: WARNING
+  INDEPENDENT_BEARING_CONDITION: WARNING
+  SENSOR_OR_DATA_QUALITY_LIMITATION: INFO
+  INSUFFICIENT_EVIDENCE: INFO
+  AMBIGUOUS_CONDITION: WARNING
+
+# Lifecycle consecutive-assessment thresholds (Phase 13 brief §13.11).
+lifecycle:
+  developing_after_consecutive: 2
+  persistent_after_consecutive: 3

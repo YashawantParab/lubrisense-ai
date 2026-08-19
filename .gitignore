@@ -45,3 +45,12 @@ edge/data/edge/
 *.db-shm
 *.db-wal
 edge/data/edge/*.lock
+
+# ML service generated artifacts/datasets (Phase 11) — model binaries and generated
+# training data are never committed; docs/results/model_evaluation.json (a small, git-safe
+# merged summary) and docs/MODEL_CARD.md/docs/ML_ARCHITECTURE.md are. See
+# docs/ML_ARCHITECTURE.md.
+ml-service/artifacts/
+ml-service/data/runs/
+ml-service/data/ground_truth/
+ml-service/data/datasets/

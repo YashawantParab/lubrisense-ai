@@ -60,15 +60,31 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
 const TENANT_HEADER = "X-Tenant-ID";
 
 /**
+ * The current demo bearer token (Phase 24's `POST /auth/demo-login`), set by
+ * `AuthProvider` (`@/lib/auth/context`) whenever the demo role switcher issues a new
+ * token. Module-level rather than passed through every call site since almost every
+ * request needs it — mirrors how `publicEnv.demoTenantId` is already used below. The
+ * backend remains the actual authorization boundary in every case (Phase 24/29 — this
+ * is presentation only, never relied on for security).
+ */
+let currentDemoToken: string | null = null;
+
+export function setDemoAuthToken(token: string | null): void {
+  currentDemoToken = token;
+}
+
+/**
  * Same as `apiFetch`, but attaches the dev-only demo tenant header (see
- * `publicEnv.demoTenantId`) required by every asset-hierarchy endpoint. Health/system
- * endpoints don't need this and should keep using `apiFetch` directly.
+ * `publicEnv.demoTenantId`) required by every asset-hierarchy endpoint, plus the current
+ * demo bearer token when one has been issued. Health/system endpoints don't need this
+ * and should keep using `apiFetch` directly.
  */
 export function tenantScopedFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   return apiFetch<T>(path, {
     ...options,
     headers: {
       [TENANT_HEADER]: publicEnv.demoTenantId,
+      ...(currentDemoToken ? { Authorization: `Bearer ${currentDemoToken}` } : {}),
       ...options.headers,
     },
   });

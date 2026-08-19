@@ -1,28 +1,46 @@
 "use client";
 
-import { use } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { DataState } from "@/components/data-state";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
+import { SectionCard } from "@/components/section-card";
 import { StatusPill } from "@/components/status-pill";
+import { TelemetryChart } from "@/components/telemetry-chart";
+import {
+  CompatibilityBadge,
+  ConfidenceBadge,
+  FeedbackBadge,
+  HumanReviewBadge,
+  IncidentStateBadge,
+  MaintenanceStateBadge,
+  PriorityBadge,
+  SeverityBadge,
+} from "@/components/badges";
+import { RelativeTime } from "@/components/relative-time";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useMachineHierarchy } from "@/hooks/use-asset-hierarchy";
+import { useMachineBaselines } from "@/hooks/use-baselines";
+import { useMachineConfigurationChanges, useMachineDevices } from "@/hooks/use-device-management";
+import { useIncidents } from "@/hooks/use-incidents";
+import { useIntelligenceView } from "@/hooks/use-intelligence";
+import { useMaintenanceCases } from "@/hooks/use-maintenance";
+import { useMachineFindings } from "@/hooks/use-rules";
 import { useMachineTelemetry } from "@/hooks/use-telemetry";
-import { toneForStatus } from "@/lib/status-tone";
+import { humanize, toneForStatus } from "@/lib/terminology";
 import type {
   BearingResponse,
   LubricationSystemResponse,
   SensorResponse,
 } from "@/lib/api/asset-hierarchy-types";
-import type { TelemetryReadingResponse } from "@/lib/api/telemetry-types";
 
-const QUALITY_ERROR_VALUES = new Set(["BAD", "INVALID", "MISSING", "UNAVAILABLE"]);
-const QUALITY_WARN_VALUES = new Set(["UNCERTAIN", "SUSPECT", "COMMUNICATION_LOSS"]);
-
-function toneForQuality(value: string): "ok" | "warn" | "error" | "neutral" {
-  if (QUALITY_ERROR_VALUES.has(value)) return "error";
-  if (QUALITY_WARN_VALUES.has(value)) return "warn";
-  return "ok";
-}
+const HORIZON_LABELS: Record<string, string> = {
+  ONE_HOUR: "1 hour",
+  SIX_HOURS: "6 hours",
+  TWENTY_FOUR_HOURS: "24 hours",
+};
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -65,7 +83,6 @@ function LubricationSystemCard({ system }: { system: LubricationSystemResponse }
       <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
         Commissioning: {system.commissioning_state}
       </p>
-
       <div className="mt-3 grid gap-2 text-xs text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
         {system.reservoirs.map((r) => (
           <div key={r.id} className="rounded border border-zinc-100 p-2 dark:border-zinc-800/60">
@@ -94,7 +111,6 @@ function LubricationSystemCard({ system }: { system: LubricationSystemResponse }
           </div>
         ))}
       </div>
-
       {system.circuits.length > 0 && (
         <div className="mt-3">
           <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Circuits</p>
@@ -127,38 +143,55 @@ function SensorRow({ sensor }: { sensor: SensorResponse }) {
   );
 }
 
-function TelemetryRow({ reading }: { reading: TelemetryReadingResponse }) {
-  return (
-    <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
-      <td className="py-2 pr-4 font-mono text-xs text-zinc-500">
-        {reading.sensor_id.slice(0, 8)}…
-      </td>
-      <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">{reading.measurement_type}</td>
-      <td className="py-2 pr-4 text-zinc-800 dark:text-zinc-200">
-        {reading.value ?? "—"} {reading.value !== null ? reading.unit : ""}
-      </td>
-      <td className="py-2 pr-4">
-        <StatusPill tone={toneForQuality(reading.quality)}>{reading.quality}</StatusPill>
-      </td>
-      <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">{reading.operating_state}</td>
-      <td className="py-2 pr-4 text-xs text-zinc-500 dark:text-zinc-400">
-        {new Date(reading.source_timestamp).toLocaleString()}
-      </td>
-    </tr>
-  );
-}
-
 export default function MachineDetailPage({ params }: { params: Promise<{ machineId: string }> }) {
   const { machineId } = use(params);
   const hierarchy = useMachineHierarchy(machineId);
-  const telemetry = useMachineTelemetry(machineId, { limit: 25 });
+  // 2000 is the API's max (`limit: le=2000`) and is applied across *all* measurement
+  // types combined for this machine, not per-type — a low limit here silently truncates
+  // to only the most recent minutes of a multi-hour story once several sensors share the
+  // budget, hiding the calm "healthy" baseline period a reviewer needs to see for
+  // contrast (a real defect found during Phase 36's industrial visualization review).
+  const telemetry = useMachineTelemetry(machineId, { limit: 2000 });
+  const intelligence = useIntelligenceView(machineId);
+  const incidents = useIncidents({ machineId });
+  const cases = useMaintenanceCases();
+  const findings = useMachineFindings(machineId);
+  const baselines = useMachineBaselines(machineId);
+  const devices = useMachineDevices(machineId);
+  const configChanges = useMachineConfigurationChanges(machineId);
+  const [assetDetailsOpen, setAssetDetailsOpen] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [changeHistoryOpen, setChangeHistoryOpen] = useState(false);
+
+  usePageTitle(hierarchy.data ? hierarchy.data.machine.name : "Machine");
+
+  const activeIncident = useMemo(
+    () => (incidents.data ?? []).find((i) => i.state !== "RESOLVED" && i.state !== "CLOSED"),
+    [incidents.data],
+  );
+  const machineCase = useMemo(
+    () => (cases.data ?? []).find((c) => c.machine_id === machineId),
+    [cases.data, machineId],
+  );
+
+  const measurementTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const reading of telemetry.data ?? []) types.add(reading.measurement_type);
+    return Array.from(types);
+  }, [telemetry.data]);
+
+  const baselineRangeFor = (measurementType: string): [number, number] | null => {
+    const profile = (baselines.data?.profiles ?? []).find(
+      (p) => p.measurement_type === measurementType && p.state === "ACTIVE",
+    );
+    const mean = profile?.statistics?.mean;
+    const std = profile?.statistics?.std;
+    if (typeof mean !== "number" || typeof std !== "number") return null;
+    return [mean - std, mean + std];
+  };
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-12">
-      <Link href="/hierarchy" className="text-sm text-sky-600 hover:underline dark:text-sky-400">
-        ← Back to Asset Hierarchy
-      </Link>
-
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
       <DataState
         isPending={hierarchy.isPending}
         isError={hierarchy.isError}
@@ -167,142 +200,499 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
       >
         {hierarchy.data && (
           <>
-            <header className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center justify-between">
-                <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-                  {hierarchy.data.machine.name}
-                </h1>
-                <div className="flex gap-2">
+            <PageHeader
+              breadcrumbs={[{ label: "Fleet", href: "/fleet" }, { label: hierarchy.data.machine.name }]}
+              title={hierarchy.data.machine.name}
+              description={`${hierarchy.data.machine.asset_code} · ${humanize(hierarchy.data.machine.machine_type)}`}
+              actions={
+                <>
                   <StatusPill tone={toneForStatus(hierarchy.data.machine.criticality)}>
                     {hierarchy.data.machine.criticality}
                   </StatusPill>
                   <StatusPill tone={toneForStatus(hierarchy.data.machine.status)}>
                     {hierarchy.data.machine.status}
                   </StatusPill>
-                </div>
-              </div>
-              <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Field label="Asset code" value={hierarchy.data.machine.asset_code} />
-                <Field label="Type" value={hierarchy.data.machine.machine_type} />
-                <Field label="Manufacturer" value={hierarchy.data.machine.manufacturer} />
-                <Field label="Model" value={hierarchy.data.machine.model} />
-                <Field label="Serial (demo)" value={hierarchy.data.machine.serial_number_demo} />
-                <Field label="Installed" value={hierarchy.data.machine.installation_date} />
-              </dl>
-            </header>
+                  <Link
+                    href={`/assistant?machineId=${machineId}${activeIncident ? `&incidentId=${activeIncident.id}` : ""}`}
+                    className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+                  >
+                    Ask Assistant
+                  </Link>
+                </>
+              }
+            />
 
-            <section>
-              <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Bearings ({hierarchy.data.bearings.length})
-              </h2>
-              {hierarchy.data.bearings.length === 0 ? (
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No bearings recorded for this machine yet.
-                </p>
+            {/* Operational status strip */}
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Status:</span>
+              {intelligence.data ? (
+                <>
+                  <SeverityBadge value={intelligence.data.condition.severity} />
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                    {humanize(intelligence.data.condition.condition_type)}
+                  </span>
+                  <ConfidenceBadge value={intelligence.data.condition.confidence} />
+                </>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {hierarchy.data.bearings.map((bearing) => (
-                    <BearingCard key={bearing.id} bearing={bearing} />
-                  ))}
-                </div>
+                <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                  {intelligence.isPending ? "Computing…" : "Unavailable"}
+                </span>
               )}
-            </section>
+              {activeIncident && (
+                <Link
+                  href={`/incidents/${activeIncident.id}`}
+                  className="ml-auto flex items-center gap-1.5 text-sm text-sky-700 hover:underline dark:text-sky-400"
+                >
+                  Active incident <IncidentStateBadge value={activeIncident.state} />
+                </Link>
+              )}
+            </div>
 
-            <section>
-              <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Lubrication System
-              </h2>
-              {hierarchy.data.lubrication_systems.length === 0 ? (
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No lubrication system commissioned for this machine yet.
+            {/* Three intelligence layers */}
+            <div className="grid gap-4 lg:grid-cols-3">
+              <SectionCard title="Machine Intelligence">
+                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  What the machine&rsquo;s raw evidence sources report.
                 </p>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {hierarchy.data.lubrication_systems.map((system) => (
-                    <LubricationSystemCard key={system.id} system={system} />
-                  ))}
-                </div>
-              )}
-            </section>
+                <dl className="grid gap-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <dt className="text-zinc-500 dark:text-zinc-400">Rule findings</dt>
+                    <dd>{findings.data?.findings.length ?? 0} active</dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-zinc-500 dark:text-zinc-400">ML evidence</dt>
+                    <dd>{intelligence.data?.condition.ml_result_ids.length ?? 0} result(s)</dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-zinc-500 dark:text-zinc-400">State estimates</dt>
+                    <dd>{intelligence.data?.condition.state_estimate_ids.length ?? 0} used</dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-zinc-500 dark:text-zinc-400">Baseline readiness</dt>
+                    <dd>{baselines.data?.readiness.label ?? "—"}</dd>
+                  </div>
+                </dl>
+                {(findings.data?.findings.length ?? 0) > 0 && (
+                  <ul className="mt-3 space-y-1 border-t border-zinc-100 pt-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                    {findings.data!.findings.slice(0, 3).map((f) => (
+                      <li key={f.id}>
+                        {humanize(f.finding_type)} — {humanize(f.severity)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </SectionCard>
 
-            <section>
-              <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Sensor Inventory ({hierarchy.data.sensors.length})
-              </h2>
-              {hierarchy.data.sensors.length === 0 ? (
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No sensors attached anywhere on this machine yet.
+              <SectionCard title="Decision Intelligence">
+                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  The synthesized recommendation and its confidence.
                 </p>
-              ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                        <th className="py-2 pr-4 font-medium">Code</th>
-                        <th className="py-2 pr-4 font-medium">Name</th>
-                        <th className="py-2 pr-4 font-medium">Type</th>
-                        <th className="py-2 pr-4 font-medium">Attached to</th>
-                        <th className="py-2 pr-4 font-medium">Unit</th>
-                        <th className="py-2 pr-4 font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {hierarchy.data.sensors.map((sensor) => (
-                        <SensorRow key={sensor.id} sensor={sensor} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
+                {intelligence.data ? (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                      {humanize(intelligence.data.decision.recommended_action)}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <PriorityBadge value={intelligence.data.decision.priority} />
+                      {intelligence.data.decision.human_review_required && <HumanReviewBadge />}
+                    </div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Window: {humanize(intelligence.data.decision.recommended_window)}
+                    </p>
+                    <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                      Risk if deferred: {intelligence.data.decision.risk_if_deferred}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {intelligence.isPending ? "Computing…" : "No decision available yet."}
+                  </p>
+                )}
+              </SectionCard>
 
-            <section>
-              <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Recent Telemetry
-              </h2>
-              <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-                Live readings from the central telemetry pipeline (Simulator → Edge → MQTT →
-                Kafka → TimescaleDB) — a developer/product validation view, not the final
-                Sensor Intelligence experience. No condition, health score, or diagnosis is
-                computed here.
-              </p>
+              <SectionCard title="Workflow Intelligence">
+                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  Incident and maintenance response state.
+                </p>
+                {activeIncident ? (
+                  <div className="flex flex-col gap-2 text-sm">
+                    <Link
+                      href={`/incidents/${activeIncident.id}`}
+                      className="text-sky-700 hover:underline dark:text-sky-400"
+                    >
+                      {activeIncident.title}
+                    </Link>
+                    <IncidentStateBadge value={activeIncident.state} />
+                    {machineCase && (
+                      <>
+                        <Link
+                          href={`/maintenance/${machineCase.id}`}
+                          className="mt-2 text-sky-700 hover:underline dark:text-sky-400"
+                        >
+                          Maintenance case
+                        </Link>
+                        <MaintenanceStateBadge value={machineCase.state} />
+                        {machineCase.feedback_classification && (
+                          <FeedbackBadge value={machineCase.feedback_classification} />
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <EmptyState title="No active incident" description="This machine has no open incident right now." />
+                )}
+              </SectionCard>
+            </div>
+
+            {/* Forecast */}
+            {intelligence.data && (
+              <SectionCard title="What may happen next?">
+                {intelligence.data.prognostics.length === 0 ? (
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    No forecast is available yet — no state estimate has been computed for this
+                    machine.
+                  </p>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {Object.entries(
+                      intelligence.data.prognostics.reduce<Record<string, typeof intelligence.data.prognostics>>(
+                        (acc, row) => {
+                          (acc[row.state_type] ??= []).push(row);
+                          return acc;
+                        },
+                        {},
+                      ),
+                    ).map(([stateType, rows]) => (
+                      <div key={stateType}>
+                        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                          {humanize(stateType)}
+                        </p>
+                        <ul className="mt-2 space-y-1.5 text-sm">
+                          {rows.map((row) => (
+                            <li key={row.id} className="flex items-center justify-between gap-2">
+                              <span className="text-zinc-600 dark:text-zinc-400">
+                                {HORIZON_LABELS[row.horizon] ?? row.horizon}
+                              </span>
+                              {row.status === "NO_RELIABLE_FORECAST" ? (
+                                <StatusPill tone="neutral">No reliable forecast</StatusPill>
+                              ) : (
+                                <span className="font-mono text-xs text-zinc-800 dark:text-zinc-200">
+                                  {row.predicted_state_at_horizon.toFixed(3)}
+                                  {row.estimated_threshold_crossing_time && (
+                                    <span className="ml-1 text-amber-600 dark:text-amber-400">
+                                      (est. crossing{" "}
+                                      {new Date(row.estimated_threshold_crossing_time).toLocaleString()})
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                  Estimated trend extrapolation only — never a guarantee of future failure.
+                </p>
+              </SectionCard>
+            )}
+
+            {/* Evidence panel */}
+            {intelligence.data && (
+              <SectionCard
+                title="Evidence"
+                actions={
+                  <button
+                    type="button"
+                    onClick={() => setEvidenceOpen((v) => !v)}
+                    className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                  >
+                    {evidenceOpen ? "Hide technical detail" : "Show technical detail"}
+                  </button>
+                }
+              >
+                <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                  {intelligence.data.condition.evidence_summary.what_is_happening}
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Why</dt>
+                    <dd className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                      <ul className="list-inside list-disc space-y-1">
+                        {intelligence.data.condition.evidence_summary.why.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                      Data trust / unknowns
+                    </dt>
+                    <dd className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                      <p>
+                        Data trustworthiness:{" "}
+                        {humanize(intelligence.data.condition.evidence_summary.data_trustworthiness)}
+                      </p>
+                      {intelligence.data.condition.evidence_summary.unknowns.length > 0 && (
+                        <ul className="mt-1 list-inside list-disc space-y-1">
+                          {intelligence.data.condition.evidence_summary.unknowns.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </dd>
+                  </div>
+                </div>
+                {evidenceOpen && (
+                  <div className="mt-4 space-y-3 border-t border-zinc-100 pt-3 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                    {intelligence.data.condition.evidence_summary.supporting_evidence.length > 0 && (
+                      <div>
+                        <p className="font-medium text-zinc-700 dark:text-zinc-300">
+                          Supporting evidence
+                        </p>
+                        <ul className="mt-1 list-inside list-disc">
+                          {intelligence.data.condition.evidence_summary.supporting_evidence.map((e) => (
+                            <li key={e}>{e}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {intelligence.data.condition.evidence_summary.contradicting_evidence.length > 0 && (
+                      <div>
+                        <p className="font-medium text-zinc-700 dark:text-zinc-300">
+                          Contradicting evidence
+                        </p>
+                        <ul className="mt-1 list-inside list-disc">
+                          {intelligence.data.condition.evidence_summary.contradicting_evidence.map(
+                            (e) => (
+                              <li key={e}>{e}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                    {intelligence.data.condition.limitations.length > 0 && (
+                      <div>
+                        <p className="font-medium text-zinc-700 dark:text-zinc-300">Limitations</p>
+                        <ul className="mt-1 list-inside list-disc">
+                          {intelligence.data.condition.limitations.map((l) => (
+                            <li key={l}>{l}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <p>Policy version: {intelligence.data.condition.policy_version}</p>
+                    <p>Engine version: {intelligence.data.condition.engine_version}</p>
+                    <p>Condition id: {intelligence.data.condition.id}</p>
+                  </div>
+                )}
+              </SectionCard>
+            )}
+
+            {/* Telemetry */}
+            <SectionCard title="Telemetry">
               <DataState
                 isPending={telemetry.isPending}
                 isError={telemetry.isError}
                 error={telemetry.error}
                 loadingLabel="Loading telemetry…"
               >
-                {telemetry.data && telemetry.data.length === 0 ? (
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    No telemetry received for this machine yet. Start the edge/simulator and the
-                    telemetry pipeline (`docker compose --profile edge up -d`) to see readings
-                    here.
-                  </p>
+                {measurementTypes.length === 0 ? (
+                  <EmptyState
+                    title="No telemetry received yet"
+                    description="Start the edge/simulator and telemetry pipeline to see readings here."
+                  />
                 ) : (
-                  telemetry.data && (
-                    <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900">
-                      <table className="w-full text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                            <th className="py-2 pr-4 font-medium">Sensor</th>
-                            <th className="py-2 pr-4 font-medium">Measurement</th>
-                            <th className="py-2 pr-4 font-medium">Value</th>
-                            <th className="py-2 pr-4 font-medium">Quality</th>
-                            <th className="py-2 pr-4 font-medium">Operating state</th>
-                            <th className="py-2 pr-4 font-medium">Source time</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {telemetry.data.map((reading) => (
-                            <TelemetryRow key={reading.event_id} reading={reading} />
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {measurementTypes.map((type) => (
+                      <TelemetryChart
+                        key={type}
+                        measurementType={type}
+                        readings={telemetry.data ?? []}
+                        baselineRange={baselineRangeFor(type)}
+                      />
+                    ))}
+                  </div>
                 )}
               </DataState>
-            </section>
+            </SectionCard>
+
+            {/* Device / configuration governance — Phase 31: visibility only, no OTA */}
+            <SectionCard
+              title="Device / Configuration"
+              actions={
+                (configChanges.data ?? []).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setChangeHistoryOpen((v) => !v)}
+                    className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                  >
+                    {changeHistoryOpen ? "Hide" : "Show"} change history
+                  </button>
+                )
+              }
+            >
+              <DataState
+                isPending={devices.isPending}
+                isError={devices.isError}
+                error={devices.error}
+                loadingLabel="Loading device configuration…"
+              >
+                {(devices.data ?? []).length === 0 ? (
+                  <EmptyState
+                    title="No device configuration recorded yet"
+                    description="Device/firmware provenance is captured when a gateway or sensor is registered during commissioning."
+                  />
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                          <th className="py-2 pr-4 font-medium">Device</th>
+                          <th className="py-2 pr-4 font-medium">Firmware</th>
+                          <th className="py-2 pr-4 font-medium">Compatibility</th>
+                          <th className="py-2 pr-4 font-medium">Captured</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(devices.data ?? []).map((d) => (
+                          <tr key={d.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                            <td className="py-2 pr-4 text-zinc-800 dark:text-zinc-200">
+                              {humanize(d.device_type)}
+                            </td>
+                            <td className="py-2 pr-4 font-mono text-xs text-zinc-700 dark:text-zinc-300">
+                              {d.firmware_version ?? "—"}
+                            </td>
+                            <td className="py-2 pr-4">
+                              <CompatibilityBadge value={d.compatibility_status} />
+                            </td>
+                            <td className="py-2 pr-4 text-xs text-zinc-500 dark:text-zinc-400">
+                              <RelativeTime iso={d.captured_at} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </DataState>
+
+              {changeHistoryOpen && (
+                <ul className="mt-4 space-y-2 border-t border-zinc-100 pt-3 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                  {(configChanges.data ?? []).map((c) => (
+                    <li key={c.id} className="flex items-start justify-between gap-2">
+                      <span>
+                        {humanize(c.device_type)} configuration changed by {c.changed_by}
+                        {c.reason ? ` — ${c.reason}` : ""}
+                        {c.baseline_review_required && (
+                          <span className="ml-2 text-amber-600 dark:text-amber-400">
+                            (baseline review recommended)
+                          </span>
+                        )}
+                      </span>
+                      <RelativeTime iso={c.occurred_at} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+
+            {/* Asset details, collapsible */}
+            <SectionCard
+              title="Asset details"
+              actions={
+                <button
+                  type="button"
+                  onClick={() => setAssetDetailsOpen((v) => !v)}
+                  className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                >
+                  {assetDetailsOpen ? "Hide" : "Show"}
+                </button>
+              }
+            >
+              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <Field label="Manufacturer" value={hierarchy.data.machine.manufacturer} />
+                <Field label="Model" value={hierarchy.data.machine.model} />
+                <Field label="Serial (demo)" value={hierarchy.data.machine.serial_number_demo} />
+                <Field label="Installed" value={hierarchy.data.machine.installation_date} />
+              </dl>
+
+              {assetDetailsOpen && (
+                <div className="mt-4 flex flex-col gap-6">
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                      Bearings ({hierarchy.data.bearings.length})
+                    </h3>
+                    {hierarchy.data.bearings.length === 0 ? (
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        No bearings recorded for this machine yet.
+                      </p>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {hierarchy.data.bearings.map((bearing) => (
+                          <BearingCard key={bearing.id} bearing={bearing} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                      Lubrication system
+                    </h3>
+                    {hierarchy.data.lubrication_systems.length === 0 ? (
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        No lubrication system commissioned for this machine yet.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {hierarchy.data.lubrication_systems.map((system) => (
+                          <LubricationSystemCard key={system.id} system={system} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                      Sensor inventory ({hierarchy.data.sensors.length})
+                    </h3>
+                    {hierarchy.data.sensors.length === 0 ? (
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        No sensors attached anywhere on this machine yet.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto rounded-lg border border-zinc-200 px-4 dark:border-zinc-800">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                              <th className="py-2 pr-4 font-medium">Code</th>
+                              <th className="py-2 pr-4 font-medium">Name</th>
+                              <th className="py-2 pr-4 font-medium">Type</th>
+                              <th className="py-2 pr-4 font-medium">Attached to</th>
+                              <th className="py-2 pr-4 font-medium">Unit</th>
+                              <th className="py-2 pr-4 font-medium">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hierarchy.data.sensors.map((sensor) => (
+                              <SensorRow key={sensor.id} sensor={sensor} />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+
+            <p className="text-xs text-zinc-400 dark:text-zinc-600">
+              Last computed <RelativeTime iso={intelligence.data?.condition.as_of_timestamp ?? null} />
+            </p>
           </>
         )}
       </DataState>

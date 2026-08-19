@@ -1,8 +1,11 @@
 # Developer Setup
 
 This walks a new engineer through running the platform locally: what to install, how to
-start the stack, and how to verify the platform foundation (Phase 1) and the asset
-hierarchy (Phase 2) yourself rather than taking it on faith.
+start the stack, and how to verify the platform foundation and the asset hierarchy
+yourself rather than taking it on faith. It uses the same low-level steps (`docker compose
+up`, `alembic upgrade head`, `seed_demo_data.py`) the one-command `make demo-reset` wrapper
+runs for you — read this doc when you want to understand or run those steps individually;
+use `make demo-reset` (see `docs/DEMO_GUIDE.md`) when you just want a working demo fast.
 
 ## 1. Prerequisites
 
@@ -138,6 +141,21 @@ see `.env.example`):
 curl -s -H "X-Tenant-ID: bbdd114e-b5a7-5890-a5bd-9e8c787a5fe0" \
   http://localhost:8000/api/v1/hierarchy | python3 -m json.tool | head -30
 ```
+
+## 8b. Seed the approved knowledge corpus and the flagship demo story
+
+The base hierarchy above has topology but no telemetry, incidents, or maintenance history.
+For the full product experience:
+
+```bash
+cd backend
+uv run python scripts/seed_knowledge_corpus.py   # approved knowledge for RAG/assistant
+uv run python scripts/seed_flagship_story.py      # flagship machine's full demo story
+```
+
+Both are idempotent/deterministic; the flagship story script fully resets its one dedicated
+machine's telemetry and state estimates before reseeding, so it is safe to re-run any time.
+See `docs/DEMO_GUIDE.md` for what this produces and how to walk through it.
 
 ## 9. Run the backend outside Docker (optional, for active development)
 

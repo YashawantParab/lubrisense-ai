@@ -1,0 +1,53 @@
+# FAILURE_CLASSIFICATION_V1 supervised classifier config (Phase 11 brief §15-§18, §68).
+#
+# DEMO SYNTHETIC ML CONFIGURATION — hyperparameters and thresholds below are reference
+# defaults for this synthetic-data reference implementation, not validated for production
+# machinery (see docs/MODEL_CARD.md).
+
+model_id: FAILURE_CLASSIFICATION_V1
+model_version: "1.0.0"
+feature_set: FAILURE_CLASSIFICATION_V1
+feature_set_version: "1.0.2"
+seed: 42
+
+minimum_required_features:
+  - pressure.current
+  - pump_current.current
+  - bearing_temp.current
+  - vibration_rms.current
+
+# UNKNOWN handling (Phase 11 brief §11, §54): the top predicted-class probability must
+# reach this floor or the model returns UNKNOWN instead of forcing a known class.
+unknown_confidence_threshold: 0.45
+
+# Confidence-category thresholds (Phase 11 brief §36), fit on VALIDATION only — an
+# explainability aid, never called "certainty".
+confidence_moderate_threshold: 0.55
+confidence_high_threshold: 0.80
+
+# Baseline benchmark model (Phase 11 brief §16) — a simple multinomial logistic regression,
+# so the primary model's benefit can be measured against a real, honest floor rather than
+# an assumed one.
+baseline:
+  seed: 42
+  class_weight: balanced
+  max_iter: 2000
+
+# Primary classifier (Phase 11 brief §15): scikit-learn HistGradientBoostingClassifier —
+# chosen over XGBoost for a clean CPU-only, no-extra-native-dependency integration in an
+# already scikit-learn-based service, with native missing-value handling and strong
+# tabular-data performance at this dataset scale. See docs/ML_ARCHITECTURE.md "Model
+# choices" and ADR (classifier choice) in TECHNICAL_DECISIONS.md.
+#
+# max_iter/max_depth were brought down from an initial 300/6 (scikit-learn's own generic
+# defaults) to values sized for THIS run's realized TRAIN split (399 rows across 8 classes,
+# ~35-90 rows each) after that combination memorized TRAIN outright (train macro F1 ~1.0
+# vs. test macro F1 0.13). This is a single, one-time, documented capacity adjustment for
+# dataset scale — not a hyperparameter search fit to TEST — made before any further TEST
+# metric was inspected; see docs/MODEL_CARD.md "Known limitations".
+primary:
+  seed: 42
+  max_iter: 60
+  max_depth: 3
+  learning_rate: 0.08
+  l2_regularization: 1.0

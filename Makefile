@@ -1,9 +1,10 @@
 .PHONY: up down restart ps logs build \
-	migrate seed \
+	migrate seed seed-knowledge demo-reset \
 	backend-install backend-test backend-lint backend-typecheck backend-format \
 	frontend-install frontend-lint frontend-typecheck frontend-build frontend-format \
 	simulator-install simulator-test simulator-lint simulator-typecheck simulator-format \
 	edge-install edge-test edge-lint edge-typecheck edge-format \
+	ml-service-install ml-service-test ml-service-lint ml-service-typecheck ml-service-format \
 	mqtt-verify kafka-verify pipeline-verify data-quality-verify baseline-verify rules-verify \
 	verify
 
@@ -35,6 +36,12 @@ migrate: ## Run Alembic migrations against the running database
 
 seed: ## Load the deterministic demo asset hierarchy (idempotent)
 	cd backend && uv run python scripts/seed_demo_data.py
+
+seed-knowledge: ## Load the approved knowledge corpus (idempotent)
+	cd backend && uv run python scripts/seed_knowledge_corpus.py
+
+demo-reset: ## One deterministic command for the complete demo-ready state (stack, migrations, base data, knowledge, flagship story)
+	./scripts/demo-reset.sh
 
 ## --- Backend ---
 
@@ -104,6 +111,23 @@ edge-typecheck: ## Type-check edge code
 edge-format: ## Auto-format edge code
 	cd edge && uv run ruff format .
 
+## --- ML Service ---
+
+ml-service-install: ## Install ml-service dependencies
+	cd ml-service && uv sync --extra dev
+
+ml-service-test: ## Run ml-service test suite (pure Python, no live Docker dependency)
+	cd ml-service && uv run pytest
+
+ml-service-lint: ## Lint ml-service code
+	cd ml-service && uv run ruff check .
+
+ml-service-typecheck: ## Type-check ml-service code
+	cd ml-service && uv run mypy ml_service
+
+ml-service-format: ## Auto-format ml-service code
+	cd ml-service && uv run ruff format .
+
 ## --- Messaging verification ---
 
 mqtt-verify: ## Prove MQTT publish/subscribe works against the running broker
@@ -126,10 +150,10 @@ rules-verify: ## Prove the Phase 9 rules engine produces/lifecycles findings liv
 
 ## --- Aggregate ---
 
-test: backend-test simulator-test edge-test ## Run all automated test suites
+test: backend-test simulator-test edge-test ml-service-test ## Run all automated test suites
 
-lint: backend-lint frontend-lint simulator-lint edge-lint ## Run all linters
+lint: backend-lint frontend-lint simulator-lint edge-lint ml-service-lint ## Run all linters
 
-typecheck: backend-typecheck frontend-typecheck simulator-typecheck edge-typecheck ## Run all type checkers
+typecheck: backend-typecheck frontend-typecheck simulator-typecheck edge-typecheck ml-service-typecheck ## Run all type checkers
 
 verify: lint typecheck test frontend-build mqtt-verify kafka-verify pipeline-verify data-quality-verify baseline-verify rules-verify ## Run the full verification suite

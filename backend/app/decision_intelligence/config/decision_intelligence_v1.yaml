@@ -1,0 +1,85 @@
+# DEMO SYNTHETIC DECISION ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION MAINTENANCE LIMITS.
+#
+# See docs/DECISION_INTELLIGENCE.md for the full rationale. Every mapping/window/expiry
+# below is a labeled reference default for this synthetic-data reference implementation.
+
+policy_version: "1.0.0"
+engine_version: "1.0.0"
+
+# Condition severity -> base priority tier (0=MONITOR, 1=PLANNED, 2=HIGH, 3=URGENT) --
+# only reached for a real fault-pattern condition_type (never for NORMAL_OPERATION,
+# AMBIGUOUS_CONDITION, INSUFFICIENT_EVIDENCE, or SENSOR_OR_DATA_QUALITY_LIMITATION, which
+# are handled as their own fixed cases regardless of severity, Phase 14 brief §14.9).
+severity_priority_tier:
+  INFO: 0
+  WARNING: 1
+  HIGH: 2
+  CRITICAL: 3
+
+# Priority-tier adjustments (Phase 14 brief §14.4) — additive, then clamped to [0, 3].
+# Applied ONLY on the fault-pattern path, so criticality/persistence/forecast can shift
+# urgency but can never manufacture a fault-pattern decision out of NORMAL/AMBIGUOUS/
+# INSUFFICIENT/QUALITY-LIMITATION evidence (§14.4: "criticality must NOT manufacture
+# evidence that a fault exists").
+tier_adjustments:
+  persistent_lifecycle: 1
+  criticality_high_or_critical: 1
+  imminent_threshold_crossing: 1
+
+# A prognostic threshold crossing within this many seconds counts as "imminent" for the
+# adjustment above -- matches the SIX_HOURS horizon.
+imminent_crossing_seconds: 21600.0
+
+condition_action_map:
+  NORMAL_OPERATION: CONTINUE_MONITORING
+  INSUFFICIENT_EVIDENCE: REQUEST_ADDITIONAL_MEASUREMENT
+  SENSOR_OR_DATA_QUALITY_LIMITATION: VERIFY_SENSOR
+  AMBIGUOUS_CONDITION: REQUEST_ADDITIONAL_MEASUREMENT
+  LUBRICATION_DELIVERY_DEGRADATION: INSPECT_LUBRICATION_PATH
+  DEVELOPING_RESTRICTION_PATTERN: INSPECT_LUBRICATION_PATH
+  DELIVERY_BLOCKAGE_PATTERN: INSPECT_DISTRIBUTOR
+  POSSIBLE_LEAKAGE_PATTERN: INSPECT_LUBRICATION_PATH
+  PUMP_PERFORMANCE_DEGRADATION: CHECK_PUMP
+  LOW_LUBRICANT_AVAILABILITY: CHECK_RESERVOIR
+  BEARING_CONDITION_DEGRADATION: INSPECT_BEARING
+  INDEPENDENT_BEARING_CONDITION: INSPECT_BEARING
+
+# Actions that are pure monitoring/verification (never a physical maintenance touch) do
+# not require human review before being *shown*; every physical inspection/service action
+# does (Phase 14 brief §14.8). AI never executes either kind directly either way.
+non_physical_actions:
+  - CONTINUE_MONITORING
+  - VERIFY_SENSOR
+  - REQUEST_ADDITIONAL_MEASUREMENT
+
+priority_window_map:
+  MONITOR: MONITOR
+  PLANNED: NEXT_PLANNED_MAINTENANCE
+  HIGH: WITHIN_HOURS
+  URGENT: NOW
+
+# Cautious, generic risk-if-deferred language per condition family (CLAUDE.md/
+# docs/FAILURE_MODE_CATALOG.md §13 causal-language rules — "consistent with", never a
+# certainty).
+risk_language:
+  NORMAL_OPERATION: "No significant risk identified from current evidence."
+  INSUFFICIENT_EVIDENCE: "Risk cannot be assessed until sufficient evidence is available."
+  SENSOR_OR_DATA_QUALITY_LIMITATION: "Risk cannot be assessed reliably while data quality is limited."
+  AMBIGUOUS_CONDITION: "Evidence is inconclusive; risk of deferring a physical inspection is not currently quantifiable."
+  LUBRICATION_DELIVERY_DEGRADATION: "Continued deterioration may reduce lubrication delivery and increase risk of downstream bearing stress."
+  DEVELOPING_RESTRICTION_PATTERN: "Continued restriction may progressively reduce lubrication delivery and increase risk of downstream bearing stress."
+  DELIVERY_BLOCKAGE_PATTERN: "A blockage may starve downstream lubrication points; risk of rapid bearing damage increases the longer delivery remains interrupted."
+  POSSIBLE_LEAKAGE_PATTERN: "Continued lubricant loss may reduce delivery effectiveness and increases housekeeping/environmental concern."
+  PUMP_PERFORMANCE_DEGRADATION: "Continued pump degradation may further reduce delivery pressure/flow and increase risk of unplanned pump failure."
+  LOW_LUBRICANT_AVAILABILITY: "Continued depletion may lead to lubrication starvation if the reservoir is not replenished."
+  BEARING_CONDITION_DEGRADATION: "Continued bearing deterioration may progress to mechanical damage if not inspected."
+  INDEPENDENT_BEARING_CONDITION: "Continued bearing deterioration, independent of the lubrication system, may progress to mechanical damage if not inspected."
+
+# Expiry window per priority tier (seconds) — a decision this old is stale enough that a
+# fresh assessment should supersede it even with no new evidence (Phase 14 brief §14.12).
+expiry_seconds_by_priority:
+  URGENT: 7200.0        # 2h
+  HIGH: 28800.0         # 8h
+  PLANNED: 259200.0     # 72h
+  MONITOR: 604800.0     # 7 days

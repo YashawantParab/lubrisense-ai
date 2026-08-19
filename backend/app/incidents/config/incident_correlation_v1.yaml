@@ -1,0 +1,27 @@
+# DEMO SYNTHETIC CORRELATION ASSUMPTIONS.
+# NOT VALIDATED PRODUCTION INCIDENT-MANAGEMENT POLICY.
+#
+# See docs/INCIDENT_MANAGEMENT.md for the full rationale.
+
+policy_version: "1.0.0"
+engine_version: "1.0.0"
+
+# ConditionType -> incident "family" (Phase 16 brief §16.4). Two condition types in the
+# same family correlate into ONE open incident as evidence evolves (e.g. a developing
+# restriction updating to a confirmed blockage never creates a second incident). Two
+# condition types in DIFFERENT families always produce separate incidents when both are
+# independently real (Phase 16 brief §16.5/"SEPARATE-FAULT TEST") — mirrors the
+# generic/specific reconciliation Phase 13 already established (ADR-111), one level up.
+#
+# A condition_type absent from this map NEVER creates or updates an incident on its own —
+# see `app.incidents.services.correlation._NO_INCIDENT_CONDITION_TYPES` for the explicit
+# non-fault boundary (reused verbatim from Phase 14's ADR-119).
+condition_family_map:
+  LUBRICATION_DELIVERY_DEGRADATION: LUBRICATION_DELIVERY
+  DEVELOPING_RESTRICTION_PATTERN: LUBRICATION_DELIVERY
+  DELIVERY_BLOCKAGE_PATTERN: LUBRICATION_DELIVERY
+  POSSIBLE_LEAKAGE_PATTERN: LUBRICATION_DELIVERY
+  PUMP_PERFORMANCE_DEGRADATION: LUBRICATION_DELIVERY
+  LOW_LUBRICANT_AVAILABILITY: LUBRICATION_DELIVERY
+  BEARING_CONDITION_DEGRADATION: BEARING_CONDITION
+  INDEPENDENT_BEARING_CONDITION: BEARING_CONDITION

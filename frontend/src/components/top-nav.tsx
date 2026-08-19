@@ -8,6 +8,16 @@ const LINKS = [
   { href: "/baselines", label: "Baselines" },
   { href: "/rules", label: "Rule Findings" },
   { href: "/features", label: "Features" },
+  { href: "/ml", label: "ML" },
+  { href: "/state-estimation", label: "State Estimation" },
+  { href: "/intelligence", label: "Intelligence" },
+  { href: "/incidents", label: "Incidents" },
+  { href: "/maintenance", label: "Maintenance" },
+  { href: "/knowledge", label: "Knowledge" },
+  { href: "/assistant", label: "Assistant" },
+  { href: "/overview", label: "Overview" },
+  { href: "/metrics", label: "Metrics" },
+  { href: "/audit", label: "Audit" },
 ];
 
 export function TopNav() {

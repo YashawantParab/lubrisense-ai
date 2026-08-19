@@ -62,7 +62,7 @@ class FeatureSourceRepository:
         if machine is None:
             return None
 
-        sensors = await self._registered_sensors(tenant_id, machine_id)
+        sensors = await self.registered_sensors(tenant_id, machine_id)
         quality_rows = await self.session.execute(
             select(SensorQualityState).where(
                 SensorQualityState.tenant_id == tenant_id,
@@ -177,9 +177,7 @@ class FeatureSourceRepository:
             telemetry_rows_scanned=len(telemetry),
         )
 
-    async def _registered_sensors(
-        self, tenant_id: uuid.UUID, machine_id: uuid.UUID
-    ) -> list[Sensor]:
+    async def registered_sensors(self, tenant_id: uuid.UUID, machine_id: uuid.UUID) -> list[Sensor]:
         bearing_ids = select(Bearing.id).where(
             Bearing.tenant_id == tenant_id, Bearing.machine_id == machine_id
         )

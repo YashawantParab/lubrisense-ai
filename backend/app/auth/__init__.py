@@ -1,6 +1,8 @@
 """Authentication and authorization.
 
-Empty in Phase 1. Phase 1 establishes an OIDC/OAuth2-compatible architecture boundary
-(see `docs/ARCHITECTURE.md` §9.2) without implementing full authentication/RBAC, which is
-explicitly deferred to a later security-focused phase.
+Phase 24 implements the OIDC/OAuth2-compatible architecture boundary this package
+reserved since Phase 1 (`docs/ARCHITECTURE.md` §9.2): a signed-bearer-token demo identity
+provider (`app.auth.demo_tokens`), a fixed six-role/permission model
+(`app.auth.permissions`), and a centralized authorization check (`app.auth.service`). See
+`docs/SECURITY.md` for the full model and its explicit demo-auth boundary.
 """

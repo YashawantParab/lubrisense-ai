@@ -8,20 +8,26 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Header, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.demo_tokens import DemoTokenProvider, InvalidTokenError
+from app.auth.models import Principal
+from app.auth.permissions import Permission
+from app.auth.service import AuthorizationService
 from app.core.config import Settings, get_settings
 from app.core.errors import ApplicationError
-from app.domain.enums import TenantStatus
+from app.domain.enums import AuditActorType, TenantStatus, UserRole
 from app.domain.models import Tenant
 from app.infrastructure.database import Database
 from app.infrastructure.redis_client import RedisClient
+from app.observability.http_metrics import HTTP_METRICS
 from app.repositories.tenant import TenantRepository
 
 TENANT_HEADER = "X-Tenant-ID"
+_FALLBACK_PRINCIPAL_USER_ID = "pre-auth-compat-principal"
 
 
 def get_app_settings() -> Settings:
@@ -97,3 +103,88 @@ async def get_current_tenant(
             "TENANT_INACTIVE", "Tenant is not active.", status_code=status.HTTP_403_FORBIDDEN
         )
     return tenant
+
+
+async def get_current_principal(
+    request: Request,
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    settings: Annotated[Settings, Depends(get_app_settings)],
+) -> Principal:
+    """Resolves the authenticated `Principal` for this request from an `Authorization:
+    Bearer <demo-token>` header, verified against `Settings.demo_auth_secret` (see
+    `app.auth.demo_tokens.DemoTokenProvider`).
+
+    *** DEMO AUTH BOUNDARY *** — see `docs/SECURITY.md`. When no token is presented:
+
+    - `AUTH_ENFORCEMENT_MODE=strict` (required in production, see
+      `Settings.model_post_init`): the request is rejected with 401.
+    - `AUTH_ENFORCEMENT_MODE=permissive` (the local/demo default): a full-access
+      fallback principal is returned, bound to the already-validated tenant. This is
+      what preserves backward compatibility with every pre-Phase-24 API caller — this
+      repository's own pre-Phase-24 test suite included — none of which ever sends an
+      Authorization header. It is not a bypass for a caller that *does* present a
+      token: a token whose `tenant_id` claim does not match the resolved tenant is
+      always rejected (403), in both modes.
+    """
+    authorization = request.headers.get("Authorization")
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            HTTP_METRICS.increment("auth_failures_total")
+            raise ApplicationError(
+                "AUTH_HEADER_MALFORMED",
+                "Authorization header must be 'Bearer <token>'.",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+        provider = DemoTokenProvider(
+            secret=settings.demo_auth_secret, ttl_seconds=settings.demo_token_ttl_seconds
+        )
+        try:
+            principal = provider.verify(token)
+        except InvalidTokenError as exc:
+            HTTP_METRICS.increment("auth_failures_total")
+            raise ApplicationError(
+                "AUTH_TOKEN_INVALID", str(exc), status_code=status.HTTP_401_UNAUTHORIZED
+            ) from exc
+        if principal.tenant_id != tenant.id:
+            HTTP_METRICS.increment("auth_failures_total")
+            raise ApplicationError(
+                "AUTH_TENANT_MISMATCH",
+                "Token tenant does not match the requested tenant context.",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+        return principal
+
+    if settings.auth_enforcement_mode == "strict":
+        HTTP_METRICS.increment("auth_failures_total")
+        raise ApplicationError(
+            "AUTH_REQUIRED",
+            "An 'Authorization: Bearer <token>' header is required.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    return Principal(
+        user_id=_FALLBACK_PRINCIPAL_USER_ID,
+        tenant_id=tenant.id,
+        role=UserRole.ADMIN,
+        display_name="Pre-auth compatibility principal",
+        actor_type=AuditActorType.HUMAN,
+    )
+
+
+def require_permission(
+    permission: Permission,
+) -> Any:
+    """A FastAPI dependency factory: `Depends(require_permission(Permission.X))`
+    resolves the current principal and raises 403 if it lacks `permission` (Phase 24
+    brief §24.4/§24.7). Returns the `Principal` on success so route handlers that need
+    the caller's identity (e.g. for `AuditService.record`) do not need a second
+    dependency."""
+
+    async def _check(
+        principal: Annotated[Principal, Depends(get_current_principal)],
+    ) -> Principal:
+        AuthorizationService.require(principal, permission)
+        return principal
+
+    return Depends(_check)
