@@ -57,7 +57,7 @@ EXPOSE 8000
 VOLUME ["/data"]
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=15s \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+  CMD python -c "import os, urllib.request; urllib.request.urlopen(f\"http://localhost:{os.getenv('PORT', '8000')}/health\")" || exit 1
 
 # Phase 33 perf finding: a single uvicorn worker pinned request handling to one CPU
 # core, measured at ~103% CPU under 10 concurrent requests while the Docker host had 12
@@ -67,4 +67,4 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=15s \
 # docs/PERFORMANCE.md), not the full host core count. Known consequence: in-process
 # singletons (e.g. the Phase 27 LLM circuit breaker) become per-worker rather than
 # globally shared — still functionally correct, just independently tracked per worker.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-4}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${UVICORN_WORKERS:-4}"]
