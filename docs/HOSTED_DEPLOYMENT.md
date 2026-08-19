@@ -157,7 +157,7 @@ and needs no code change — only correct configuration:
 | `DEMO_AUTH_SECRET` | *(generated secret)* | Required, must not be the insecure default. |
 | `CORS_ALLOWED_ORIGINS` | `https://<your-frontend>.vercel.app` | Must not be `*` — enforced. Comma-separate if you also serve a preview domain. |
 | `TRUSTED_HOSTS` | `<your-backend>.onrender.com` | Must not be `*` — enforced. |
-| `REDIS_URL` | *(hosted Redis URL, if provisioned)* | See §7 — soft dependency; only `/ready` and nothing reviewer-facing actually needs it. |
+| `REDIS_URL` | *(hosted Redis URL, optional)* | See §7 — Redis is optional in `hosted_demo`: `/ready` reports it accurately but never fails overall readiness on its account, and nothing reviewer-facing actually needs it. |
 | `ML_ARTIFACTS_DIR` | `/tmp/ml-artifacts` | See §5 — an ephemeral, writable path; the registry creates it empty and correctly reports zero models, matching the already-honest local "no promoted model" state. |
 | `LOG_FORMAT` | `json` | Matches local/CI default. |
 | `APP_HOST` / `APP_PORT` | `0.0.0.0` / `8000` (or platform-assigned `$PORT`) | See §10. |
@@ -205,11 +205,13 @@ backend API process performs, and it tolerates a fully ephemeral filesystem (eph
 in fact the intended shape here — ephemeral, gracefully-empty). No other absolute or
 developer-machine-only path exists in the backend.
 
-`/ready` checks Redis in addition to Postgres (§below). Redis is otherwise unused by any
-reviewer-facing code path today — provisioning a small hosted Redis instance is the
-simplest way to make `/ready` fully accurate; omitting it leaves `/ready` reporting
-`not_ready` while the product itself remains fully functional (documented, not hidden —
-this is a health-check-accuracy question, not a reviewer-facing functionality gap).
+`/ready` checks Redis in addition to Postgres (§below). In `hosted_demo`, Redis is treated
+as an optional dependency (`app/services/health_service.py`): Postgres remains required,
+but a missing/unreachable Redis is reported honestly (`healthy: false`, `required: false`,
+`status: "unavailable_optional"` — never falsely `"healthy"`) without flipping overall
+readiness to `not_ready`. Redis is otherwise unused by any reviewer-facing code path
+today, so this reflects reality rather than papering over a real gap — every other
+environment (including `production`) keeps Redis required, unchanged from prior behavior.
 
 ## 8. CORS / API
 
@@ -250,14 +252,16 @@ application) — no in-app HTTPS-specific configuration is needed.
   uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers ${UVICORN_WORKERS:-2}
   ```
 - **Health/readiness**: `/health` (liveness — always 200 if the process is up) and
-  `/ready` (Postgres + Redis dependency check, 503 if either is unreachable) already
-  exist and need no change. Point the platform's health check at `/health` for
-  liveness/restart decisions; `/ready` is available for a more thorough check if the
-  platform supports a separate readiness probe.
+  `/ready` (Postgres required + Redis dependency check, 503 if Postgres is unreachable)
+  already exist and need no change. In `hosted_demo`, Redis is optional — its absence
+  or unavailability is reported but does not 503 `/ready` (§7). Point the platform's
+  health check at `/health` for liveness/restart decisions; `/ready` is available for a
+  more thorough check if the platform supports a separate readiness probe.
 - **Startup does not require Kafka/MQTT/Redis**: `app/main.py`'s `lifespan` only
   constructs `Database` and `RedisClient` — both are lazy (they do not connect until
   first use). The process starts and serves every reviewer-facing route with only
-  Postgres reachable; Redis's absence only affects `/ready`'s own accuracy (§7).
+  Postgres reachable; Redis's absence no longer affects `/ready`'s overall status in
+  `hosted_demo` (§7), only the per-dependency detail it reports.
 - A minimal `render.yaml` blueprint is included at the repository root as a starting
   point — adapt plan sizes/region/domain to your actual account before use; it has not
   been applied against a live Render account as part of this work (no external
@@ -272,13 +276,17 @@ logic run regardless of `APP_ENV`. Setting it to `hosted_demo`:
 - Triggers the same fail-fast safety validation `production` already had
   (`Settings.model_post_init`, extended in this work to cover both) — refuses to start with
   permissive auth, a default secret, or wildcard CORS/trusted-hosts.
+- Makes Redis an optional `/ready` dependency (`app/services/health_service.py`, §7) —
+  the only other place `hosted_demo` is branched on. Postgres stays required in every
+  environment, including `hosted_demo`.
 - Is otherwise purely informational (logged on startup, shown nowhere destructive).
 
 It does **not**, and must never: bypass RBAC/tenant boundaries, fabricate API responses,
 hardcode a frontend-visible value that should come from the backend, or skip evidence/
-provenance on any response. Nothing in `app/` branches business logic on `hosted_demo` —
-only `Settings.model_post_init`'s safety checks and this document's deployment
-configuration differ from local development.
+provenance on any response. Outside of `/ready`'s dependency requirements and
+`Settings.model_post_init`'s safety checks, nothing in `app/` branches business logic on
+`hosted_demo` — this document's deployment configuration is the rest of the difference
+from local development.
 
 ## 12. Startup / seed
 
@@ -294,9 +302,11 @@ running it multiple times in immediate succession without producing duplicate ro
 - The industrial ingestion path (simulator/MQTT/Kafka/workers) is not publicly hosted —
   by design (see "Architecture" above), not an oversight. It remains fully runnable
   locally (`docker compose up -d`) for anyone who clones the repository.
-- Redis is a soft dependency (§7) — without a provisioned hosted Redis, `/ready` reports
-  `not_ready` while the product itself remains fully functional; provisioning a small
-  hosted Redis instance resolves this cleanly if desired.
+- Redis is an optional dependency in `hosted_demo` (§7) — without a provisioned hosted
+  Redis, `/ready` still reports `ready` (Postgres is the only required dependency) and
+  reports Redis's real, honest status (`unavailable_optional`) rather than either
+  failing readiness or falsely claiming Redis is healthy; provisioning a small hosted
+  Redis instance is optional, not required to make `/ready` report `ready`.
 - The flagship story's recovery-phase post-action condition has a known, documented
   ~1-in-8 timing-sensitive flake (Phase 39 addendum to ADR-172 in
   `TECHNICAL_DECISIONS.md`) — the incident and maintenance case still resolve/complete
