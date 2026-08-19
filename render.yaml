@@ -14,8 +14,8 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
-    plan: starter
-    region: oregon
+    plan: free
+    region: frankfurt
     healthCheckPath: /health
     dockerCommand: >-
       sh -c "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers ${UVICORN_WORKERS:-2}"
