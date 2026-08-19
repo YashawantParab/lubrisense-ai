@@ -37,6 +37,10 @@ demonstrates.
 **New here? Start with `docs/DEMO_GUIDE.md`** — a 60-90 second and a full 5-10 minute
 walkthrough of the flagship demo story, with real screenshots.
 
+**Deploying this as a public hosted demo?** See `docs/HOSTED_DEPLOYMENT.md` (Vercel +
+hosted FastAPI + hosted PostgreSQL/pgvector) and `docs/HOSTED_RELEASE_GATE.md` (pre-launch
+checklist).
+
 This repository uses synthetic telemetry throughout. Every synthetic component is
 explicitly labeled and built behind a replaceable interface so it can be swapped for a real
 industrial integration later without redesigning the platform — see `docs/ARCHITECTURE.md`

@@ -1,0 +1,42 @@
+# Render blueprint starter for the LubriSense AI hosted public demo backend.
+#
+# This is a starting point, not a verified, applied configuration — no external
+# deployment was performed as part of preparing this file (see docs/HOSTED_DEPLOYMENT.md).
+# Adapt plan/region/domain to your actual Render account before use. The frontend is
+# deployed separately on Vercel (docs/HOSTED_DEPLOYMENT.md §9), not defined here.
+#
+# Render injects $PORT at runtime; the Dockerfile's own CMD defaults to 8000, so this
+# blueprint overrides the start command to bind the platform-assigned port instead.
+
+services:
+  - type: web
+    name: lubrisense-backend-hosted-demo
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    dockerCommand: >-
+      sh -c "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers ${UVICORN_WORKERS:-2}"
+    envVars:
+      - key: APP_ENV
+        value: hosted_demo
+      - key: AUTH_ENFORCEMENT_MODE
+        value: strict
+      - key: DEMO_AUTH_SECRET
+        sync: false # set a real generated secret in the Render dashboard, never commit it
+      - key: DATABASE_URL
+        sync: false # set to the hosted Postgres connection string in the Render dashboard
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false # set to the real Vercel frontend origin, e.g. https://your-app.vercel.app
+      - key: TRUSTED_HOSTS
+        sync: false # set to the real backend hostname Render assigns/you configure
+      - key: REDIS_URL
+        sync: false # optional — see docs/HOSTED_DEPLOYMENT.md §7; omit if not provisioning Redis
+      - key: ML_ARTIFACTS_DIR
+        value: /tmp/ml-artifacts
+      - key: LOG_FORMAT
+        value: json
+      - key: UVICORN_WORKERS
+        value: "2"

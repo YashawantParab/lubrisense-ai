@@ -3027,6 +3027,119 @@ re-audit gaps named above, which should be the first items picked up in any next
 
 ---
 
+## POST-ROADMAP HOSTED DEPLOYMENT PREPARATION
+
+Not a numbered roadmap phase. The Phase 0–39 roadmap above is complete and its numbering
+is unchanged by this entry. This is deployment-configuration work performed against the
+already-complete Phase 0–39 platform, in preparation for standing up a public,
+reviewer-facing hosted instance (Vercel frontend + hosted FastAPI backend + hosted
+PostgreSQL/pgvector) — it introduces no new product functionality, condition-intelligence
+capability, or business logic.
+
+Status: **LOCAL PREPARATION COMPLETE — NOT DEPLOYED.** No external deployment has been
+performed. Everything below was verified locally against equivalent conditions.
+
+**What changed**:
+
+- **ADR-175** (`TECHNICAL_DECISIONS.md`) — the two TimescaleDB-specific migration
+  statements (`CREATE EXTENSION timescaledb` in `0001_initial_schema.py`,
+  `create_hypertable()` in `1f9fe8b7b163_telemetry_pipeline.py`) now probe the target
+  server first (`pg_available_extensions` / `pg_extension`) and skip cleanly when
+  TimescaleDB is unavailable, leaving `telemetry` as a standard Postgres table. No other
+  schema change, no application query-code change, no behavior change on the existing
+  TimescaleDB-backed reference/local/CI path (ADR-014 unchanged). Verified: the full
+  15-migration chain (`alembic upgrade head`) run cleanly against a real
+  `pgvector/pgvector:pg16` container with pgvector present and TimescaleDB genuinely
+  absent, plus a real pgvector cosine-similarity query against a `vector(256)` column
+  (the exact `knowledge_chunk.embedding` shape).
+- **`backend/app/core/config.py`** — hosted-mode settings/validation: `Settings.
+  model_post_init` fail-fast checks extended to also cover `APP_ENV=hosted_demo` (not
+  only `production`), refusing to boot with permissive auth, a default secret, or
+  wildcard CORS/trusted-hosts. Covered by the new `backend/tests/test_config.py`.
+- **`backend/scripts/seed_hosted_demo.py`** (new) — orchestrates, in order: base
+  tenant/customer/site/plant/line/machine hierarchy → approved knowledge corpus → the
+  flagship machine's full story (telemetry → baselines → rule findings → state estimates
+  → condition/decision → incident → maintenance case → recovery → resolved incident) →
+  `seed_healthy_machine.py` → a CMMS draft and device/configuration snapshot on the
+  flagship's completed maintenance case. Idempotent — every sub-script verified safe to
+  re-run.
+- **`backend/scripts/seed_healthy_machine.py`** (new) — a second real machine (Motor 001)
+  seeded with only calm, in-range telemetry, landing on a genuine `NORMAL_OPERATION` read
+  with no incident, giving the fleet a "most machines look like this" comparison point.
+- **`render.yaml`** (new) — a minimal hosted-backend deploy blueprint; not applied against
+  a live Render account as part of this work.
+- **`docs/HOSTED_DEPLOYMENT.md`** (new) — architecture, what is deliberately not publicly
+  hosted (edge simulator, MQTT, Kafka, all background workers — the industrial ingestion
+  path remains fully intact for local development, only left un-deployed for the hosted
+  demo), environment configuration, hosted-demo mode, startup/seed procedure, known
+  limitations, and rollback guidance.
+- **`docs/HOSTED_RELEASE_GATE.md`** (new) — a pre-launch checklist against real public
+  URLs (infrastructure, security, reviewer-facing functionality). Not marked passed —
+  nothing has been checked against a real deployed URL yet.
+- **`TECHNICAL_DECISIONS.md` addendum to ADR-172** — the previously-documented ~1-in-8
+  flagship-seeding timing flake (state-estimation replay anchored to wall-clock time,
+  Phase 39 addendum) showed a stricter failure mode ("no incident created") under severe
+  concurrent system load (a resource-starved full pytest run plus heavy Docker CPU
+  contention on the same host, encountered during this work). Confirmed
+  non-reproducible once system load returned to normal. Mitigation: avoid running the
+  full test suite concurrently with demo seeding. Not fixed further — same root cause and
+  same eventual fix path as the existing Phase 39 addendum.
+
+**What did not change**: no Phase 0–39 roadmap item, numbering, or acceptance criterion.
+No condition-intelligence, decision-intelligence, or workflow-intelligence logic was
+touched. The full local Docker Compose stack (simulator, MQTT, Kafka, all workers,
+TimescaleDB) remains the reference architecture and is unaffected.
+
+**Focused deployment-prep test run (final, this pass)** — all local, no external
+deployment:
+
+- `backend/tests/test_config.py` (14 tests, hosted-mode fail-fast validation): **14/14
+  passed.**
+- `ruff format --check` / `ruff check` on every file touched by this work
+  (`app/core/config.py`, `scripts/seed_hosted_demo.py`, `scripts/seed_healthy_machine.py`,
+  `tests/test_config.py`, both edited Alembic migrations): three files were not
+  format-clean going in (`config.py` and both new seed scripts had never been run through
+  `ruff format`); reformatted in place, then re-verified clean. Lint: all clean
+  throughout, no fixes needed.
+- `mypy app`: **no issues found in 388 source files** (full backend package, not just the
+  changed files — confirms this work introduced no typing regressions).
+- **ADR-175 re-verified live**: started a real `pgvector/pgvector:pg16` container (no
+  TimescaleDB), confirmed via `pg_available_extensions`/`pg_extension` that `vector` is
+  present and `timescaledb` is genuinely absent, then ran the full 15-migration chain
+  (`alembic upgrade head`) against it — completed cleanly to head. Confirmed afterward:
+  `telemetry` exists as a standard table (querying
+  `timescaledb_information.hypertables` errors with "relation does not exist," as
+  expected), and a real pgvector cosine-distance query against a `vector` column
+  succeeded. Container torn down after verification.
+- Repository-wide secret-pattern scan of every file this work touched: clean.
+- The two new seed scripts (`seed_hosted_demo.py`, `seed_healthy_machine.py`) were
+  syntax/AST-checked; running them end-to-end requires a fully seeded local stack and was
+  not re-executed in this pass (their idempotency and orchestration were already verified
+  when they were written, per `docs/HOSTED_DEPLOYMENT.md` §2 and §"Local hosted-mode
+  verification").
+
+See `docs/HOSTED_RELEASE_GATE.md` for the full local-vs-real-URL checklist breakdown.
+
+**Not done / explicitly out of scope**: any actual deployment to Vercel/Render/a hosted
+database (`docs/HOSTED_RELEASE_GATE.md` remains unchecked pending that); application-level
+rate limiting (flagged as a reasonable follow-up, not a deployment-configuration change);
+`alembic downgrade -1` has not been exercised against a hosted target.
+
+### Readiness verdict: LOCALLY READY FOR EXTERNAL DEPLOYMENT, NOT YET DEPLOYED
+
+Every deployment-prep claim in this section has now been independently re-verified live
+(not just re-read): the hosted-mode config safety tests pass, the full backend package
+type-checks and lints clean, and — the load-bearing claim, ADR-175 — the complete
+migration chain provably runs to head on a real target with TimescaleDB genuinely absent
+and pgvector genuinely present. Nothing found in this pass blocks starting an actual
+external deployment. What remains is exclusively the external step itself and its
+checklist, both intentionally not performed here: provision the real Vercel/Render/hosted-
+Postgres resources, run `alembic upgrade head` and `seed_hosted_demo.py` against the real
+hosted database, then work through every item in `docs/HOSTED_RELEASE_GATE.md` against the
+real public URLs before sharing the link with reviewers.
+
+---
+
 # Completed Setup
 
 - Git repository initialized
@@ -3947,3 +4060,7 @@ starting Phase 11. Do not implement model training or inference as part of Phase
 
 2026-08-18 — Phase 10 feature engineering implemented; final regression and live-stack
 verification record follows in the Phase 10 completion report.
+
+2026-08-19 — POST-ROADMAP HOSTED DEPLOYMENT PREPARATION section added (after Phase 39;
+Phase 0–39 roadmap numbering unchanged). Focused deployment-prep tests re-run this pass:
+see that section for full results and the readiness verdict.

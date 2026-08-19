@@ -218,13 +218,28 @@ def upgrade() -> None:
     # --- Phase 6: TimescaleDB hypertable + time-range query indexes (ADR-054) ---
     # source_timestamp (event time) is the partitioning column — see ADR-054 for why.
     # 1-day chunks: a deliberate demo/reference-scale choice, not a universal recommendation.
-    op.execute(
-        "SELECT create_hypertable("
-        "'telemetry', 'source_timestamp', "
-        "chunk_time_interval => INTERVAL '1 day', "
-        "create_default_indexes => FALSE"
-        ")"
+    # `create_hypertable()` only exists when the `timescaledb` extension is actually
+    # active in *this* database (not just available on the server) — checking
+    # `pg_extension` (rather than re-checking `pg_available_extensions`, as migration
+    # 0001 does before attempting `CREATE EXTENSION`) reflects whether that migration
+    # actually succeeded in creating it here. On a standard hosted Postgres target
+    # without TimescaleDB, `telemetry` stays a normal (already-created, above) Postgres
+    # table — every query against it is plain SQL already (no `time_bucket()`/continuous
+    # aggregates/compression or retention policies anywhere in application code), so this
+    # is the only fork needed for the whole table (ADR-175 in TECHNICAL_DECISIONS.md).
+    timescaledb_active = bool(
+        op.get_bind()
+        .execute(sa.text("SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'"))
+        .scalar()
     )
+    if timescaledb_active:
+        op.execute(
+            "SELECT create_hypertable("
+            "'telemetry', 'source_timestamp', "
+            "chunk_time_interval => INTERVAL '1 day', "
+            "create_default_indexes => FALSE"
+            ")"
+        )
     op.create_index(
         "ix_telemetry_tenant_sensor_time",
         "telemetry",

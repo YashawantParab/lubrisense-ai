@@ -20,10 +20,24 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # TimescaleDB and pgvector must both be present in the target Postgres image.
-    # See TECHNICAL_DECISIONS.md ADR-014 for the chosen local image and why both
-    # extensions coexist cleanly in it.
-    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+    # TimescaleDB and pgvector are both present in the reference local/CI Postgres image
+    # (TECHNICAL_DECISIONS.md ADR-014) and are created unconditionally there. A standard
+    # hosted PostgreSQL target (e.g. a managed Render/Supabase/RDS instance prepared for
+    # the public hosted demo — see docs/HOSTED_DEPLOYMENT.md) commonly ships pgvector but
+    # not TimescaleDB, whose shared library must be installed at the server level before
+    # `CREATE EXTENSION` can succeed at all — attempting it unconditionally would abort
+    # this migration outright on such a target. `pg_available_extensions` lists what the
+    # server has the library for, regardless of tenant/schema, so checking it first lets
+    # this migration degrade to a standard (non-hypertable) `telemetry` table on hosted
+    # Postgres without changing anything about the reference TimescaleDB-backed path (see
+    # ADR-175 in TECHNICAL_DECISIONS.md).
+    timescaledb_available = bool(
+        op.get_bind()
+        .execute(sa.text("SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'"))
+        .scalar()
+    )
+    if timescaledb_available:
+        op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     op.create_table(

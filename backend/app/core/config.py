@@ -13,9 +13,19 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-Environment = Literal["local", "development", "staging", "production"]
+#: `hosted_demo` is a deployment/configuration distinction, not a parallel product
+#: implementation (docs/HOSTED_DEPLOYMENT.md) — it is the public-reviewer-facing hosted
+#: deployment of this exact platform, running on persisted pre-seeded demo data instead
+#: of the continuous industrial ingestion path (simulator/MQTT/Kafka/workers), which the
+#: hosted demo does not run. It shares every one of `production`'s fail-fast safety
+#: checks below (`model_post_init`) — a public demo carries the same auth/CORS/secret
+#: risk surface as production even though it is explicitly not a claim of real
+#: industrial deployment readiness (CLAUDE.md's Industrial Adoption Boundary,
+#: docs/INDUSTRIAL_ADOPTION.md).
+Environment = Literal["local", "development", "staging", "production", "hosted_demo"]
 
 _INSECURE_DEFAULT_DEMO_AUTH_SECRET = "local-dev-insecure-demo-auth-secret-do-not-use-in-production"
+_STRICT_SAFETY_ENVIRONMENTS = ("production", "hosted_demo")
 
 
 class Settings(BaseSettings):
@@ -122,9 +132,7 @@ class Settings(BaseSettings):
 
     # Phase 10: periodic materialization of selected point-in-time feature vectors.
     feature_worker_health_port: int = Field(default=8086, alias="FEATURE_WORKER_HEALTH_PORT")
-    feature_worker_cycle_seconds: float = Field(
-        default=900.0, alias="FEATURE_WORKER_CYCLE_SECONDS"
-    )
+    feature_worker_cycle_seconds: float = Field(default=900.0, alias="FEATURE_WORKER_CYCLE_SECONDS")
 
     # Phase 11: the ml-service model registry's base directory. Training
     # (`ml-service/scripts`/`ml_service.training.*`) runs on the host and writes here;
@@ -169,21 +177,22 @@ class Settings(BaseSettings):
 
     def model_post_init(self, __context: object) -> None:
         """Fail fast on invalid production-relevant configuration (Phase 23 brief
-        §23.7) rather than silently starting with an unsafe default."""
-        if self.app_env == "production":
+        §23.7) rather than silently starting with an unsafe default. Applies identically
+        to `hosted_demo` — a publicly reachable deployment carries the same auth/CORS/
+        secret risk surface as `production`, even though it is a demo, not a claim of
+        real industrial deployment readiness (docs/HOSTED_DEPLOYMENT.md)."""
+        if self.app_env in _STRICT_SAFETY_ENVIRONMENTS:
             problems: list[str] = []
             if self.auth_enforcement_mode != "strict":
-                problems.append("AUTH_ENFORCEMENT_MODE must be 'strict' in production")
+                problems.append(f"AUTH_ENFORCEMENT_MODE must be 'strict' in {self.app_env}")
             if self.demo_auth_secret == _INSECURE_DEFAULT_DEMO_AUTH_SECRET:
-                problems.append("DEMO_AUTH_SECRET must be overridden in production")
+                problems.append(f"DEMO_AUTH_SECRET must be overridden in {self.app_env}")
             if "*" in self.cors_allowed_origins_list:
-                problems.append("CORS_ALLOWED_ORIGINS must not be '*' in production")
+                problems.append(f"CORS_ALLOWED_ORIGINS must not be '*' in {self.app_env}")
             if "*" in self.trusted_hosts_list:
-                problems.append("TRUSTED_HOSTS must not be '*' in production")
+                problems.append(f"TRUSTED_HOSTS must not be '*' in {self.app_env}")
             if problems:
-                raise ValueError(
-                    "Invalid production configuration: " + "; ".join(problems)
-                )
+                raise ValueError(f"Invalid {self.app_env} configuration: " + "; ".join(problems))
 
     @property
     def pipeline_supported_schema_versions_set(self) -> set[str]:

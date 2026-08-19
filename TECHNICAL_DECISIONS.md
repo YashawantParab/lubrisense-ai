@@ -8900,21 +8900,30 @@ Any future scenario needing *both* `PRESSURE_ABOVE_CONTEXTUAL_BASELINE` and
 same `AMBIGUOUS_CONDITION` outcome until this is fixed properly. Flagged here so it isn't
 mistaken for a data-seeding mistake next time.
 
-**Phase 39 addendum**: the recovery phase's state-estimation replay (which the workaround
-in `scripts/seed_flagship_story.py` also depends on to reverse each Kalman filter's
-established uphill momentum after the simulated fix) is itself timing-sensitive — its tick
-`as_of` timestamps are anchored to real wall-clock time captured partway through the
-script's execution, so their exact spacing varies slightly run to run with real system
-load. Observed empirically: roughly 1 in 8 `make demo-reset` runs lands the post-action
-condition on `AMBIGUOUS_CONDITION` (WARNING-severity incident) instead of the intended
-`NORMAL_OPERATION` (HIGH-severity incident) — the incident still resolves correctly and the
-maintenance case still completes with `TRUE_POSITIVE` feedback either way (`Maintenance
-Service.complete()` resolves unconditionally on the technician's classification, not on
-the re-check's outcome — see its own docstring), so the workflow proof stays intact, but
-the cosmetic "everything reads healthy again" polish occasionally doesn't land. Simply
-re-running `make demo-reset` resolves it. Not fixed further this session — a fully robust
-fix needs either a genuinely time-independent state-estimation seeding approach or the
-ADR-172 synthesis fix itself (which would make the recovery-phase workaround unnecessary).
+**Phase 39 addendum**: both the main story's and the recovery phase's state-estimation
+replays (`scripts/seed_flagship_story.py`) are timing-sensitive — their tick `as_of`
+timestamps are anchored to real wall-clock time captured at various points during the
+script's execution, so exact tick spacing varies run to run with real system load.
+Observed two distinct manifestations, both traced to this same root cause: (1) under
+normal system load, roughly 1 in 8 runs lands the recovery phase's post-action condition
+on `AMBIGUOUS_CONDITION` (WARNING-severity incident) instead of the intended
+`NORMAL_OPERATION` (HIGH-severity incident) — the incident still resolves correctly and
+the maintenance case still completes with `TRUE_POSITIVE` feedback either way
+(`MaintenanceService.complete()` resolves unconditionally on the technician's
+classification, not on the re-check's outcome), so the workflow proof stays intact, only
+the cosmetic "everything reads healthy again" polish occasionally doesn't land; (2) under
+*severe* concurrent system load (observed during the POST-ROADMAP HOSTED DEPLOYMENT
+PREPARATION work: two consecutive runs while a 29-minute, resource-starved full pytest
+run and heavy Docker container CPU contention were both happening on the same host) the
+earlier, main-story debounce/tick timing can be pushed far enough off that no fault
+hypothesis is reached at all ("No incident created" — a stricter failure than (1), but the
+same underlying cause, and confirmed non-reproducible once system load returned to
+normal: the very next isolated run produced a clean `HIGH`-confidence incident). Simply
+re-running the seed script resolves either case. Not fixed further during this work — a
+fully robust fix needs either a genuinely time-independent state-estimation seeding
+approach or the ADR-172 synthesis fix itself (which would make the recovery-phase
+workaround unnecessary). A practical mitigation confirmed effective: avoid running other
+heavy concurrent database work (e.g. the full test suite) while seeding demo data.
 
 ### Revisit When
 
@@ -9048,6 +9057,82 @@ revisited before any claim of production-scale telemetry visualization.
 
 If/when a machine's real (non-demo) telemetry volume grows large enough that even 2000 rows
 no longer covers a meaningful recent window per measurement type.
+
+---
+
+# ADR-175 — Migrations Degrade to Standard PostgreSQL When TimescaleDB Is Unavailable
+
+### Status
+
+ACCEPTED
+
+### Context
+
+Preparing the release candidate for a public hosted demo (`docs/HOSTED_DEPLOYMENT.md`)
+requires the backend to run against a standard hosted PostgreSQL + pgvector target (e.g.
+a managed Render/Supabase/RDS instance) rather than the reference `timescale/
+timescaledb-ha:pg16` image used locally/CI (ADR-014). Auditing every migration and every
+application query found exactly two TimescaleDB-specific operations in the whole
+codebase, both in migrations, none in application query code: `CREATE EXTENSION
+timescaledb` (migration `0001`) and `SELECT create_hypertable('telemetry', ...)`
+(migration `1f9fe8b7b163`). No `time_bucket()`, continuous aggregate, compression
+policy, or retention policy exists anywhere in `backend/app/` — every query against
+`telemetry` is already plain SQL (`WHERE`/`ORDER BY` on `source_timestamp`), identical
+whether the table is a hypertable or a standard table. `CREATE EXTENSION timescaledb`
+unconditionally aborts the entire migration chain on a target whose Postgres server does
+not have the TimescaleDB shared library installed — which most standard hosted Postgres
+offerings do not.
+
+### Decision
+
+Both migrations now check the server before attempting anything TimescaleDB-specific:
+migration `0001` queries `pg_available_extensions` (what the *server* has the library
+for) before attempting `CREATE EXTENSION timescaledb`; migration `1f9fe8b7b163` queries
+`pg_extension` (what is actually *active in this database*, i.e. whether `0001`'s attempt
+succeeded) before calling `create_hypertable()`. On a target without TimescaleDB,
+`telemetry` is created (by the same `op.create_table()` call as before, unchanged) and
+simply stays a standard Postgres table — no other schema change, no query-code change,
+no behavior change on the existing reference TimescaleDB-backed path.
+
+### Alternatives Considered
+
+Maintaining two separate migration histories (one Timescale, one standard) — rejected:
+doubles migration-maintenance burden forever for two SQL statements that only ever
+executed once, at initial schema creation, and would risk the two histories silently
+drifting apart on every future migration.
+
+Dropping TimescaleDB from the reference architecture entirely — rejected: it is a real,
+intentional architecture choice for telemetry-at-scale (ADR-014) and remains the
+reference target; the hosted demo is explicitly a *deployment* variant, not a redesign
+(CLAUDE.md's Industrial Adoption Boundary).
+
+### Why This Option
+
+Verified directly, not just reasoned about: ran the full migration chain (`alembic
+upgrade head`, all 15 migrations) against a real `pgvector/pgvector:pg16` container — a
+standard Postgres image with pgvector but genuinely no TimescaleDB
+(`pg_available_extensions` confirms `vector` present, `timescaledb` absent) — and it
+completed cleanly to head. Confirmed the resulting `telemetry` table is a normal table
+with the same composite primary key and indexes as the TimescaleDB path, and confirmed a
+real pgvector cosine-similarity query against a `vector(256)` column (the exact
+`knowledge_chunk.embedding` column shape) works correctly.
+
+### Consequences
+
+The hosted public demo can run on any standard PostgreSQL + pgvector target. Telemetry at
+the hosted demo's actual scale (a handful of pre-seeded machines' worth of rows, not a
+live multi-tenant fleet) does not need hypertable chunking to perform acceptably: query
+code is unaffected either way, and the demo does not run continuous high-volume ingestion
+(`docs/HOSTED_DEPLOYMENT.md`). The reference/local/CI TimescaleDB-backed path is
+completely unchanged — same extension, same hypertable, same chunk interval, same
+behavior as before this ADR.
+
+### Revisit When
+
+If the hosted demo's telemetry volume or query pattern ever changes such that hypertable
+partitioning would matter for it too — at that point, either pick a hosted Postgres
+provider that does support TimescaleDB, or reconsider whether the hosted demo should stay
+on pre-seeded static data at all (its current design, see `docs/HOSTED_DEPLOYMENT.md`).
 
 ---
 
