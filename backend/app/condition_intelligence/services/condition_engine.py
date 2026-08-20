@@ -314,9 +314,26 @@ class ConditionEngine:
         found live: collapsing "checked, found nothing abnormal" into "nothing was
         checked" misreported a genuinely healthy, fully-instrumented machine as
         `INSUFFICIENT_EVIDENCE`). Only a meaningfully deteriorating, trustworthy estimate
-        gets a fault-hinting `condition_hint`; everything else abstains (`WEAK`,
-        `condition_hint=None`) or corroborates `NORMAL_OPERATION` (`SUPPORTING`) —
-        `WEAK` items are never tallied either way (`synthesis._TALLIED_STRENGTHS`)."""
+        gets a fault-hinting `condition_hint`; a genuinely low, near-baseline level
+        corroborates `NORMAL_OPERATION` (`SUPPORTING`) — `WEAK` items are never tallied
+        either way (`synthesis._TALLIED_STRENGTHS`).
+
+        A STABLE trend at an ALREADY meaningfully elevated level abstains (`WEAK`) rather
+        than either of those: STABLE only means "not currently changing", not "healthy",
+        so casting it as `NORMAL_OPERATION` support is wrong the moment the level itself
+        is meaningfully elevated (a real bug — a state estimate that had climbed to a
+        sustained elevated plateau was voting `NORMAL_OPERATION` purely because its trend
+        had gone STABLE, contradicting co-active fault evidence from the same window and
+        forcing a spurious `AMBIGUOUS_CONDITION` read instead of the single fault
+        hypothesis the rest of the evidence actually supported). But a single fresh
+        estimate reaching a modestly elevated level straight from a cold, uninformative
+        prior is not yet trustworthy fault evidence either (this filter's own
+        `minimum_observations: 1` policy lets uncertainty read LOW after just one
+        real observation, well before the level has had time to settle) — so this case
+        abstains rather than voting a specific fault, landing on the same
+        "checked, nothing definitively voted" `NORMAL_OPERATION`-at-`MODERATE`-confidence
+        path `synthesize()` already uses when sources were checked but nothing voted
+        either way."""
         base = f"State estimate {row.state_type.value}: level={row.state_value:.3f}"
 
         if row.prediction_only or row.uncertainty.value == "HIGH":
@@ -331,11 +348,10 @@ class ConditionEngine:
                 ),
             )
 
-        is_meaningful_deterioration = (
-            row.trend.value == "DETERIORATING"
-            and abs(row.state_value) >= self._policy.state_estimate.minimum_meaningful_level
+        is_meaningfully_elevated = (
+            abs(row.state_value) >= self._policy.state_estimate.minimum_meaningful_level
         )
-        if is_meaningful_deterioration:
+        if row.trend.value == "DETERIORATING" and is_meaningfully_elevated:
             condition_hint = (
                 "LUBRICATION_DELIVERY_DEGRADATION"
                 if row.state_type.value == "LUBRICATION_DELIVERY_STATE"
@@ -347,6 +363,19 @@ class ConditionEngine:
                 strength="SUPPORTING",
                 condition_hint=condition_hint,
                 description=f"{base}, trend=DETERIORATING, uncertainty={row.uncertainty.value}",
+            )
+
+        if row.trend.value == "STABLE" and is_meaningfully_elevated:
+            return EvidenceItem(
+                source_type="STATE_ESTIMATE",
+                source_id=str(row.id),
+                strength="WEAK",
+                condition_hint=None,
+                description=(
+                    f"{base}, trend=STABLE, uncertainty={row.uncertainty.value} "
+                    "(elevated but no longer actively worsening — not confidently normal "
+                    "or confidently a distinct active fault)."
+                ),
             )
 
         return EvidenceItem(

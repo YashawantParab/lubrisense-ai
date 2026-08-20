@@ -20,8 +20,10 @@ from app.domain.enums import (
     RuleFindingState,
     RuleFindingType,
     SensorType,
+    StateType,
 )
 from app.domain.models import RuleFinding
+from tests.incidents.helpers import stable_state_estimate
 from tests.rules_engine.helpers import build_machine_with_topology, make_topology_sensor
 
 
@@ -193,3 +195,80 @@ async def test_assess_majority_unusable_sensors_is_quality_limitation(
     engine = ConditionEngine(db_session)
     assessment = await engine.assess(tenant.id, machine.id)
     assert assessment.condition_type.value == "SENSOR_OR_DATA_QUALITY_LIMITATION"
+
+
+@pytest.mark.asyncio
+async def test_stable_elevated_state_estimate_does_not_block_delivery_bearing_coexistence(
+    db_session: AsyncSession,
+) -> None:
+    """Regression test for the hosted-Neon flagship-seed blocker: a `LUBRICATION_DELIVERY_
+    STATE` estimate that has already climbed to a meaningfully elevated level and then
+    plateaued (STABLE — a Kalman filter's evidence channel can fully saturate against a
+    freshly-computed, tightly-clustered contextual baseline within moments of a restriction
+    developing, well before the filter's *rate* crosses the DETERIORATING threshold) must
+    not cast a `NORMAL_OPERATION` vote that turns co-active, compatible pressure + bearing
+    rule-finding evidence into a spurious `AMBIGUOUS_CONDITION` instead of the single
+    `DEVELOPING_RESTRICTION_PATTERN` hypothesis the rest of the evidence actually supports
+    (Phase 13 brief §13.10's delivery+bearing coexistence carve-out). Reproduces the exact
+    evidence shape `seed_flagship_story.py` produced against a freshly migrated Postgres
+    database with no prior baseline history."""
+    tenant, machine, _system, circuit, _bearing = await build_machine_with_topology(db_session)
+    await make_topology_sensor(db_session, tenant, SensorType.PRESSURE, circuit_id=circuit.id)
+    await _active_rule_finding(
+        db_session,
+        tenant_id=tenant.id,
+        machine_id=machine.id,
+        finding_type=RuleFindingType.PRESSURE_ABOVE_CONTEXTUAL_BASELINE,
+        severity=RuleFindingSeverity.HIGH,
+    )
+    await _active_rule_finding(
+        db_session,
+        tenant_id=tenant.id,
+        machine_id=machine.id,
+        finding_type=RuleFindingType.BEARING_TEMPERATURE_ABOVE_CONTEXTUAL_BASELINE,
+        severity=RuleFindingSeverity.HIGH,
+    )
+    # Meaningfully elevated (well above policy's minimum_meaningful_level=0.15) but STABLE
+    # — the filter has already saturated and stopped rising, exactly as observed on a
+    # freshly seeded database.
+    await stable_state_estimate(
+        db_session,
+        tenant_id=tenant.id,
+        machine_id=machine.id,
+        state_type=StateType.LUBRICATION_DELIVERY_STATE,
+        state_value=0.54,
+    )
+
+    engine = ConditionEngine(db_session)
+    assessment = await engine.assess(tenant.id, machine.id)
+
+    assert assessment.condition_type.value == "DEVELOPING_RESTRICTION_PATTERN"
+    assert assessment.condition_type.value != "AMBIGUOUS_CONDITION"
+    assert any("bearing" in why.lower() for why in assessment.evidence_summary["why"])
+
+
+@pytest.mark.asyncio
+async def test_stable_elevated_state_estimate_alone_stays_normal_operation(
+    db_session: AsyncSession,
+) -> None:
+    """Companion regression test: without any co-active fault evidence, a lone STABLE
+    state estimate that reads modestly elevated straight from a cold start (this filter's
+    own `minimum_observations: 1` policy lets uncertainty read LOW after a single real
+    observation, well before the level has had time to settle — exactly what
+    `seed_healthy_machine.py` produces on a fresh database) must still land on
+    `NORMAL_OPERATION`, not a fabricated fault — the healthy comparison machine must never
+    produce an incident."""
+    tenant, machine, _system, circuit, _bearing = await build_machine_with_topology(db_session)
+    await make_topology_sensor(db_session, tenant, SensorType.PRESSURE, circuit_id=circuit.id)
+    await stable_state_estimate(
+        db_session,
+        tenant_id=tenant.id,
+        machine_id=machine.id,
+        state_type=StateType.LUBRICATION_DELIVERY_STATE,
+        state_value=0.2,
+    )
+
+    engine = ConditionEngine(db_session)
+    assessment = await engine.assess(tenant.id, machine.id)
+
+    assert assessment.condition_type.value == "NORMAL_OPERATION"
