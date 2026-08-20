@@ -91,7 +91,7 @@ export default function MaintenanceCaseDetailPage({
   const canCmms = can("CMMS_MANAGE");
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10 lg:px-10">
       <DataState
         isPending={caseQuery.isPending}
         isError={caseQuery.isError}
@@ -131,227 +131,234 @@ export default function MaintenanceCaseDetailPage({
               />
             </SectionCard>
 
-            <SectionCard>
-              {canWrite ? (
-                <div className="flex flex-wrap gap-2">
-                  {(state === "REVIEW_REQUIRED" || state === "NOT_STARTED") && (
-                    <button
-                      type="button"
-                      onClick={() => plan.mutate()}
-                      disabled={plan.isPending}
-                      className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
-                    >
-                      {plan.isPending ? "Planning…" : "Plan"}
-                    </button>
-                  )}
-                  {state === "PLANNED" && (
-                    <button
-                      type="button"
-                      onClick={() => start.mutate()}
-                      disabled={start.isPending}
-                      className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
-                    >
-                      {start.isPending ? "Starting…" : "Start"}
-                    </button>
-                  )}
-                  {canCmms && (
-                    <button
-                      type="button"
-                      onClick={() => cmmsDraft.mutate()}
-                      disabled={cmmsDraft.isPending}
-                      className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                    >
-                      {cmmsDraft.isPending ? "Creating draft…" : "Create CMMS draft"}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-zinc-400 dark:text-zinc-600">
-                  Your current demo role cannot manage this maintenance case.
-                </p>
-              )}
-              {cmmsDraft.isSuccess && (
-                <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                  Draft {cmmsDraft.data.external_reference} ({humanize(cmmsDraft.data.status)}) —
-                  draft only, not submitted externally.
-                </p>
-              )}
-              {cmmsDraft.isError && (
-                <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-                  CMMS draft failed — the maintenance case itself is unaffected and the draft can be
-                  retried.
-                </p>
-              )}
-            </SectionCard>
-
-            <SectionCard title="Inspection checklist">
-              <ul className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
-                {caseQuery.data.checklist.map((item) => (
-                  <li key={item.text}>• {item.text}</li>
-                ))}
-              </ul>
-            </SectionCard>
-
-            {canWrite && (state === "IN_PROGRESS" || state === "AWAITING_VERIFICATION") && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <SectionCard title="Record technician finding">
-                  <select
-                    value={findingResult}
-                    onChange={(e) => setFindingResult(e.target.value)}
-                    className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                  >
-                    {FINDING_RESULTS.map((r) => (
-                      <option key={r} value={r}>
-                        {humanize(r)}
-                      </option>
+            <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
+              <div className="flex flex-col gap-8">
+                <SectionCard title="Inspection checklist">
+                  <ul className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                    {caseQuery.data.checklist.map((item) => (
+                      <li key={item.text}>• {item.text}</li>
                     ))}
-                  </select>
-                  <textarea
-                    value={findingNotes}
-                    onChange={(e) => setFindingNotes(e.target.value)}
-                    placeholder="Notes (synthetic demo finding)…"
-                    className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                    rows={2}
-                  />
-                  <button
-                    type="button"
-                    disabled={recordFinding.isPending || !findingNotes}
-                    onClick={() =>
-                      recordFinding.mutate(
-                        { result: findingResult, notes: findingNotes },
-                        { onSuccess: () => setFindingNotes("") },
-                      )
-                    }
-                    className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
-                  >
-                    {recordFinding.isPending ? "Recording…" : "Record finding"}
-                  </button>
+                  </ul>
                 </SectionCard>
 
-                <SectionCard title="Record maintenance action">
-                  <select
-                    value={actionType}
-                    onChange={(e) => setActionType(e.target.value)}
-                    className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                  >
-                    {ACTION_TYPES.map((a) => (
-                      <option key={a} value={a}>
-                        {humanize(a)}
-                      </option>
+                {canWrite && (state === "IN_PROGRESS" || state === "AWAITING_VERIFICATION") && (
+                  <div className="grid gap-6 sm:grid-cols-2">
+                    <SectionCard title="Record technician finding">
+                      <select
+                        value={findingResult}
+                        onChange={(e) => setFindingResult(e.target.value)}
+                        className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                      >
+                        {FINDING_RESULTS.map((r) => (
+                          <option key={r} value={r}>
+                            {humanize(r)}
+                          </option>
+                        ))}
+                      </select>
+                      <textarea
+                        value={findingNotes}
+                        onChange={(e) => setFindingNotes(e.target.value)}
+                        placeholder="Notes (synthetic demo finding)…"
+                        className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        rows={2}
+                      />
+                      <button
+                        type="button"
+                        disabled={recordFinding.isPending || !findingNotes}
+                        onClick={() =>
+                          recordFinding.mutate(
+                            { result: findingResult, notes: findingNotes },
+                            { onSuccess: () => setFindingNotes("") },
+                          )
+                        }
+                        className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {recordFinding.isPending ? "Recording…" : "Record finding"}
+                      </button>
+                    </SectionCard>
+
+                    <SectionCard title="Record maintenance action">
+                      <select
+                        value={actionType}
+                        onChange={(e) => setActionType(e.target.value)}
+                        className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                      >
+                        {ACTION_TYPES.map((a) => (
+                          <option key={a} value={a}>
+                            {humanize(a)}
+                          </option>
+                        ))}
+                      </select>
+                      <textarea
+                        value={actionNotes}
+                        onChange={(e) => setActionNotes(e.target.value)}
+                        placeholder="Notes (a human performed this action)…"
+                        className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        rows={2}
+                      />
+                      <button
+                        type="button"
+                        disabled={recordAction.isPending || !actionNotes}
+                        onClick={() =>
+                          recordAction.mutate(
+                            { action_type: actionType, notes: actionNotes },
+                            { onSuccess: () => setActionNotes("") },
+                          )
+                        }
+                        className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {recordAction.isPending ? "Recording…" : "Record action"}
+                      </button>
+                    </SectionCard>
+                  </div>
+                )}
+
+                <SectionCard title="What the technician found">
+                  <ul className="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+                    {(findings.data ?? []).map((f) => (
+                      <li key={f.id}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                            {f.observed_issue || humanize(f.result)}
+                          </span>
+                          <StatusPill tone={findingResultTone(f.result)}>
+                            {humanize(f.result)}
+                          </StatusPill>
+                        </div>
+                        {f.notes && (
+                          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                            {f.notes}
+                          </p>
+                        )}
+                      </li>
                     ))}
-                  </select>
-                  <textarea
-                    value={actionNotes}
-                    onChange={(e) => setActionNotes(e.target.value)}
-                    placeholder="Notes (a human performed this action)…"
-                    className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                    rows={2}
-                  />
-                  <button
-                    type="button"
-                    disabled={recordAction.isPending || !actionNotes}
-                    onClick={() =>
-                      recordAction.mutate(
-                        { action_type: actionType, notes: actionNotes },
-                        { onSuccess: () => setActionNotes("") },
-                      )
-                    }
-                    className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
-                  >
-                    {recordAction.isPending ? "Recording…" : "Record action"}
-                  </button>
+                    {(findings.data ?? []).length === 0 && (
+                      <li className="text-zinc-400 dark:text-zinc-500">None yet.</li>
+                    )}
+                  </ul>
+                </SectionCard>
+
+                <SectionCard title="Action taken">
+                  <ul className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                    {(actions.data ?? []).map((a) => (
+                      <li key={a.id}>
+                        {humanize(a.action_type)} — {a.notes}
+                      </li>
+                    ))}
+                    {(actions.data ?? []).length === 0 && (
+                      <li className="text-zinc-400 dark:text-zinc-500">None yet.</li>
+                    )}
+                  </ul>
                 </SectionCard>
               </div>
-            )}
 
-            {canWrite && (state === "IN_PROGRESS" || state === "AWAITING_VERIFICATION") && (
-              <SectionCard title="Complete case">
-                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  Requires an explicit feedback classification; runs a real, fresh post-action
-                  condition re-check rather than closing solely because this button was clicked.
-                </p>
-                <select
-                  value={classification}
-                  onChange={(e) => setClassification(e.target.value)}
-                  className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                >
-                  {FEEDBACK_CLASSIFICATIONS.map((c) => (
-                    <option key={c} value={c}>
-                      {humanize(c)}
-                    </option>
-                  ))}
-                </select>
-                <textarea
-                  value={completeNotes}
-                  onChange={(e) => setCompleteNotes(e.target.value)}
-                  placeholder="Completion notes…"
-                  className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                  rows={2}
-                />
-                <button
-                  type="button"
-                  disabled={complete.isPending}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        "Complete this case? This records final feedback and re-checks condition.",
-                      )
-                    )
-                      complete.mutate({ classification, notes: completeNotes });
-                  }}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {complete.isPending ? "Completing…" : "Complete case"}
-                </button>
-              </SectionCard>
-            )}
+              <div className="flex flex-col gap-6">
+                {canWrite ? (
+                  <div className="flex flex-wrap gap-2">
+                    {(state === "REVIEW_REQUIRED" || state === "NOT_STARTED") && (
+                      <button
+                        type="button"
+                        onClick={() => plan.mutate()}
+                        disabled={plan.isPending}
+                        className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {plan.isPending ? "Planning…" : "Plan"}
+                      </button>
+                    )}
+                    {state === "PLANNED" && (
+                      <button
+                        type="button"
+                        onClick={() => start.mutate()}
+                        disabled={start.isPending}
+                        className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {start.isPending ? "Starting…" : "Start"}
+                      </button>
+                    )}
+                    {canCmms && (
+                      <button
+                        type="button"
+                        onClick={() => cmmsDraft.mutate()}
+                        disabled={cmmsDraft.isPending}
+                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      >
+                        {cmmsDraft.isPending ? "Creating draft…" : "Create CMMS draft"}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-600">
+                    Your current demo role cannot manage this maintenance case.
+                  </p>
+                )}
+                {cmmsDraft.isSuccess && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                    Draft {cmmsDraft.data.external_reference} ({humanize(cmmsDraft.data.status)}) —
+                    draft only, not submitted externally.
+                  </p>
+                )}
+                {cmmsDraft.isError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    CMMS draft failed — the maintenance case itself is unaffected and the draft can
+                    be retried.
+                  </p>
+                )}
 
-            {feedback.data && (
-              <SectionCard title="Feedback">
-                <div className="flex items-center gap-2">
-                  <FeedbackBadge value={feedback.data.classification} />
-                  <span className="text-sm text-zinc-700 dark:text-zinc-300">
-                    Post-action condition: {humanize(feedback.data.post_action_condition_type)}
-                  </span>
-                </div>
-              </SectionCard>
-            )}
+                {canWrite && (state === "IN_PROGRESS" || state === "AWAITING_VERIFICATION") && (
+                  <SectionCard title="Complete case">
+                    <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                      Requires an explicit feedback classification; runs a real, fresh post-action
+                      condition re-check rather than closing solely because this button was
+                      clicked.
+                    </p>
+                    <select
+                      value={classification}
+                      onChange={(e) => setClassification(e.target.value)}
+                      className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                    >
+                      {FEEDBACK_CLASSIFICATIONS.map((c) => (
+                        <option key={c} value={c}>
+                          {humanize(c)}
+                        </option>
+                      ))}
+                    </select>
+                    <textarea
+                      value={completeNotes}
+                      onChange={(e) => setCompleteNotes(e.target.value)}
+                      placeholder="Completion notes…"
+                      className="mb-2 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                      rows={2}
+                    />
+                    <button
+                      type="button"
+                      disabled={complete.isPending}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            "Complete this case? This records final feedback and re-checks condition.",
+                          )
+                        )
+                          complete.mutate({ classification, notes: completeNotes });
+                      }}
+                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {complete.isPending ? "Completing…" : "Complete case"}
+                    </button>
+                  </SectionCard>
+                )}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <SectionCard title="What the technician found">
-                <ul className="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
-                  {(findings.data ?? []).map((f) => (
-                    <li key={f.id}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                          {f.observed_issue || humanize(f.result)}
-                        </span>
-                        <StatusPill tone={findingResultTone(f.result)}>
-                          {humanize(f.result)}
-                        </StatusPill>
-                      </div>
-                      {f.notes && (
-                        <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{f.notes}</p>
-                      )}
-                    </li>
-                  ))}
-                  {(findings.data ?? []).length === 0 && (
-                    <li className="text-zinc-400 dark:text-zinc-500">None yet.</li>
-                  )}
-                </ul>
-              </SectionCard>
-              <SectionCard title="Actions">
-                <ul className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
-                  {(actions.data ?? []).map((a) => (
-                    <li key={a.id}>
-                      {humanize(a.action_type)} — {a.notes}
-                    </li>
-                  ))}
-                  {(actions.data ?? []).length === 0 && (
-                    <li className="text-zinc-400 dark:text-zinc-500">None yet.</li>
-                  )}
-                </ul>
-              </SectionCard>
+                {feedback.data && (
+                  <SectionCard title="Outcome">
+                    <div className="flex flex-col gap-1.5">
+                      <FeedbackBadge value={feedback.data.classification} />
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                        Post-action condition:{" "}
+                        {humanize(feedback.data.post_action_condition_type)}
+                      </span>
+                    </div>
+                  </SectionCard>
+                )}
+              </div>
             </div>
           </>
         )}

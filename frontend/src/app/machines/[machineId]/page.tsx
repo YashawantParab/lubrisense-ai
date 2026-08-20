@@ -284,7 +284,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-7 px-6 py-10 lg:px-10">
       <DataState
         isPending={hierarchy.isPending}
         isError={hierarchy.isError}
@@ -318,25 +318,26 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
               }
             />
 
-            {/* Operational status strip — explicitly labeled "current" so it can never read
-                as contradicting a past, now-resolved incident shown elsewhere on the page. */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                  Current condition:
-                </span>
+            {/* Wide current-state header — explicitly labeled "current" so it can never
+                read as contradicting a past, now-resolved incident shown elsewhere on the
+                page. Open band, not a bordered box: this is the page's lead statement. */}
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl bg-zinc-50/70 px-6 py-5 dark:bg-zinc-900/40">
+              <div>
+                <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                  Current condition
+                </p>
                 {intelligence.data ? (
-                  <>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <SeverityBadge value={intelligence.data.condition.severity} />
-                    <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                    <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
                       {humanize(intelligence.data.condition.condition_type)}
                     </span>
                     <ConfidenceBadge value={intelligence.data.condition.confidence} />
-                  </>
+                  </div>
                 ) : (
-                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                  <p className="mt-1 text-lg text-zinc-500 dark:text-zinc-400">
                     {intelligence.isPending ? "Computing…" : "Unavailable"}
-                  </span>
+                  </p>
                 )}
               </div>
               {activeIncident ? (
@@ -373,9 +374,55 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
               </SectionCard>
             )}
 
+            {/* Telemetry — moved ahead of the intelligence panels: the evidence itself,
+                not just the system's read of it. Pressure leads, full width; the rest
+                supports it in a compact grid (SIGNAL_PRIORITY already orders pressure
+                first). */}
+            <SectionCard title="Telemetry">
+              <DataState
+                isPending={telemetry.isPending}
+                isError={telemetry.isError}
+                error={telemetry.error}
+                loadingLabel="Loading telemetry…"
+              >
+                {measurementTypes.length === 0 ? (
+                  <EmptyState
+                    title="No telemetry received yet"
+                    description="Start the edge/simulator and telemetry pipeline to see readings here."
+                  />
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    <TelemetryChart
+                      measurementType={measurementTypes[0]}
+                      readings={telemetry.data ?? []}
+                      baselineRange={baselineRangeFor(measurementTypes[0])}
+                      storyMarkers={telemetryStoryMarkers}
+                      tall
+                    />
+                    {measurementTypes.length > 1 && (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {measurementTypes.slice(1).map((type) => (
+                          <TelemetryChart
+                            key={type}
+                            measurementType={type}
+                            readings={telemetry.data ?? []}
+                            baselineRange={baselineRangeFor(type)}
+                            storyMarkers={telemetryStoryMarkers}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </DataState>
+            </SectionCard>
+
             {/* Three intelligence layers */}
             <div className="grid gap-4 lg:grid-cols-3">
-              <SectionCard title="Machine Intelligence">
+              <SectionCard
+                title="Machine Intelligence"
+                className="border-l-2 border-l-sky-200 pl-4 dark:border-l-sky-900/60"
+              >
                 <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
                   What the machine&rsquo;s raw evidence sources report.
                 </p>
@@ -433,7 +480,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                 )}
               </SectionCard>
 
-              <SectionCard title="Decision Intelligence">
+              <SectionCard title="Decision Intelligence" tier="band">
                 <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
                   {activeIncident
                     ? "The synthesized diagnosis, its confidence, and the recommended response for the active issue below."
@@ -484,7 +531,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                 )}
               </SectionCard>
 
-              <SectionCard title="Workflow Intelligence">
+              <SectionCard
+                title="Workflow Intelligence"
+                className="border-l-2 border-l-emerald-200 pl-4 dark:border-l-emerald-900/60"
+              >
                 <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
                   Incident and maintenance response — human-controlled, end to end.
                 </p>
@@ -679,34 +729,6 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
             )}
 
             {/* Telemetry */}
-            <SectionCard title="Telemetry">
-              <DataState
-                isPending={telemetry.isPending}
-                isError={telemetry.isError}
-                error={telemetry.error}
-                loadingLabel="Loading telemetry…"
-              >
-                {measurementTypes.length === 0 ? (
-                  <EmptyState
-                    title="No telemetry received yet"
-                    description="Start the edge/simulator and telemetry pipeline to see readings here."
-                  />
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {measurementTypes.map((type) => (
-                      <TelemetryChart
-                        key={type}
-                        measurementType={type}
-                        readings={telemetry.data ?? []}
-                        baselineRange={baselineRangeFor(type)}
-                        storyMarkers={telemetryStoryMarkers}
-                      />
-                    ))}
-                  </div>
-                )}
-              </DataState>
-            </SectionCard>
-
             {/* Device / configuration governance — Phase 31: visibility only, no OTA */}
             <SectionCard
               title="Device / Configuration"

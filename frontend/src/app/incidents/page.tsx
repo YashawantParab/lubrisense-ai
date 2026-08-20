@@ -6,11 +6,13 @@ import { useMemo, useState } from "react";
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
 import { IncidentStateBadge, PriorityBadge, SeverityBadge } from "@/components/badges";
+import { evidenceBackingLine } from "@/components/condition-evidence";
 import { PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useEvaluateMachine, useIncidents } from "@/hooks/use-incidents";
+import { useMaintenanceCases } from "@/hooks/use-maintenance";
 import { useAuth } from "@/lib/auth/context";
 import { humanize } from "@/lib/terminology";
 
@@ -33,9 +35,19 @@ export default function IncidentsPage() {
   const effectiveMachineId = machineId || machines[0]?.id || "";
   const evaluate = useEvaluateMachine(effectiveMachineId);
   const canEvaluate = can("INCIDENT_MANAGE");
+  const cases = useMaintenanceCases();
+
+  const machineName = useMemo(
+    () => new Map(machines.map((m) => [m.id, m.name])),
+    [machines],
+  );
+  const caseByIncident = useMemo(
+    () => new Map((cases.data ?? []).map((c) => [c.incident_id, c])),
+    [cases.data],
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10 lg:px-10">
       <PageHeader
         title="Incidents"
         description="Correlated evidence for one evolving operational problem — never one row per evaluation cycle."
@@ -89,53 +101,38 @@ export default function IncidentsPage() {
             description="Incidents are created automatically when evidence warrants attention — none have been detected yet."
           />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                  <th className="px-4 py-2 font-medium">Title</th>
-                  <th className="px-4 py-2 font-medium">Severity</th>
-                  <th className="px-4 py-2 font-medium">Priority</th>
-                  <th className="px-4 py-2 font-medium">State</th>
-                  <th className="px-4 py-2 font-medium">Evidence</th>
-                  <th className="px-4 py-2 font-medium">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(incidents.data ?? []).map((incident) => (
-                  <tr
-                    key={incident.id}
-                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
-                  >
-                    <td className="px-4 py-2">
-                      <Link
-                        href={`/incidents/${incident.id}`}
-                        className="text-sky-600 hover:underline dark:text-sky-400"
-                      >
-                        {incident.title}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-2">
-                      <SeverityBadge value={incident.severity} />
-                    </td>
-                    <td className="px-4 py-2">
-                      <PriorityBadge value={incident.priority} />
-                    </td>
-                    <td className="px-4 py-2">
-                      <IncidentStateBadge value={incident.state} />
-                    </td>
-                    <td className="px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-                      {incident.condition_assessment_ids.length} condition ·{" "}
-                      {incident.rule_finding_ids.length} rule
-                    </td>
-                    <td className="px-4 py-2 text-xs text-zinc-700 dark:text-zinc-300">
-                      <RelativeTime iso={incident.last_updated_at} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {(incidents.data ?? []).map((incident) => {
+              const linkedCase = caseByIncident.get(incident.id);
+              return (
+                <li key={incident.id} className="flex flex-wrap items-start gap-x-8 gap-y-2 py-4">
+                  <div className="min-w-56 flex-1">
+                    <Link
+                      href={`/incidents/${incident.id}`}
+                      className="text-base font-medium text-sky-700 hover:underline dark:text-sky-400"
+                    >
+                      {incident.title}
+                    </Link>
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      {machineName.get(incident.machine_id) ?? "Unknown machine"} ·{" "}
+                      {evidenceBackingLine(incident)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <SeverityBadge value={incident.severity} />
+                    <PriorityBadge value={incident.priority} />
+                    <IncidentStateBadge value={incident.state} />
+                  </div>
+                  <div className="min-w-40 text-sm text-zinc-600 dark:text-zinc-400">
+                    {linkedCase ? humanize(linkedCase.recommended_action) : "No action recommended yet"}
+                  </div>
+                  <div className="ml-auto text-xs text-zinc-400 dark:text-zinc-600">
+                    <RelativeTime iso={incident.last_updated_at} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </DataState>
     </div>

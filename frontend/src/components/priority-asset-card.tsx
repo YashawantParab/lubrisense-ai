@@ -54,7 +54,7 @@ export function PriorityAssetCard({ incident }: { incident: IncidentResponse }) 
     currentIntelligence.data.condition.severity === "INFO";
 
   return (
-    <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <section className="overflow-hidden rounded-xl bg-zinc-50/70 dark:bg-zinc-900/40">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-100 px-6 py-5 dark:border-zinc-800">
         <div>
           <p className="text-xs font-semibold tracking-wide text-sky-600 uppercase dark:text-sky-400">
@@ -77,7 +77,7 @@ export function PriorityAssetCard({ incident }: { incident: IncidentResponse }) 
         </Link>
       </div>
 
-      <div className="border-b border-zinc-100 bg-zinc-50/60 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <div className="border-b border-zinc-200/70 px-6 py-4 dark:border-zinc-800">
         <CaseWorkflow incidentId={incident.id} variant="compact" />
       </div>
 

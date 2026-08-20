@@ -136,7 +136,7 @@ function AssistantPageInner() {
   const handleSend = () => sendMessage(message);
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10 lg:px-10">
       <PageHeader
         title="Assistant"
         description="Explains persisted intelligence, retrieves approved knowledge, and prepares draft artifacts — it never diagnoses independently, controls machinery, or acts without human review."
@@ -267,7 +267,7 @@ function AssistantPageInner() {
             className={
               turn.role === "user"
                 ? "self-end rounded-lg bg-sky-600 px-4 py-2 text-sm text-white"
-                : "rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                : "border-l-2 border-sky-200 py-1 pl-4 dark:border-sky-900/50"
             }
           >
             {turn.role === "user" || !turn.response || turn.response.sections.length === 0 ? (

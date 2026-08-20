@@ -41,12 +41,15 @@ export function TelemetryChart({
   readings,
   baselineRange,
   storyMarkers,
+  tall = false,
 }: {
   measurementType: string;
   readings: TelemetryReadingResponse[];
   /** optional [low, high] expected-range band, when a baseline exists for this sensor */
   baselineRange?: [number, number] | null;
   storyMarkers?: TelemetryStoryMarker[];
+  /** the visually-dominant lead chart (e.g. pressure) — taller, larger type. */
+  tall?: boolean;
 }) {
   const points = readings
     .filter((r) => r.measurement_type === measurementType && r.value !== null)
@@ -74,13 +77,15 @@ export function TelemetryChart({
 
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-        <span className="font-medium text-zinc-700 dark:text-zinc-300">
+      <div className="mb-1 flex items-center justify-between text-zinc-500 dark:text-zinc-400">
+        <span
+          className={`font-medium text-zinc-700 dark:text-zinc-300 ${tall ? "text-sm" : "text-xs"}`}
+        >
           {humanize(measurementType)}
         </span>
-        <span>{unit}</span>
+        <span className="text-xs">{unit}</span>
       </div>
-      <div className="h-40 w-full">
+      <div className={`w-full ${tall ? "h-56" : "h-40"}`}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <XAxis

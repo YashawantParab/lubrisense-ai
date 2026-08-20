@@ -169,21 +169,21 @@ export function CaseWorkflow({
           </div>
         );
         return (
-          <li key={stage.key} className="flex items-start">
+          <li key={stage.key} className="flex flex-1 items-start last:flex-none">
             {index > 0 && (
               <span
-                className={`mt-[7px] h-px ${dense ? "w-3" : "w-4 sm:w-6"} ${
+                className={`mt-[7px] h-px min-w-[10px] flex-1 ${
                   reached ? "bg-sky-300 dark:bg-sky-800" : "bg-zinc-200 dark:bg-zinc-800"
                 }`}
                 aria-hidden
               />
             )}
             {reached && stage.href ? (
-              <Link href={stage.href} className="rounded hover:opacity-75">
+              <Link href={stage.href} className="shrink-0 rounded hover:opacity-75">
                 {body}
               </Link>
             ) : (
-              body
+              <div className="shrink-0">{body}</div>
             )}
           </li>
         );
@@ -226,7 +226,7 @@ export function CaseContextHeader({
     }`;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="flex flex-wrap items-center gap-3 border-b border-zinc-100 pb-3 text-sm dark:border-zinc-800/70">
       <div>
         <p className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase dark:text-zinc-600">
           Recent significant case

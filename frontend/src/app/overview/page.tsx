@@ -41,7 +41,7 @@ export default function OverviewPage() {
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-6 py-10 lg:px-10">
       <PageHeader
         title="Overview"
         description="What's happening across your fleet, what the system believes it means, and what to do about it — every claim below traces back to persisted platform data."
@@ -51,22 +51,20 @@ export default function OverviewPage() {
 
       <DataState isPending={fleet.isPending} isError={fleet.isError} error={fleet.error}>
         {fleet.data && (
-          <div className="flex flex-col gap-6">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="flex flex-col gap-8">
+            {/* Compact fleet context — an open stats line, not a grid of KPI tiles. */}
+            <div className="flex flex-wrap items-baseline gap-x-10 gap-y-3 border-y border-zinc-100 py-4 dark:border-zinc-800/70">
               {[
                 ["Customer accounts", fleet.data.total_customer_accounts],
                 ["Sites", fleet.data.total_sites],
                 ["Machines", fleet.data.total_machines],
                 ["Open incidents", fleet.data.service_burden.open_incidents],
               ].map(([label, value]) => (
-                <div
-                  key={label as string}
-                  className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
-                >
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">{label}</div>
-                  <div className="mt-1 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
+                <div key={label as string} className="flex items-baseline gap-2">
+                  <span className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
                     {value}
-                  </div>
+                  </span>
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">{label}</span>
                 </div>
               ))}
             </div>
