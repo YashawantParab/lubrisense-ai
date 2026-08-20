@@ -70,6 +70,12 @@ def test_chat_grounds_answer_in_real_evidence(client: TestClient, api_tenant: Te
     assert len(body["tool_calls"]) > 0
     assert body["human_review_required"] is True
 
+    section_keys = {s["key"] for s in body["sections"]}
+    assert {"condition", "incident"}.issubset(section_keys)
+    condition_section = next(s for s in body["sections"] if s["key"] == "condition")
+    assert condition_section["label"] == "Current condition"
+    assert "Developing Restriction Pattern" in condition_section["text"]
+
 
 def test_chat_refuses_physical_control(client: TestClient, api_tenant: Tenant) -> None:
     headers = {"X-Tenant-ID": str(api_tenant.id)}

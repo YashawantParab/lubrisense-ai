@@ -129,6 +129,51 @@ async def _case_for(db_session: AsyncSession, tenant, incident) -> uuid.UUID:
 
 
 @pytest.mark.asyncio
+async def test_maintenance_outcome_grounds_confirmed_diagnosis_in_answer(
+    db_session: AsyncSession,
+) -> None:
+    """New `get_maintenance_case` tool data (latest technician finding + feedback
+    classification) — without this, the assistant has no grounded way to answer "was the
+    diagnosis confirmed?" for a completed case."""
+    tenant, machine, incident = await seed_restriction_incident(db_session)
+    maintenance = MaintenanceService(db_session)
+    case_id = await _case_for(db_session, tenant, incident)
+    await maintenance.plan(tenant.id, case_id, planned_for=None)
+    await maintenance.start(tenant.id, case_id)
+    await maintenance.record_finding(
+        tenant.id,
+        case_id,
+        result=TechnicianFindingResult.CONFIRMED,
+        component="Distributor outlet",
+        observed_issue="Partial blockage found at the distributor outlet.",
+        notes="Cleared during inspection.",
+        technician_identifier="tech-1",
+    )
+    await maintenance.complete(
+        tenant.id,
+        case_id,
+        classification=FeedbackClassification.TRUE_POSITIVE,
+        notes="Confirmed on inspection.",
+        recorded_by="tech-1",
+    )
+
+    agent = AgentService(db_session)
+    response = await agent.chat(
+        AgentRequest(
+            tenant_id=tenant.id,
+            message="Was the diagnosis confirmed?",
+            machine_id=machine.id,
+            incident_id=incident.id,
+            maintenance_case_id=case_id,
+        )
+    )
+    maintenance_section = next(s for s in response.sections if s.key == "maintenance_case")
+    assert "confirmed" in maintenance_section.text.lower()
+    assert "Partial blockage found at the distributor outlet." in maintenance_section.text
+    assert "TRUE_POSITIVE" not in maintenance_section.text
+
+
+@pytest.mark.asyncio
 async def test_checklist_draft_is_generated_and_marked_draft(db_session: AsyncSession) -> None:
     tenant, machine, incident = await seed_restriction_incident(db_session)
     case_id = await _case_for(db_session, tenant, incident)

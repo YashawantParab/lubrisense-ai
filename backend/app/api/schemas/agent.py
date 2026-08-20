@@ -29,9 +29,16 @@ class DraftArtifactResponse(BaseModel):
     content: dict[str, object]
 
 
+class AnswerSectionResponse(BaseModel):
+    key: str
+    label: str
+    text: str
+
+
 class ChatResponse(BaseModel):
     session_id: uuid.UUID
     answer: str
+    sections: list[AnswerSectionResponse]
     evidence: list[str]
     citations: list[CitationResponse]
     tool_calls: list[ToolCallResponse]

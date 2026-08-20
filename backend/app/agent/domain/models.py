@@ -27,9 +27,23 @@ class DraftArtifact:
 
 
 @dataclass(frozen=True, slots=True)
+class AnswerSection:
+    """One labeled, structured piece of the answer (e.g. "Current condition", "Recent
+    significant event") — built deterministically from `evidence` in `AgentService`, never
+    by the swappable `LLMProvider` seam, so a real LLM provider can be dropped in later to
+    improve `AgentResponse.answer`'s prose without touching what structure the frontend
+    renders."""
+
+    key: str
+    label: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class AgentResponse:
     session_id: uuid.UUID
     answer: str
+    sections: tuple[AnswerSection, ...] = field(default_factory=tuple)
     evidence: tuple[str, ...] = field(default_factory=tuple)
     citations: tuple[Citation, ...] = field(default_factory=tuple)
     tool_calls: tuple[ToolResult, ...] = field(default_factory=tuple)

@@ -16,9 +16,15 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.domain.models import AgentRequest, AgentResponse, DraftArtifact, ToolResult
+from app.agent.domain.models import (
+    AgentRequest,
+    AgentResponse,
+    AnswerSection,
+    DraftArtifact,
+    ToolResult,
+)
 from app.agent.policy import PHYSICAL_CONTROL_REFUSAL, classify_intent
-from app.agent.providers.llm_provider import DemoLLMProvider, LLMProvider
+from app.agent.providers.llm_provider import DemoLLMProvider, LLMProvider, narrative_sections
 from app.agent.repositories.message_repository import AgentMessageRepository
 from app.agent.repositories.session_repository import AgentSessionRepository
 from app.agent.repositories.tool_call_repository import AgentToolCallRepository
@@ -243,9 +249,15 @@ class AgentService:
             # paraphrase or a fallback to unsupported general knowledge (§19.6/§19.10).
             answer = INSUFFICIENT_DOCUMENTATION_TEXT
 
+        sections = tuple(
+            AnswerSection(key=s.key, label=s.label, text=s.text)
+            for s in narrative_sections(evidence, request.message)
+        )
+
         response = AgentResponse(
             session_id=session.id,
             answer=answer,
+            sections=sections,
             evidence=tuple(r.summary for r in tool_results if r.status == "OK"),
             citations=tuple(citations),
             tool_calls=tuple(tool_results),

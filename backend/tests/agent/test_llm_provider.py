@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.agent.providers.llm_provider import DemoLLMProvider
+from app.agent.providers.llm_provider import DemoLLMProvider, narrative_sections
 from app.knowledge.services.rag_service import INSUFFICIENT_DOCUMENTATION_TEXT
 
 PROVIDER = DemoLLMProvider()
@@ -125,7 +125,7 @@ def test_differently_phrased_questions_lead_with_different_sections() -> None:
 
     assert why_answer != action_answer
     assert why_answer.startswith("Current condition")
-    assert action_answer.startswith("Recommended action")
+    assert action_answer.startswith("Recommendation")
     # No fact is ever added or dropped by reordering — both sections still present in both.
     for answer in (why_answer, action_answer):
         assert "Developing Restriction Pattern" in answer
@@ -142,3 +142,54 @@ def test_unrecognized_question_keeps_the_original_default_order() -> None:
     )
     assert with_default == with_unmatched
     assert with_default.startswith("Current condition")
+
+
+def test_retrieved_excerpts_are_dropped_from_prose_once_real_narrative_exists() -> None:
+    """A simple condition question should not come back with a wall of unrelated approved-
+    guidance text once there is real condition/decision/incident evidence to answer from —
+    retrieved excerpts still ground the answer via `AgentResponse.citations` for the
+    frontend's Sources section, they just don't dominate the primary prose."""
+    evidence = {
+        **_MULTI_EVIDENCE,
+        "procedure_results": [
+            {"document_title": "Restriction Guide", "heading": "Steps", "excerpt": "Do the thing."}
+        ],
+    }
+    answer = PROVIDER.compose_answer(intent="GENERAL", evidence=evidence)
+    assert "Restriction Guide" not in answer
+    assert "Developing Restriction Pattern" in answer
+
+
+def test_retrieved_excerpts_remain_the_answer_with_no_narrative_evidence() -> None:
+    """The opposite case — a pure knowledge-base question with no machine/incident context
+    at all — must still answer from the retrieved excerpts exactly as before."""
+    evidence = {
+        "procedure_results": [
+            {"document_title": "Restriction Guide", "heading": "Steps", "excerpt": "Do the thing."}
+        ]
+    }
+    answer = PROVIDER.compose_answer(intent="GENERAL", evidence=evidence)
+    assert "Restriction Guide" in answer
+
+
+def test_narrative_sections_are_structured_and_label_free() -> None:
+    sections = narrative_sections(_MULTI_EVIDENCE, "why is this happening?")
+    keys = [s.key for s in sections]
+    assert keys[0] == "condition"
+    assert {"condition", "decision"}.issubset(set(keys))
+    condition_section = next(s for s in sections if s.key == "condition")
+    assert condition_section.label == "Current condition"
+    assert not condition_section.text.startswith("Current condition")
+    assert "Developing Restriction Pattern" in condition_section.text
+
+
+def test_narrative_sections_never_include_retrieved_document_excerpts() -> None:
+    evidence = {
+        **_MULTI_EVIDENCE,
+        "procedure_results": [
+            {"document_title": "Restriction Guide", "heading": "Steps", "excerpt": "Do the thing."}
+        ],
+    }
+    sections = narrative_sections(evidence)
+    assert all(s.key in ("condition", "decision", "incident", "maintenance_case") for s in sections)
+    assert not any("Restriction Guide" in s.text for s in sections)

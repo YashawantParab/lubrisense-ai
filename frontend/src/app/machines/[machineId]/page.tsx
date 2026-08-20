@@ -3,6 +3,7 @@
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
 
+import { CaseContextHeader, CaseWorkflow } from "@/components/case-workflow";
 import { EvidenceWhyDetails, evidenceBackingLine } from "@/components/condition-evidence";
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
@@ -305,7 +306,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                     {hierarchy.data.machine.status}
                   </StatusPill>
                   <Link
-                    href={`/assistant?machineId=${machineId}${activeIncident ? `&incidentId=${activeIncident.id}` : ""}`}
+                    href={`/assistant?machineId=${machineId}${relevantIncident ? `&incidentId=${relevantIncident.id}` : ""}`}
                     className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
                   >
                     Ask Assistant
@@ -354,6 +355,18 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                 )
               )}
             </div>
+
+            {relevantIncident && <CaseContextHeader incidentId={relevantIncident.id} active="machine" />}
+
+            {relevantIncident && (
+              <SectionCard title="Case journey">
+                <CaseWorkflow
+                  incidentId={relevantIncident.id}
+                  variant="rich"
+                  currentStage={activeIncident ? "incident" : "verified"}
+                />
+              </SectionCard>
+            )}
 
             {/* Three intelligence layers */}
             <div className="grid gap-4 lg:grid-cols-3">

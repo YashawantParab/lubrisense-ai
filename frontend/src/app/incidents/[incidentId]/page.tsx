@@ -4,6 +4,7 @@ import { use, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { CaseContextHeader, CaseWorkflow } from "@/components/case-workflow";
 import { DataState } from "@/components/data-state";
 import {
   FeedbackBadge,
@@ -116,6 +117,12 @@ export default function IncidentDetailPage({
                 </>
               }
             />
+
+            <CaseContextHeader incidentId={incidentId} active="incident" />
+
+            <SectionCard title="Case journey">
+              <CaseWorkflow incidentId={incidentId} variant="rich" currentStage="incident" />
+            </SectionCard>
 
             <SectionCard>
               <dl className="grid grid-cols-2 gap-3 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-5">

@@ -124,6 +124,23 @@ export function feedbackTone(value: string): Tone {
   return "neutral";
 }
 
+/** Human meaning first — "TRUE_POSITIVE" on its own tells a reviewer nothing; this is
+ * what the classification actually means for the diagnosis. */
+export function feedbackHeadline(value: string): string {
+  switch (value) {
+    case "TRUE_POSITIVE":
+      return "Diagnosis confirmed by maintenance";
+    case "FALSE_POSITIVE":
+      return "Diagnosis not confirmed by maintenance";
+    case "MISSED_FAILURE":
+      return "A failure was missed by this diagnosis";
+    case "INCONCLUSIVE":
+      return "Outcome inconclusive";
+    default:
+      return humanize(value);
+  }
+}
+
 export function customerStatusTone(value: string): Tone {
   if (value === "HEALTHY") return "ok";
   if (value === "ATTENTION_REQUIRED") return "error";

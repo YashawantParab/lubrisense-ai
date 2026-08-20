@@ -168,17 +168,29 @@ async def get_incident_timeline(ctx: ToolContext, arguments: dict[str, Any]) -> 
 
 
 async def get_maintenance_case(ctx: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+    """Includes the technician's outcome (feedback classification + most recent finding)
+    when they exist — without these, the assistant has no grounded way to answer
+    "was the diagnosis confirmed?" or "what did the technician find?", and would either
+    refuse or (worse) guess."""
     case_id = uuid.UUID(_require(arguments, "case_id"))
+    service = MaintenanceService(ctx.session)
     try:
-        case = await MaintenanceService(ctx.session).get(ctx.tenant_id, case_id)
+        case = await service.get(ctx.tenant_id, case_id)
     except MaintenanceCaseNotFoundError:
         return ToolResult("get_maintenance_case", "ERROR", "Maintenance case not found.")
+    findings = await service.list_findings(ctx.tenant_id, case_id)
+    feedback = await service.get_feedback(ctx.tenant_id, case_id)
+    latest_finding = findings[-1] if findings else None
     data = {
         "id": str(case.id),
         "state": case.state.value,
         "recommended_action": case.recommended_action.value,
         "checklist": case.checklist,
         "checklist_template_id": case.checklist_template_id,
+        "latest_finding_observed_issue": latest_finding.observed_issue if latest_finding else None,
+        "latest_finding_result": latest_finding.result.value if latest_finding else None,
+        "feedback_classification": feedback.classification.value if feedback else None,
+        "post_action_condition_type": feedback.post_action_condition_type if feedback else None,
     }
     return ToolResult("get_maintenance_case", "OK", f"Case state: {case.state.value}.", data)
 

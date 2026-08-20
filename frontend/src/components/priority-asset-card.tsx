@@ -10,6 +10,7 @@ import {
   PriorityBadge,
   SeverityBadge,
 } from "@/components/badges";
+import { CaseWorkflow } from "@/components/case-workflow";
 import { EvidenceWhyDetails, evidenceBackingLine } from "@/components/condition-evidence";
 import { RelativeTime } from "@/components/relative-time";
 import { useMachine } from "@/hooks/use-asset-hierarchy";
@@ -19,108 +20,6 @@ import { humanize } from "@/lib/terminology";
 import type { IncidentResponse } from "@/lib/api/incidents-types";
 
 const OPEN_STATES = new Set(["OPEN", "DETECTED", "ACKNOWLEDGED", "INVESTIGATING", "ACTION_PLANNED"]);
-
-interface Stage {
-  label: string;
-  iso: string | null;
-  href?: string;
-  note?: string;
-}
-
-/**
- * Detected/Diagnosed/Decision share one real timestamp here on purpose, not by mistake —
- * this platform's evaluation pipeline computes the condition assessment and the decision
- * synchronously with incident creation (one `DecisionEngine.decide_for_machine()` call), so
- * there is no separate persisted "diagnosed at" or "decided at" moment to show honestly.
- * Reusing the same real timestamp is truthful; inventing a later one would not be.
- */
-function StoryProgression({
-  incident,
-  maintenanceCase,
-}: {
-  incident: IncidentResponse;
-  maintenanceCase: { id: string; created_at: string; started_at: string | null; completed_at: string | null } | undefined;
-}) {
-  const stages: Stage[] = [
-    { label: "Detected", iso: incident.first_detected_at, href: `/incidents/${incident.id}` },
-    {
-      label: "Diagnosed",
-      iso: incident.first_detected_at,
-      href: `/machines/${incident.machine_id}`,
-      note: "Same evaluation as detection",
-    },
-    {
-      label: "Decision",
-      iso: incident.first_detected_at,
-      href: `/incidents/${incident.id}`,
-      note: "Same evaluation as detection",
-    },
-    {
-      label: "Maintenance",
-      iso: maintenanceCase?.started_at ?? maintenanceCase?.created_at ?? null,
-      href: maintenanceCase ? `/maintenance/${maintenanceCase.id}` : undefined,
-    },
-    {
-      label: "Verified",
-      iso: maintenanceCase?.completed_at ?? incident.resolved_at,
-      href: maintenanceCase ? `/maintenance/${maintenanceCase.id}` : `/incidents/${incident.id}`,
-    },
-  ];
-
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">Progression</p>
-      <ol className="mt-1 flex flex-wrap items-start gap-x-1 gap-y-3">
-        {stages.map((stage, index) => {
-          const reached = Boolean(stage.iso);
-          const body = (
-            <div className="flex flex-col items-center gap-1 px-1 text-center">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  reached ? "bg-sky-500" : "bg-zinc-200 dark:bg-zinc-700"
-                }`}
-                aria-hidden
-              />
-              <span
-                className={`text-xs font-medium ${
-                  reached
-                    ? "text-zinc-900 dark:text-zinc-100"
-                    : "text-zinc-400 dark:text-zinc-600"
-                }`}
-              >
-                {stage.label}
-              </span>
-              {reached ? (
-                <RelativeTime iso={stage.iso} className="text-[11px] text-zinc-400 dark:text-zinc-600" />
-              ) : (
-                <span className="text-[11px] text-zinc-300 dark:text-zinc-700">Pending</span>
-              )}
-            </div>
-          );
-          return (
-            <li key={stage.label} className="flex items-center">
-              {index > 0 && (
-                <span
-                  className={`mr-1 h-px w-4 sm:w-8 ${
-                    reached ? "bg-sky-300 dark:bg-sky-800" : "bg-zinc-200 dark:bg-zinc-800"
-                  }`}
-                  aria-hidden
-                />
-              )}
-              {reached && stage.href ? (
-                <Link href={stage.href} className="hover:opacity-75">
-                  {body}
-                </Link>
-              ) : (
-                body
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
 
 /**
  * The Overview's centerpiece: one machine's complete, real story — condition, evidence,
@@ -173,7 +72,7 @@ export function PriorityAssetCard({ incident }: { incident: IncidentResponse }) 
       </div>
 
       <div className="border-b border-zinc-100 bg-zinc-50/60 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900/40">
-        <StoryProgression incident={incident} maintenanceCase={maintenanceCase} />
+        <CaseWorkflow incidentId={incident.id} variant="compact" />
       </div>
 
       <div className="grid gap-6 px-6 py-5 lg:grid-cols-[2fr_1fr]">

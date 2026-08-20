@@ -45,6 +45,13 @@ function toolLabel(toolName: string): string {
   return TOOL_LABELS[toolName] ?? humanize(toolName);
 }
 
+function sourceCount(response: ChatResponse): number {
+  const toolCategoryCount = new Set(
+    response.tool_calls.filter((t) => t.status === "OK").map((t) => t.tool_name),
+  ).size;
+  return toolCategoryCount + response.citations.length;
+}
+
 type AssistantContext = "none" | "machine" | "incident" | "case";
 
 const STARTER_PROMPTS: Record<AssistantContext, string[]> = {
@@ -263,9 +270,24 @@ function AssistantPageInner() {
                 : "rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
             }
           >
-            <p className="whitespace-pre-line text-sm">{turn.content}</p>
+            {turn.role === "user" || !turn.response || turn.response.sections.length === 0 ? (
+              <p className="whitespace-pre-line text-sm">{turn.content}</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {turn.response.sections.map((section) => (
+                  <div key={section.key}>
+                    <p className="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
+                      {section.label}
+                    </p>
+                    <p className="mt-0.5 text-sm leading-relaxed text-zinc-800 dark:text-zinc-200">
+                      {section.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
             {turn.response && (
-              <div className="mt-3 space-y-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+              <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
                 <div className="flex flex-wrap items-center gap-2">
                   {turn.response.human_review_required && <HumanReviewBadge />}
                   {turn.response.draft_artifacts.length > 0 && (
@@ -289,21 +311,6 @@ function AssistantPageInner() {
                   </div>
                 )}
 
-                {turn.response.citations.length > 0 && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                      Approved knowledge cited
-                    </h3>
-                    <ul className="mt-1 space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
-                      {turn.response.citations.map((c, i) => (
-                        <li key={i}>
-                          {c.document_title} v{c.document_version} — {c.section}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
                 {turn.response.limitations.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
@@ -317,41 +324,76 @@ function AssistantPageInner() {
                   </div>
                 )}
 
-                {turn.response.tool_calls.length > 0 && (
+                {/* Contextual navigation — the assistant is never a dead end. */}
+                <div className="flex flex-wrap gap-3 text-xs">
+                  {machineId && (
+                    <Link
+                      href={`/machines/${machineId}`}
+                      className="text-sky-600 hover:underline dark:text-sky-400"
+                    >
+                      View machine evidence →
+                    </Link>
+                  )}
+                  {incidentId && (
+                    <Link
+                      href={`/incidents/${incidentId}`}
+                      className="text-sky-600 hover:underline dark:text-sky-400"
+                    >
+                      View incident →
+                    </Link>
+                  )}
+                  {caseId && (
+                    <Link
+                      href={`/maintenance/${caseId}`}
+                      className="text-sky-600 hover:underline dark:text-sky-400"
+                    >
+                      View maintenance outcome →
+                    </Link>
+                  )}
+                </div>
+
+                {(turn.response.tool_calls.length > 0 || turn.response.citations.length > 0) && (
                   <div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                        Grounded in:
-                      </span>
-                      {Array.from(
-                        new Set(
-                          turn.response.tool_calls
-                            .filter((t) => t.status === "OK")
-                            .map((t) => toolLabel(t.tool_name)),
-                        ),
-                      ).map((label) => (
-                        <StatusPill key={label} tone="info">
-                          {label}
-                        </StatusPill>
-                      ))}
-                    </div>
                     <button
                       type="button"
                       onClick={() =>
                         setExpandedToolCalls(expandedToolCalls === index ? null : index)
                       }
-                      className="mt-1 text-xs text-sky-600 hover:underline dark:text-sky-400"
+                      className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
                     >
-                      {expandedToolCalls === index ? "Hide" : "Show"} technical detail
+                      {expandedToolCalls === index ? "Hide" : "Show"} sources and evidence (
+                      {sourceCount(turn.response)})
                     </button>
                     {expandedToolCalls === index && (
-                      <ul className="mt-1 space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
-                        {turn.response.tool_calls.map((t, i) => (
-                          <li key={i}>
-                            {toolLabel(t.tool_name)} — {humanize(t.status)}: {t.summary}
-                          </li>
+                      <div className="mt-2 flex flex-col gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                        {Array.from(
+                          new Set(
+                            turn.response.tool_calls
+                              .filter((t) => t.status === "OK")
+                              .map((t) => toolLabel(t.tool_name)),
+                          ),
+                        ).map((label) => (
+                          <p key={label}>{label}</p>
                         ))}
-                      </ul>
+                        {turn.response.citations.map((c, i) => (
+                          <p key={i}>
+                            Approved knowledge — {c.document_title} v{c.document_version} —{" "}
+                            {c.section}
+                          </p>
+                        ))}
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-sky-600 select-none dark:text-sky-400">
+                            Technical detail
+                          </summary>
+                          <ul className="mt-1 space-y-0.5">
+                            {turn.response.tool_calls.map((t, i) => (
+                              <li key={i}>
+                                {toolLabel(t.tool_name)} — {humanize(t.status)}: {t.summary}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      </div>
                     )}
                   </div>
                 )}

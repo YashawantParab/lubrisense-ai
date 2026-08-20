@@ -3,6 +3,7 @@
 import { use, useState } from "react";
 import Link from "next/link";
 
+import { CaseContextHeader, CaseWorkflow } from "@/components/case-workflow";
 import { DataState } from "@/components/data-state";
 import { FeedbackBadge, HumanReviewBadge, MaintenanceStateBadge } from "@/components/badges";
 import { PageHeader } from "@/components/page-header";
@@ -120,22 +121,15 @@ export default function MaintenanceCaseDetailPage({
               }
             />
 
-            <p className="-mt-4 flex flex-wrap items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-              {machine.data && (
-                <Link
-                  href={`/machines/${caseQuery.data.machine_id}`}
-                  className="text-sky-600 hover:underline dark:text-sky-400"
-                >
-                  View machine ({machine.data.name})
-                </Link>
-              )}
-              <Link
-                href={`/incidents/${caseQuery.data.incident_id}`}
-                className="text-sky-600 hover:underline dark:text-sky-400"
-              >
-                View originating incident
-              </Link>
-            </p>
+            <CaseContextHeader incidentId={caseQuery.data.incident_id} active="maintenance" />
+
+            <SectionCard title="Case journey">
+              <CaseWorkflow
+                incidentId={caseQuery.data.incident_id}
+                variant="rich"
+                currentStage={caseQuery.data.state === "COMPLETED" ? "verified" : "maintenance"}
+              />
+            </SectionCard>
 
             <SectionCard>
               {canWrite ? (

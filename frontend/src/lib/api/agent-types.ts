@@ -11,9 +11,16 @@ export interface DraftArtifactResponse {
   content: Record<string, unknown>;
 }
 
+export interface AnswerSectionResponse {
+  key: string;
+  label: string;
+  text: string;
+}
+
 export interface ChatResponse {
   session_id: string;
   answer: string;
+  sections: AnswerSectionResponse[];
   evidence: string[];
   citations: CitationResponse[];
   tool_calls: ToolCallResponse[];

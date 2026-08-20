@@ -19,6 +19,7 @@ from app.api.schemas.agent import (
     AgentMessageResponse,
     AgentSessionResponse,
     AgentToolCallResponse,
+    AnswerSectionResponse,
     ChatRequest,
     ChatResponse,
     DraftArtifactResponse,
@@ -86,6 +87,9 @@ async def chat(
     return ChatResponse(
         session_id=response.session_id,
         answer=response.answer,
+        sections=[
+            AnswerSectionResponse(key=s.key, label=s.label, text=s.text) for s in response.sections
+        ],
         evidence=list(response.evidence),
         citations=[CitationResponse(**dataclasses.asdict(c)) for c in response.citations],
         tool_calls=[
