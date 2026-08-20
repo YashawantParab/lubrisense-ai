@@ -11,7 +11,11 @@ import {
   startCommissioning,
   validateCommissioning,
 } from "@/lib/api/commissioning";
-import type { AddSensorRequest, AssignGatewayRequest, StartCommissioningRequest } from "@/lib/api/commissioning-types";
+import type {
+  AddSensorRequest,
+  AssignGatewayRequest,
+  StartCommissioningRequest,
+} from "@/lib/api/commissioning-types";
 
 export function useCommissioningSessions() {
   return useQuery({

@@ -36,9 +36,7 @@ export default function KnowledgePage() {
 
       <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-            Ask a question
-          </h2>
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Ask a question</h2>
           <Link
             href="/assistant"
             className="text-xs text-sky-600 hover:underline dark:text-sky-400"
@@ -81,8 +79,7 @@ export default function KnowledgePage() {
                 <ul className="space-y-1 text-xs text-zinc-600 dark:text-zinc-400">
                   {ask.data.citations.map((c) => (
                     <li key={c.chunk_id}>
-                      {c.document_title} v{c.document_version} — {c.section} (
-                      {c.document_type})
+                      {c.document_title} v{c.document_version} — {c.section} ({c.document_type})
                     </li>
                   ))}
                 </ul>
@@ -94,9 +91,7 @@ export default function KnowledgePage() {
 
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-            Documents
-          </h2>
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Documents</h2>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -147,7 +142,9 @@ export default function KnowledgePage() {
                         {doc.version}
                       </td>
                       <td className="px-4 py-2">
-                        <StatusPill tone={statusTone(doc.status)}>{humanize(doc.status)}</StatusPill>
+                        <StatusPill tone={statusTone(doc.status)}>
+                          {humanize(doc.status)}
+                        </StatusPill>
                       </td>
                       <td className="px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400">
                         {doc.tenant_id ? "Tenant" : "Global"}

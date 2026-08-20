@@ -1,10 +1,5 @@
 export type CommissioningStatus =
-  | "DRAFT"
-  | "CONFIGURING"
-  | "VALIDATING"
-  | "READY"
-  | "COMPLETED"
-  | "FAILED";
+  "DRAFT" | "CONFIGURING" | "VALIDATING" | "READY" | "COMPLETED" | "FAILED";
 
 export type CapabilityLevel =
   | "NONE"

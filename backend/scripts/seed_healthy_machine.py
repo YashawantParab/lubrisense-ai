@@ -21,9 +21,11 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import Select, delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.baselines.workers.backfill import backfill
 from app.core.config import get_settings
@@ -52,7 +54,15 @@ GATEWAY_CODE = "GW-RIDGE"
 DEVICE_ID = "healthy-machine-seed"
 
 
-async def _resolve(session) -> dict[str, object]:  # type: ignore[no-untyped-def]
+@dataclass(frozen=True, slots=True)
+class _HealthyMachineContext:
+    tenant_id: uuid.UUID
+    machine_id: uuid.UUID
+    circuit_id: uuid.UUID | None
+    by_type: dict[str, list[Sensor]]
+
+
+async def _resolve(session: AsyncSession) -> _HealthyMachineContext:
     tenant = (
         await session.execute(select(Tenant).where(Tenant.slug == DEMO_TENANT_SLUG))
     ).scalar_one()
@@ -67,7 +77,7 @@ async def _resolve(session) -> dict[str, object]:  # type: ignore[no-untyped-def
 
     grouped: dict[str, list[Sensor]] = {}
 
-    async def _add(stmt):  # type: ignore[no-untyped-def]
+    async def _add(stmt: Select[tuple[Sensor]]) -> None:
         rows = (await session.execute(stmt)).scalars().all()
         for s in rows:
             grouped.setdefault(s.sensor_type.value, []).append(s)
@@ -109,12 +119,12 @@ async def _resolve(session) -> dict[str, object]:  # type: ignore[no-untyped-def
         .first()
     )
 
-    return {
-        "tenant_id": tenant.id,
-        "machine_id": machine.id,
-        "circuit_id": circuit_row.id if circuit_row else None,
-        "by_type": grouped,
-    }
+    return _HealthyMachineContext(
+        tenant_id=tenant.id,
+        machine_id=machine.id,
+        circuit_id=circuit_row.id if circuit_row else None,
+        by_type=grouped,
+    )
 
 
 def _envelope(
@@ -172,17 +182,17 @@ async def main() -> None:
 
     async with database.session() as session:
         base = await _resolve(session)
-        tenant_id = base["tenant_id"]  # type: ignore[assignment]
-        machine_id = base["machine_id"]  # type: ignore[assignment]
-        circuit_id = base["circuit_id"]  # type: ignore[assignment]
-        by_type = base["by_type"]  # type: ignore[assignment]
+        tenant_id = base.tenant_id
+        machine_id = base.machine_id
+        circuit_id = base.circuit_id
+        by_type = base.by_type
 
-        pressure = by_type["PRESSURE"][0]  # type: ignore[index]
-        pump_current = by_type["PUMP_CURRENT"][0]  # type: ignore[index]
-        reservoir = by_type["RESERVOIR_LEVEL"][0]  # type: ignore[index]
-        rpm = by_type["RPM"][0]  # type: ignore[index]
-        bearing_temps = by_type["BEARING_TEMPERATURE"]  # type: ignore[index]
-        vibrations = by_type["VIBRATION_RMS"]  # type: ignore[index]
+        pressure = by_type["PRESSURE"][0]
+        pump_current = by_type["PUMP_CURRENT"][0]
+        reservoir = by_type["RESERVOIR_LEVEL"][0]
+        rpm = by_type["RPM"][0]
+        bearing_temps = by_type["BEARING_TEMPERATURE"]
+        vibrations = by_type["VIBRATION_RMS"]
 
         # Deterministic reset: this machine is fully owned by this script within the
         # story's own window, same convention as the flagship (ADR-173).
@@ -259,12 +269,12 @@ async def main() -> None:
         print(f"Marked {len(all_sensor_ids)} sensors ELIGIBLE")
 
     for sid in all_sensor_ids:
-        await backfill(tenant_id, sid, healthy_start, now)  # type: ignore[arg-type]
-        await backfill(tenant_id, sid, healthy_start, now)  # type: ignore[arg-type]
+        await backfill(tenant_id, sid, healthy_start, now)
+        await backfill(tenant_id, sid, healthy_start, now)
     print("Built baselines from the healthy window")
 
     for _ in range(3):
-        await reprocess(tenant_id, machine_id, healthy_start, now)  # type: ignore[arg-type]
+        await reprocess(tenant_id, machine_id, healthy_start, now)
     print("Reprocessed rules over the healthy window")
 
     # A machine with zero active rule findings, zero ML results, and zero state
@@ -307,7 +317,7 @@ async def main() -> None:
                         tenant_id,
                         machine_id,
                         state_config.feature_set,
-                        as_of,  # type: ignore[arg-type]
+                        as_of,
                     )
                     tick = FeatureTick(
                         tenant_id=computed.tenant_id,
@@ -322,8 +332,8 @@ async def main() -> None:
                     )
                     state_repo = StateEstimateRepository(session)
                     prior_row = await state_repo.get_latest(
-                        tenant_id,  # type: ignore[arg-type]
-                        machine_id,  # type: ignore[arg-type]
+                        tenant_id,
+                        machine_id,
                         state_type.value,
                         state_config.estimator_version,
                     )
@@ -349,7 +359,7 @@ async def main() -> None:
 
     async with database.session() as session:
         incidents = IncidentService(session)
-        incident = await incidents.evaluate_machine(tenant_id, machine_id)  # type: ignore[arg-type]
+        incident = await incidents.evaluate_machine(tenant_id, machine_id)
         await session.commit()
         if incident is None:
             print("Healthy machine confirmed: no incident (as expected).")

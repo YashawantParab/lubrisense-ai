@@ -1,8 +1,5 @@
 import { tenantScopedFetch } from "@/lib/api/client";
-import type {
-  KnowledgeDocumentResponse,
-  RAGAnswerResponse,
-} from "@/lib/api/knowledge-types";
+import type { KnowledgeDocumentResponse, RAGAnswerResponse } from "@/lib/api/knowledge-types";
 
 export function listDocuments(status?: string): Promise<KnowledgeDocumentResponse[]> {
   const query = new URLSearchParams();

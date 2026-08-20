@@ -88,7 +88,11 @@ export default function FleetPage() {
       const at = incident.resolved_at ?? incident.closed_at ?? incident.first_detected_at;
       const existing = map.get(incident.machine_id);
       if (!existing || new Date(at).getTime() > new Date(existing.resolvedAt).getTime()) {
-        map.set(incident.machine_id, { incidentId: incident.id, severity: incident.severity, resolvedAt: at });
+        map.set(incident.machine_id, {
+          incidentId: incident.id,
+          severity: incident.severity,
+          resolvedAt: at,
+        });
       }
     }
     return map;
@@ -153,7 +157,9 @@ export default function FleetPage() {
 
         {filteredRows.length === 0 ? (
           <EmptyState
-            title={rows.length === 0 ? "No machines registered yet" : "No machines match this filter"}
+            title={
+              rows.length === 0 ? "No machines registered yet" : "No machines match this filter"
+            }
             description={
               rows.length === 0
                 ? "Commission a machine to see it here."
@@ -215,7 +221,9 @@ export default function FleetPage() {
                             </span>
                             <IncidentStateBadge value={incidentInfo.state} />
                             {incidentInfo.count > 1 && (
-                              <span className="text-xs text-zinc-500">+{incidentInfo.count - 1}</span>
+                              <span className="text-xs text-zinc-500">
+                                +{incidentInfo.count - 1}
+                              </span>
                             )}
                           </div>
                         ) : (

@@ -207,7 +207,9 @@ export default function MLPage() {
 
                 <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-zinc-100 pt-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
                   <span>{detail.data.features.length} feature(s)</span>
-                  <span>Dataset: {detail.data.dataset_id}@{detail.data.dataset_version}</span>
+                  <span>
+                    Dataset: {detail.data.dataset_id}@{detail.data.dataset_version}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setShowRawDetail((v) => !v)}

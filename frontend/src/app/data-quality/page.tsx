@@ -84,9 +84,7 @@ export default function DataQualityPage() {
 
       <section>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-            Quality Issues
-          </h2>
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Quality Issues</h2>
           <div className="flex flex-wrap gap-3">
             <select
               value={status}
@@ -121,8 +119,8 @@ export default function DataQualityPage() {
         >
           {issues.data && issues.data.length === 0 ? (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              No quality issues match this filter — either the fleet is clean, or telemetry
-              for it hasn&apos;t been evaluated yet.
+              No quality issues match this filter — either the fleet is clean, or telemetry for it
+              hasn&apos;t been evaluated yet.
             </p>
           ) : (
             issues.data && (

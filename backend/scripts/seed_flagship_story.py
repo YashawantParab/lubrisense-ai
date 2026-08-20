@@ -33,10 +33,12 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import Select, delete, select
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.baselines.workers.backfill import backfill
 from app.core.config import get_settings
@@ -70,7 +72,15 @@ DEMO_TENANT_SLUG = "lubrisense-demo"
 GATEWAY_CODE = "GW-RIDGE"
 
 
-async def _resolve_flagship(session) -> dict[str, object]:  # type: ignore[no-untyped-def]
+@dataclass(frozen=True, slots=True)
+class _FlagshipContext:
+    tenant_id: uuid.UUID
+    machine_id: uuid.UUID
+    circuit_id: uuid.UUID
+    pressure_sensor: Sensor
+
+
+async def _resolve_flagship(session: AsyncSession) -> _FlagshipContext:
     from app.domain.models import Machine
 
     tenant = (
@@ -107,23 +117,22 @@ async def _resolve_flagship(session) -> dict[str, object]:  # type: ignore[no-un
         )
     pressure_sensor, circuit = pressure_row
 
-    result: dict[str, object] = {
-        "tenant_id": tenant.id,
-        "machine_id": machine.id,
-        "circuit_id": circuit.id,
-        "pressure_sensor": pressure_sensor,
-    }
-    return result
+    return _FlagshipContext(
+        tenant_id=tenant.id,
+        machine_id=machine.id,
+        circuit_id=circuit.id,
+        pressure_sensor=pressure_sensor,
+    )
 
 
-async def _load_all_sensors(  # type: ignore[no-untyped-def]
-    session, tenant_id: uuid.UUID, machine_id: uuid.UUID
+async def _load_all_sensors(
+    session: AsyncSession, tenant_id: uuid.UUID, machine_id: uuid.UUID
 ) -> dict[str, list[Sensor]]:
     from app.domain.models import Bearing, Pump, Reservoir
 
     grouped: dict[str, list[Sensor]] = {}
 
-    async def _add(stmt):  # type: ignore[no-untyped-def]
+    async def _add(stmt: Select[tuple[Sensor]]) -> None:
         rows = (await session.execute(stmt)).scalars().all()
         for s in rows:
             grouped.setdefault(s.sensor_type.value, []).append(s)
@@ -212,9 +221,9 @@ async def main() -> None:
 
     async with database.session() as session:
         base = await _resolve_flagship(session)
-        tenant_id = base["tenant_id"]  # type: ignore[assignment]
-        machine_id = base["machine_id"]  # type: ignore[assignment]
-        circuit_id = base["circuit_id"]  # type: ignore[assignment]
+        tenant_id = base.tenant_id
+        machine_id = base.machine_id
+        circuit_id = base.circuit_id
         by_type = await _load_all_sensors(session, tenant_id, machine_id)
 
         pressure = by_type["PRESSURE"][0]
@@ -401,7 +410,7 @@ async def main() -> None:
             try:
                 async with database.session() as session:
                     await SensorQualityStateRepository(session).upsert(
-                        tenant_id, sid, machine_id=machine_id,  # type: ignore[arg-type]
+                        tenant_id, sid, machine_id=machine_id,
                         quality_state=QualityState.TRUSTED, eligibility=Eligibility.ELIGIBLE,
                         policy_version="1",
                     )
@@ -418,8 +427,8 @@ async def main() -> None:
 
     # --- Baselines from the healthy window (each call opens its own session/engine).
     for sid in all_sensor_ids:
-        await backfill(tenant_id, sid, healthy_start, restriction_start)  # type: ignore[arg-type]
-        await backfill(tenant_id, sid, healthy_start, restriction_start)  # type: ignore[arg-type]
+        await backfill(tenant_id, sid, healthy_start, restriction_start)
+        await backfill(tenant_id, sid, healthy_start, restriction_start)
     print("Built baselines from the healthy window")
 
     # Re-assert eligibility immediately before reprocessing (same race-avoidance
@@ -431,7 +440,7 @@ async def main() -> None:
     # `debounce.default: 3` in demo_rules_policy.yaml — a finding needs 3 *consecutive*
     # reprocess cycles before CANDIDATE is promoted to ACTIVE.
     for _ in range(3):
-        await reprocess(tenant_id, machine_id, restriction_start, now)  # type: ignore[arg-type]
+        await reprocess(tenant_id, machine_id, restriction_start, now)
     print("Reprocessed rules over the restriction window")
 
     # State estimation is inherently sequential (Phase 12 brief §17) — each tick's Kalman
@@ -465,7 +474,7 @@ async def main() -> None:
                 async with database.session() as session:
                     engine = FeatureEngine(session, feature_policy)
                     computed = await engine.compute(
-                        tenant_id, machine_id, state_config.feature_set, as_of  # type: ignore[arg-type]
+                        tenant_id, machine_id, state_config.feature_set, as_of
                     )
                     tick = FeatureTick(
                         tenant_id=computed.tenant_id,
@@ -482,8 +491,8 @@ async def main() -> None:
                     )
                     state_repo = StateEstimateRepository(session)
                     prior_row = await state_repo.get_latest(
-                        tenant_id,  # type: ignore[arg-type]
-                        machine_id,  # type: ignore[arg-type]
+                        tenant_id,
+                        machine_id,
                         state_type,
                         state_config.estimator_version,
                     )
@@ -536,7 +545,7 @@ async def main() -> None:
 
     async with database.session() as session:
         incidents = IncidentService(session)
-        incident = await incidents.evaluate_machine(tenant_id, machine_id)  # type: ignore[arg-type]
+        incident = await incidents.evaluate_machine(tenant_id, machine_id)
         await session.commit()
         if incident is None:
             print("No incident created — condition evidence did not warrant one this run")
@@ -546,19 +555,19 @@ async def main() -> None:
             f"({incident.incident_type.value}, {incident.severity.value})"
         )
 
-        await incidents.acknowledge(tenant_id, incident.id)  # type: ignore[arg-type]
-        await incidents.start_investigation(tenant_id, incident.id)  # type: ignore[arg-type]
+        await incidents.acknowledge(tenant_id, incident.id)
+        await incidents.start_investigation(tenant_id, incident.id)
         await session.commit()
 
         maintenance = MaintenanceService(session)
-        case = await maintenance.create_case_for_incident(tenant_id, incident.id)  # type: ignore[arg-type]
+        case = await maintenance.create_case_for_incident(tenant_id, incident.id)
         await maintenance.plan(tenant_id, case.id, planned_for=None)
         await maintenance.start(tenant_id, case.id)
         await session.commit()
         print(f"Maintenance case: {case.id} ({case.recommended_action.value})")
 
         await maintenance.record_finding(
-            tenant_id,  # type: ignore[arg-type]
+            tenant_id,
             case.id,
             result=TechnicianFindingResult.PARTIALLY_CONFIRMED,
             component="distributor",
@@ -573,10 +582,13 @@ async def main() -> None:
             technician_identifier="demo-technician",
         )
         await maintenance.record_action(
-            tenant_id,  # type: ignore[arg-type]
+            tenant_id,
             case.id,
             action_type=MaintenanceActionType.CLEANED,
-            notes="Cleared partial blockage at the distributor outlet; verified free flow before closing out.",
+            notes=(
+                "Cleared partial blockage at the distributor outlet; verified free flow "
+                "before closing out."
+            ),
             recorded_by="demo-technician",
         )
         await session.commit()
@@ -630,7 +642,7 @@ async def main() -> None:
     print(f"Seeded {len(recovery_rows)} recovery telemetry rows (cleared blockage)")
 
     for _ in range(3):
-        await reprocess(tenant_id, machine_id, now, recovery_end)  # type: ignore[arg-type]
+        await reprocess(tenant_id, machine_id, now, recovery_end)
     print("Reprocessed rules over the recovery window")
 
     # The main story's own replay leaves each filter confidently (LOW uncertainty)
@@ -662,7 +674,7 @@ async def main() -> None:
     async with database.session() as session:
         maintenance = MaintenanceService(session)
         await maintenance.complete(
-            tenant_id,  # type: ignore[arg-type]
+            tenant_id,
             case.id,
             classification=FeedbackClassification.TRUE_POSITIVE,
             confirmed_component="distributor",

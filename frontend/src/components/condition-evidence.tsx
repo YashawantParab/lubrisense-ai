@@ -53,9 +53,7 @@ export function EvidenceWhyDetails({
       <div className="mt-2 space-y-3">
         {why.length > 0 && (
           <div>
-            <p className="font-medium text-zinc-700 dark:text-zinc-300">
-              Raw evidence sentences
-            </p>
+            <p className="font-medium text-zinc-700 dark:text-zinc-300">Raw evidence sentences</p>
             <ul className="mt-1 list-inside list-disc space-y-1">
               {why.map((item) => (
                 <li key={item}>{item}</li>

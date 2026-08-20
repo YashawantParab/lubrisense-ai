@@ -128,10 +128,7 @@ function AssistantPageInner() {
       {
         onSuccess: (response) => {
           setSessionId(response.session_id);
-          setTurns((prev) => [
-            ...prev,
-            { role: "assistant", content: response.answer, response },
-          ]);
+          setTurns((prev) => [...prev, { role: "assistant", content: response.answer, response }]);
         },
       },
     );
@@ -144,7 +141,10 @@ function AssistantPageInner() {
         title="Assistant"
         description="Explains persisted intelligence, retrieves approved knowledge, and prepares draft artifacts — it never diagnoses independently, controls machinery, or acts without human review."
         actions={
-          <Link href="/knowledge" className="text-xs text-sky-600 hover:underline dark:text-sky-400">
+          <Link
+            href="/knowledge"
+            className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+          >
             Browse the knowledge base →
           </Link>
         }
@@ -292,8 +292,7 @@ function AssistantPageInner() {
                   {turn.response.human_review_required && <HumanReviewBadge />}
                   {turn.response.draft_artifacts.length > 0 && (
                     <StatusPill tone="neutral">
-                      {turn.response.draft_artifacts.length} draft artifact(s) — not
-                      executed
+                      {turn.response.draft_artifacts.length} draft artifact(s) — not executed
                     </StatusPill>
                   )}
                 </div>
@@ -401,12 +400,12 @@ function AssistantPageInner() {
             )}
           </div>
         ))}
-        {chat.isPending && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Thinking…</p>
-        )}
+        {chat.isPending && <p className="text-sm text-zinc-500 dark:text-zinc-400">Thinking…</p>}
         {chat.isError && (
           <p className="text-sm text-red-600 dark:text-red-400">
-            {chat.error instanceof Error ? chat.error.message : "The assistant is temporarily unavailable."}
+            {chat.error instanceof Error
+              ? chat.error.message
+              : "The assistant is temporarily unavailable."}
           </p>
         )}
       </div>

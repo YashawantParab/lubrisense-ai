@@ -22,7 +22,11 @@ export const metadata: Metadata = {
   description: "LubriSense AI: a reference platform for condition-driven intelligent lubrication.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+interface RootLayoutProps {
+  children: React.ReactNode;
+}
+
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-zinc-50 dark:bg-zinc-950">

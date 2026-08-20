@@ -58,16 +58,22 @@ const ENGINEERING_GROUPS: { label: string; items: NavItem[] }[] = [
   },
 ];
 
-function NavLink({ item, active, onClick }: { item: NavItem; active: boolean; onClick?: () => void }) {
+function NavLink({
+  item,
+  active,
+  onClick,
+}: {
+  item: NavItem;
+  active: boolean;
+  onClick?: () => void;
+}) {
   return (
     <Link
       href={item.href}
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={`block rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-        active
-          ? "bg-sky-500/15 text-sky-300"
-          : "text-slate-300 hover:bg-white/5 hover:text-white"
+        active ? "bg-sky-500/15 text-sky-300" : "text-slate-300 hover:bg-white/5 hover:text-white"
       }`}
     >
       {item.label}
@@ -102,7 +108,8 @@ function SystemStatusDot() {
   const readiness = useBackendReadiness();
   if (readiness.isPending) return <StatusPill tone="neutral">Checking</StatusPill>;
   if (readiness.isError) return <StatusPill tone="error">Backend unreachable</StatusPill>;
-  if (readiness.data?.status === "ready") return <StatusPill tone="ok">All systems ready</StatusPill>;
+  if (readiness.data?.status === "ready")
+    return <StatusPill tone="ok">All systems ready</StatusPill>;
   return <StatusPill tone="warn">Degraded</StatusPill>;
 }
 

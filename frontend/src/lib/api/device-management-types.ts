@@ -1,9 +1,6 @@
 export type DeviceType = "GATEWAY" | "CONTROLLER" | "SENSOR";
 export type CompatibilityStatus =
-  | "SUPPORTED"
-  | "SUPPORTED_WITH_LIMITATIONS"
-  | "UNKNOWN"
-  | "INCOMPATIBLE";
+  "SUPPORTED" | "SUPPORTED_WITH_LIMITATIONS" | "UNKNOWN" | "INCOMPATIBLE";
 
 export interface ConfigurationSnapshotResponse {
   id: string;

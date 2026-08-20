@@ -113,7 +113,9 @@ function CommissioningWizardInner() {
       ? 2
       : session.status === "CONFIGURING"
         ? 3
-        : session.status === "VALIDATING" || session.status === "READY" || session.status === "FAILED"
+        : session.status === "VALIDATING" ||
+            session.status === "READY" ||
+            session.status === "FAILED"
           ? 4
           : 5;
 
@@ -129,7 +131,11 @@ function CommissioningWizardInner() {
 
       {!session && (
         <SectionCard title="1. Machine">
-          <DataState isPending={hierarchy.isPending} isError={hierarchy.isError} error={hierarchy.error}>
+          <DataState
+            isPending={hierarchy.isPending}
+            isError={hierarchy.isError}
+            error={hierarchy.error}
+          >
             <div className="flex flex-col gap-3">
               <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                 Production line
@@ -252,7 +258,12 @@ function CommissioningWizardInner() {
                 disabled={!sensorCode || !sensorName || addSensorMutation.isPending}
                 onClick={() =>
                   addSensorMutation.mutate(
-                    { sensor_type: sensorType, sensor_code: sensorCode, name: sensorName, unit: sensorUnit || undefined },
+                    {
+                      sensor_type: sensorType,
+                      sensor_code: sensorCode,
+                      name: sensorName,
+                      unit: sensorUnit || undefined,
+                    },
                     {
                       onSuccess: () => {
                         setSensorCode("");
@@ -267,7 +278,8 @@ function CommissioningWizardInner() {
                 {addSensorMutation.isPending ? "Adding…" : "Add sensor"}
               </button>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                {session.steps_completed.filter((s) => s.startsWith("sensor_mapped")).length} sensor(s) mapped so far.
+                {session.steps_completed.filter((s) => s.startsWith("sensor_mapped")).length}{" "}
+                sensor(s) mapped so far.
               </p>
             </div>
           </SectionCard>
@@ -294,9 +306,7 @@ function CommissioningWizardInner() {
               >
                 {assignGatewayMutation.isPending ? "Assigning…" : "Assign gateway"}
               </button>
-              {session.gateway_id && (
-                <StatusPill tone="ok">Gateway assigned</StatusPill>
-              )}
+              {session.gateway_id && <StatusPill tone="ok">Gateway assigned</StatusPill>}
             </div>
           </SectionCard>
 
@@ -311,43 +321,46 @@ function CommissioningWizardInner() {
         </>
       )}
 
-      {session && (session.status === "VALIDATING" || session.status === "READY" || session.status === "FAILED") && (
-        <SectionCard title="4. Validation result">
-          <div className="flex flex-wrap items-center gap-2">
-            <CommissioningStatusBadge value={session.status} />
-            <CapabilityLevelBadge value={session.capability_level} />
-          </div>
-          {session.validation_issues.length > 0 && (
-            <ul className="mt-3 space-y-1.5 text-sm">
-              {session.validation_issues.map((issue) => (
-                <li key={issue.code} className="flex items-start gap-2">
-                  <StatusPill tone={issue.blocking ? "error" : "warn"}>
-                    {issue.blocking ? "Blocking" : "Warning"}
-                  </StatusPill>
-                  <span className="text-zinc-700 dark:text-zinc-300">{issue.message}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="mt-4 flex gap-2">
-            {session.status === "READY" && (
-              <button
-                type="button"
-                disabled={completeMutation.isPending}
-                onClick={() => completeMutation.mutate()}
-                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {completeMutation.isPending ? "Completing…" : "5. Complete commissioning"}
-              </button>
+      {session &&
+        (session.status === "VALIDATING" ||
+          session.status === "READY" ||
+          session.status === "FAILED") && (
+          <SectionCard title="4. Validation result">
+            <div className="flex flex-wrap items-center gap-2">
+              <CommissioningStatusBadge value={session.status} />
+              <CapabilityLevelBadge value={session.capability_level} />
+            </div>
+            {session.validation_issues.length > 0 && (
+              <ul className="mt-3 space-y-1.5 text-sm">
+                {session.validation_issues.map((issue) => (
+                  <li key={issue.code} className="flex items-start gap-2">
+                    <StatusPill tone={issue.blocking ? "error" : "warn"}>
+                      {issue.blocking ? "Blocking" : "Warning"}
+                    </StatusPill>
+                    <span className="text-zinc-700 dark:text-zinc-300">{issue.message}</span>
+                  </li>
+                ))}
+              </ul>
             )}
-            {session.status === "FAILED" && (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Add the missing instrumentation above, then validate again.
-              </p>
-            )}
-          </div>
-        </SectionCard>
-      )}
+            <div className="mt-4 flex gap-2">
+              {session.status === "READY" && (
+                <button
+                  type="button"
+                  disabled={completeMutation.isPending}
+                  onClick={() => completeMutation.mutate()}
+                  className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {completeMutation.isPending ? "Completing…" : "5. Complete commissioning"}
+                </button>
+              )}
+              {session.status === "FAILED" && (
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  Add the missing instrumentation above, then validate again.
+                </p>
+              )}
+            </div>
+          </SectionCard>
+        )}
 
       {session && session.status === "COMPLETED" && (
         <SectionCard title="5. Complete">

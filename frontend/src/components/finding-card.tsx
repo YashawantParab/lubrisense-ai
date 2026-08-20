@@ -50,9 +50,7 @@ export function FindingCard({ finding }: { finding: RuleFindingResponse }) {
       </div>
       <p className="mt-1.5 text-sm text-zinc-600 dark:text-zinc-400">{finding.message}</p>
       {finding.limitations.length > 0 && (
-        <p className="mt-1.5 text-xs text-zinc-400 dark:text-zinc-600">
-          {finding.limitations[0]}
-        </p>
+        <p className="mt-1.5 text-xs text-zinc-400 dark:text-zinc-600">{finding.limitations[0]}</p>
       )}
       <details className="mt-2">
         <summary className="cursor-pointer text-xs font-medium text-sky-600 select-none dark:text-sky-400">

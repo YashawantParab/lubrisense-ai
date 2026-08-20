@@ -157,8 +157,8 @@ export default function BaselinesPage() {
 
               {sensorBaselines.data.profiles.length === 0 ? (
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No baseline profiles yet for this sensor — baselines refresh on a regular
-                  cadence, so a brand-new sensor may not have been evaluated yet.
+                  No baseline profiles yet for this sensor — baselines refresh on a regular cadence,
+                  so a brand-new sensor may not have been evaluated yet.
                 </p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -187,7 +187,9 @@ export default function BaselinesPage() {
                             {p.context_key || "—"}
                           </td>
                           <td className="py-2 pr-4">
-                            <StatusPill tone={toneForState(p.state)}>{humanize(p.state)}</StatusPill>
+                            <StatusPill tone={toneForState(p.state)}>
+                              {humanize(p.state)}
+                            </StatusPill>
                           </td>
                           <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">
                             v{p.version}
@@ -221,11 +223,10 @@ export default function BaselinesPage() {
           {selectedSensor ? ` — ${selectedSensor.sensor_code}` : ""}
         </h2>
         <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-          Resolves the best-available reference for the chosen context (an exact match,
-          falling back to a coarser one when needed), and — if a reading is entered below —
-          computes an explainable deviation. This is a statistical distance, not a fault
-          diagnosis, and the input below is an engineering verification tool, not a live
-          reading.
+          Resolves the best-available reference for the chosen context (an exact match, falling back
+          to a coarser one when needed), and — if a reading is entered below — computes an
+          explainable deviation. This is a statistical distance, not a fault diagnosis, and the
+          input below is an engineering verification tool, not a live reading.
         </p>
 
         <div className="mb-3 flex flex-wrap gap-3">
@@ -266,13 +267,9 @@ export default function BaselinesPage() {
 
               {current.data.profile?.statistics ? (
                 <div className="grid grid-cols-3 gap-3 text-sm sm:grid-cols-6">
-                  {(
-                    ["median", "mad", "mean", "p05", "p75", "p95"] as const
-                  ).map((key) => (
+                  {(["median", "mad", "mean", "p05", "p75", "p95"] as const).map((key) => (
                     <div key={key}>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {STAT_LABELS[key]}
-                      </p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">{STAT_LABELS[key]}</p>
                       <p className="font-mono text-zinc-800 dark:text-zinc-200">
                         {current.data!.profile!.statistics![key] !== undefined
                           ? current.data!.profile!.statistics![key].toFixed(2)

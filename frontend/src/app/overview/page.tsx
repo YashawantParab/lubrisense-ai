@@ -33,7 +33,8 @@ export default function OverviewPage() {
         .filter((i) => i.id !== priorityIncident?.id)
         .filter((i) => i.state !== "RESOLVED" && i.state !== "CLOSED")
         .sort(
-          (a, b) => new Date(b.first_detected_at).getTime() - new Date(a.first_detected_at).getTime(),
+          (a, b) =>
+            new Date(b.first_detected_at).getTime() - new Date(a.first_detected_at).getTime(),
         )
         .slice(0, 6),
     [incidents, priorityIncident],
@@ -74,7 +75,10 @@ export default function OverviewPage() {
               <SectionCard
                 title="Also needs attention"
                 actions={
-                  <Link href="/fleet" className="text-xs text-sky-600 hover:underline dark:text-sky-400">
+                  <Link
+                    href="/fleet"
+                    className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                  >
                     View fleet
                   </Link>
                 }
@@ -138,7 +142,10 @@ export default function OverviewPage() {
               <SectionCard
                 title="North Star"
                 actions={
-                  <Link href="/metrics" className="text-xs text-sky-600 hover:underline dark:text-sky-400">
+                  <Link
+                    href="/metrics"
+                    className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                  >
                     View all metrics
                   </Link>
                 }

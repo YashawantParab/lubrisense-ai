@@ -52,7 +52,10 @@ export default function ConfigurationPage() {
               </thead>
               <tbody>
                 {(sessions.data ?? []).map((s) => (
-                  <tr key={s.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                  <tr
+                    key={s.id}
+                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                  >
                     <td className="px-4 py-2">
                       <Link
                         href={`/configuration/commission?sessionId=${s.id}`}

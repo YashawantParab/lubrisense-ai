@@ -257,17 +257,12 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      mosquitto:
-        image: eclipse-mosquitto:2
-        ports:
-          - 1883:1883
-        # The default eclipse-mosquitto image refuses anonymous connections without a
-        # config file; the backend's own infrastructure/mosquitto config allows the
-        # local demo listener. GitHub Actions service containers can't mount a
-        # docker-compose bind volume, so the container is started via a plain `docker
-        # run` step below instead of the `services:` block for this one dependency.
-        options: >-
-          --health-cmd "true"
+      # No `mosquitto` entry here: the default eclipse-mosquitto image refuses anonymous
+      # connections without a config file, and GitHub Actions service containers can't
+      # mount a docker-compose bind volume — so Mosquitto is started via a plain `docker
+      # run` step below instead, with the real CI-only config mounted. A `services:` entry
+      # for it here would start its own container bound to host port 1883 before that step
+      # even runs, and the two would then collide over the same port.
 
     env:
       DATABASE_URL: postgresql+psycopg://lubrisense:lubrisense@localhost:5432/lubrisense
@@ -326,8 +321,12 @@ jobs:
       - name: Build backend image
         run: docker build -f backend/Dockerfile -t lubrisense-ci/backend .
 
+      # Unlike backend/Dockerfile and edge/Dockerfile (both intentionally built from the
+      # repo root — see their own header comments), frontend/Dockerfile's COPY paths are
+      # relative to the frontend/ directory itself (matching docker-compose.yml's
+      # `context: ./frontend`), so its build context must be frontend/, not the repo root.
       - name: Build frontend image
-        run: docker build -f frontend/Dockerfile -t lubrisense-ci/frontend .
+        run: docker build -f frontend/Dockerfile -t lubrisense-ci/frontend frontend
 
       - name: Build edge image
         run: docker build -f edge/Dockerfile -t lubrisense-ci/edge .

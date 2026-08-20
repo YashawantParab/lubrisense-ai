@@ -8,9 +8,7 @@ export function listIncidents(params?: {
   const query = new URLSearchParams();
   if (params?.machineId) query.set("machine_id", params.machineId);
   if (params?.state) query.set("state", params.state);
-  return tenantScopedFetch<IncidentResponse[]>(
-    `/api/v1/incidents${query.size ? `?${query}` : ""}`,
-  );
+  return tenantScopedFetch<IncidentResponse[]>(`/api/v1/incidents${query.size ? `?${query}` : ""}`);
 }
 
 export function getIncident(incidentId: string): Promise<IncidentResponse> {

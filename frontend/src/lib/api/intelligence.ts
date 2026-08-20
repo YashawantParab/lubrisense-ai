@@ -1,10 +1,11 @@
 import { tenantScopedFetch } from "@/lib/api/client";
-import type { DecisionAssessmentResponse, IntelligenceViewResponse } from "@/lib/api/intelligence-types";
+import type {
+  DecisionAssessmentResponse,
+  IntelligenceViewResponse,
+} from "@/lib/api/intelligence-types";
 
 export function getIntelligenceView(machineId: string): Promise<IntelligenceViewResponse> {
-  return tenantScopedFetch<IntelligenceViewResponse>(
-    `/api/v1/intelligence/machines/${machineId}`,
-  );
+  return tenantScopedFetch<IntelligenceViewResponse>(`/api/v1/intelligence/machines/${machineId}`);
 }
 
 export function getDecisionHistory(machineId: string): Promise<DecisionAssessmentResponse[]> {

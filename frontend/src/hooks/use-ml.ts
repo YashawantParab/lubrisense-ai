@@ -2,7 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { getLatestMachineInference, getModel, getModels, listMachineInferenceHistory } from "@/lib/api/ml";
+import {
+  getLatestMachineInference,
+  getModel,
+  getModels,
+  listMachineInferenceHistory,
+} from "@/lib/api/ml";
 
 export function useModels() {
   return useQuery({ queryKey: ["ml", "models"], queryFn: getModels });

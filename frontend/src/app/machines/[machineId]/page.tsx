@@ -235,12 +235,12 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   }, [decisionHistory.data, relevantIncident]);
   const showDecisionComparison = Boolean(
     !activeIncident &&
-      relevantIncident &&
-      duringIncidentDecision &&
-      intelligence.data &&
-      duringIncidentDecision.id !== intelligence.data.decision.id &&
-      (duringIncidentDecision.recommended_action !== intelligence.data.decision.recommended_action ||
-        duringIncidentDecision.priority !== intelligence.data.decision.priority),
+    relevantIncident &&
+    duringIncidentDecision &&
+    intelligence.data &&
+    duringIncidentDecision.id !== intelligence.data.decision.id &&
+    (duringIncidentDecision.recommended_action !== intelligence.data.decision.recommended_action ||
+      duringIncidentDecision.priority !== intelligence.data.decision.priority),
   );
 
   const measurementTypes = useMemo(() => {
@@ -294,7 +294,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
         {hierarchy.data && (
           <>
             <PageHeader
-              breadcrumbs={[{ label: "Fleet", href: "/fleet" }, { label: hierarchy.data.machine.name }]}
+              breadcrumbs={[
+                { label: "Fleet", href: "/fleet" },
+                { label: hierarchy.data.machine.name },
+              ]}
               title={hierarchy.data.machine.name}
               description={`${hierarchy.data.machine.asset_code} · ${humanize(hierarchy.data.machine.machine_type)}`}
               actions={
@@ -356,7 +359,9 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
               )}
             </div>
 
-            {relevantIncident && <CaseContextHeader incidentId={relevantIncident.id} active="machine" />}
+            {relevantIncident && (
+              <CaseContextHeader incidentId={relevantIncident.id} active="machine" />
+            )}
 
             {relevantIncident && (
               <SectionCard title="Case journey">
@@ -514,7 +519,9 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                         </p>
                         {caseFeedback.data && (
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-zinc-500 dark:text-zinc-400">Outcome:</span>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                              Outcome:
+                            </span>
                             <FeedbackBadge value={caseFeedback.data.classification} />
                           </div>
                         )}
@@ -526,7 +533,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                     )}
                   </div>
                 ) : (
-                  <EmptyState title="No incidents on record" description="This machine has no incident history yet." />
+                  <EmptyState
+                    title="No incidents on record"
+                    description="This machine has no incident history yet."
+                  />
                 )}
               </SectionCard>
             </div>
@@ -542,13 +552,12 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                 ) : (
                   <div className="grid gap-4 sm:grid-cols-2">
                     {Object.entries(
-                      intelligence.data.prognostics.reduce<Record<string, typeof intelligence.data.prognostics>>(
-                        (acc, row) => {
-                          (acc[row.state_type] ??= []).push(row);
-                          return acc;
-                        },
-                        {},
-                      ),
+                      intelligence.data.prognostics.reduce<
+                        Record<string, typeof intelligence.data.prognostics>
+                      >((acc, row) => {
+                        (acc[row.state_type] ??= []).push(row);
+                        return acc;
+                      }, {}),
                     ).map(([stateType, rows]) => (
                       <div key={stateType}>
                         <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -568,7 +577,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                                   {row.estimated_threshold_crossing_time && (
                                     <span className="ml-1 text-amber-600 dark:text-amber-400">
                                       (est. crossing{" "}
-                                      {new Date(row.estimated_threshold_crossing_time).toLocaleString()})
+                                      {new Date(
+                                        row.estimated_threshold_crossing_time,
+                                      ).toLocaleString()}
+                                      )
                                     </span>
                                   )}
                                 </span>
@@ -626,13 +638,16 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                         Supporting evidence
                       </p>
                       <ul className="mt-1 list-inside list-disc">
-                        {intelligence.data.condition.evidence_summary.supporting_evidence.map((e) => (
-                          <li key={e}>{e}</li>
-                        ))}
+                        {intelligence.data.condition.evidence_summary.supporting_evidence.map(
+                          (e) => (
+                            <li key={e}>{e}</li>
+                          ),
+                        )}
                       </ul>
                     </div>
                   )}
-                  {intelligence.data.condition.evidence_summary.contradicting_evidence.length > 0 && (
+                  {intelligence.data.condition.evidence_summary.contradicting_evidence.length >
+                    0 && (
                     <div>
                       <p className="font-medium text-zinc-700 dark:text-zinc-300">
                         Contradicting evidence
@@ -731,7 +746,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                       </thead>
                       <tbody>
                         {(devices.data ?? []).map((d) => (
-                          <tr key={d.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                          <tr
+                            key={d.id}
+                            className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                          >
                             <td className="py-2 pr-4 text-zinc-800 dark:text-zinc-200">
                               {humanize(d.device_type)}
                             </td>
@@ -863,7 +881,8 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
             </SectionCard>
 
             <p className="text-xs text-zinc-400 dark:text-zinc-600">
-              Last computed <RelativeTime iso={intelligence.data?.condition.as_of_timestamp ?? null} />
+              Last computed{" "}
+              <RelativeTime iso={intelligence.data?.condition.as_of_timestamp ?? null} />
             </p>
           </>
         )}

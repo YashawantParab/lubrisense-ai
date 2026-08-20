@@ -130,8 +130,8 @@ export default function RulesPage() {
         >
           {findings.data && findings.data.length === 0 ? (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              No findings match this filter — either the fleet shows no evidence patterns
-              right now, or no machines have been evaluated yet.
+              No findings match this filter — either the fleet shows no evidence patterns right now,
+              or no machines have been evaluated yet.
             </p>
           ) : (
             findings.data && (
@@ -169,7 +169,9 @@ export default function RulesPage() {
                             </StatusPill>
                           </td>
                           <td className="py-2 pr-4">
-                            <StatusPill tone={toneForState(f.state)}>{humanize(f.state)}</StatusPill>
+                            <StatusPill tone={toneForState(f.state)}>
+                              {humanize(f.state)}
+                            </StatusPill>
                           </td>
                           <td className="py-2 pr-4">
                             <StatusPill tone={toneForEvidenceStrength(f.evidence_strength)}>

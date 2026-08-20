@@ -54,9 +54,8 @@ function StateCard({ estimate }: { estimate: StateEstimateResponse }) {
             </StatusPill>
           </div>
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-            Condition index: <span className="font-mono">{estimate.state_value.toFixed(2)}</span>{" "}
-            (0 = normal · 1 = severely degraded — a trend estimate, not a failure
-            probability)
+            Condition index: <span className="font-mono">{estimate.state_value.toFixed(2)}</span> (0
+            = normal · 1 = severely degraded — a trend estimate, not a failure probability)
           </p>
         </>
       )}

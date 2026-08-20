@@ -19,7 +19,13 @@ import { useMaintenanceCases } from "@/hooks/use-maintenance";
 import { humanize } from "@/lib/terminology";
 import type { IncidentResponse } from "@/lib/api/incidents-types";
 
-const OPEN_STATES = new Set(["OPEN", "DETECTED", "ACKNOWLEDGED", "INVESTIGATING", "ACTION_PLANNED"]);
+const OPEN_STATES = new Set([
+  "OPEN",
+  "DETECTED",
+  "ACKNOWLEDGED",
+  "INVESTIGATING",
+  "ACTION_PLANNED",
+]);
 
 /**
  * The Overview's centerpiece: one machine's complete, real story — condition, evidence,

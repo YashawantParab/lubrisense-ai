@@ -16,13 +16,7 @@ import {
 import { feedbackHeadline, humanize } from "@/lib/terminology";
 
 export type WorkflowStageKey =
-  | "detected"
-  | "diagnosed"
-  | "decision"
-  | "incident"
-  | "maintenance"
-  | "recovery"
-  | "verified";
+  "detected" | "diagnosed" | "decision" | "incident" | "maintenance" | "recovery" | "verified";
 
 interface Stage {
   key: WorkflowStageKey;
@@ -100,7 +94,9 @@ export function CaseWorkflow({
       label: "Maintenance",
       headline: machineCase
         ? (latestFinding?.observed_issue ??
-          (latestAction ? humanize(latestAction.action_type) : humanize(machineCase.recommended_action)))
+          (latestAction
+            ? humanize(latestAction.action_type)
+            : humanize(machineCase.recommended_action)))
         : "No maintenance case opened yet",
       iso: machineCase?.started_at ?? machineCase?.created_at ?? null,
       href: machineCase ? `/maintenance/${machineCase.id}` : undefined,
@@ -165,7 +161,10 @@ export function CaseWorkflow({
               </span>
             )}
             {reached && (
-              <RelativeTime iso={stage.iso} className="text-[10px] text-zinc-400 dark:text-zinc-600" />
+              <RelativeTime
+                iso={stage.iso}
+                className="text-[10px] text-zinc-400 dark:text-zinc-600"
+              />
             )}
           </div>
         );
@@ -232,7 +231,9 @@ export function CaseContextHeader({
         <p className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase dark:text-zinc-600">
           Recent significant case
         </p>
-        <p className="font-medium text-zinc-900 dark:text-zinc-100">{humanize(inc.incident_type)}</p>
+        <p className="font-medium text-zinc-900 dark:text-zinc-100">
+          {humanize(inc.incident_type)}
+        </p>
       </div>
       <SeverityBadge value={inc.severity} />
       <IncidentStateBadge value={inc.state} />

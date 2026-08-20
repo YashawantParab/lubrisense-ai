@@ -102,7 +102,10 @@ export default function IncidentDetailPage({
         {incident.data && (
           <>
             <PageHeader
-              breadcrumbs={[{ label: "Incidents", href: "/incidents" }, { label: incident.data.title }]}
+              breadcrumbs={[
+                { label: "Incidents", href: "/incidents" },
+                { label: incident.data.title },
+              ]}
               title={incident.data.title}
               description={evidenceBackingLine(incident.data)}
               actions={
@@ -203,7 +206,11 @@ export default function IncidentDetailPage({
                     <button
                       type="button"
                       onClick={() => {
-                        if (window.confirm("Resolve this incident? This marks the underlying problem as addressed."))
+                        if (
+                          window.confirm(
+                            "Resolve this incident? This marks the underlying problem as addressed.",
+                          )
+                        )
                           resolve.mutate("Resolved from the incident detail page.");
                       }}
                       disabled={resolve.isPending}
@@ -216,7 +223,11 @@ export default function IncidentDetailPage({
                     <button
                       type="button"
                       onClick={() => {
-                        if (window.confirm("Close this incident? This is the final step in its lifecycle."))
+                        if (
+                          window.confirm(
+                            "Close this incident? This is the final step in its lifecycle.",
+                          )
+                        )
                           close.mutate();
                       }}
                       disabled={close.isPending}

@@ -178,8 +178,8 @@ export default function MaintenanceCaseDetailPage({
               )}
               {cmmsDraft.isError && (
                 <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-                  CMMS draft failed — the maintenance case itself is unaffected and the draft
-                  can be retried.
+                  CMMS draft failed — the maintenance case itself is unaffected and the draft can be
+                  retried.
                 </p>
               )}
             </SectionCard>
@@ -268,8 +268,7 @@ export default function MaintenanceCaseDetailPage({
               <SectionCard title="Complete case">
                 <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
                   Requires an explicit feedback classification; runs a real, fresh post-action
-                  condition re-check rather than closing solely because this button was
-                  clicked.
+                  condition re-check rather than closing solely because this button was clicked.
                 </p>
                 <select
                   value={classification}
@@ -293,7 +292,11 @@ export default function MaintenanceCaseDetailPage({
                   type="button"
                   disabled={complete.isPending}
                   onClick={() => {
-                    if (window.confirm("Complete this case? This records final feedback and re-checks condition."))
+                    if (
+                      window.confirm(
+                        "Complete this case? This records final feedback and re-checks condition.",
+                      )
+                    )
                       complete.mutate({ classification, notes: completeNotes });
                   }}
                   className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
@@ -323,7 +326,9 @@ export default function MaintenanceCaseDetailPage({
                         <span className="font-medium text-zinc-900 dark:text-zinc-100">
                           {f.observed_issue || humanize(f.result)}
                         </span>
-                        <StatusPill tone={findingResultTone(f.result)}>{humanize(f.result)}</StatusPill>
+                        <StatusPill tone={findingResultTone(f.result)}>
+                          {humanize(f.result)}
+                        </StatusPill>
                       </div>
                       {f.notes && (
                         <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{f.notes}</p>

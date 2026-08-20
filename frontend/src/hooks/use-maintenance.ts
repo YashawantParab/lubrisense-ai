@@ -88,8 +88,12 @@ export function useStartCase(caseId: string) {
 export function useRecordFinding(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { result: string; component?: string; observed_issue?: string; notes: string }) =>
-      recordFinding(caseId, body),
+    mutationFn: (body: {
+      result: string;
+      component?: string;
+      observed_issue?: string;
+      notes: string;
+    }) => recordFinding(caseId, body),
     onSuccess: () => invalidateCase(queryClient),
   });
 }
