@@ -7,13 +7,9 @@ import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useLatestStateEstimates, useStateEstimateHistory } from "@/hooks/use-state-estimation";
-import { humanize, stateTrendTone } from "@/lib/terminology";
+import { interpretState, STATE_TYPE_LABELS } from "@/lib/state-interpretation";
+import { humanize } from "@/lib/terminology";
 import type { StateEstimateResponse } from "@/lib/api/state-estimation-types";
-
-const STATE_LABELS: Record<string, string> = {
-  LUBRICATION_DELIVERY_STATE: "Lubrication delivery",
-  BEARING_CONDITION_STATE: "Bearing condition",
-};
 
 function uncertaintyTone(value: string): "ok" | "warn" | "error" | "neutral" {
   if (value === "LOW") return "ok";
@@ -27,16 +23,19 @@ function StateCard({ estimate }: { estimate: StateEstimateResponse }) {
   // for it reads as a real, valid assessment when it isn't one. Route it to an honest
   // unavailable state instead of the hero number.
   const isUnavailable = estimate.prediction_only || estimate.uncertainty === "HIGH";
+  const interpretation = interpretState(estimate.trend, estimate.state_value, {
+    unavailable: isUnavailable,
+  });
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-        {STATE_LABELS[estimate.state_type] ?? humanize(estimate.state_type)}
+        {STATE_TYPE_LABELS[estimate.state_type] ?? humanize(estimate.state_type)}
       </h2>
 
       {isUnavailable ? (
         <div className="mt-3 flex flex-col gap-1">
-          <StatusPill tone="neutral">Not confident yet</StatusPill>
+          <StatusPill tone="neutral">Insufficient recent observations</StatusPill>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
             {estimate.prediction_only
               ? "No recent trusted observation has been factored in yet — this would be a projection only, not a fresh reading."
@@ -45,18 +44,20 @@ function StateCard({ estimate }: { estimate: StateEstimateResponse }) {
         </div>
       ) : (
         <>
-          <p className="mt-3 text-3xl font-semibold text-zinc-900 dark:text-zinc-100">
-            {estimate.state_value.toFixed(2)}
+          <p className="mt-3 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+            {interpretation.headline}
           </p>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            0 = normal · 1 = severely degraded — not a failure probability
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            <StatusPill tone={stateTrendTone(estimate.trend)}>{humanize(estimate.trend)}</StatusPill>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <StatusPill tone={interpretation.tone}>{humanize(estimate.trend)} trend</StatusPill>
             <StatusPill tone={uncertaintyTone(estimate.uncertainty)}>
               {humanize(estimate.uncertainty)} confidence
             </StatusPill>
           </div>
+          <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+            Condition index: <span className="font-mono">{estimate.state_value.toFixed(2)}</span>{" "}
+            (0 = normal · 1 = severely degraded — a trend estimate, not a failure
+            probability)
+          </p>
         </>
       )}
 
@@ -119,8 +120,8 @@ export default function StateEstimationPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
       <PageHeader
-        title="State Estimation"
-        description="Estimated machine condition derived from recent sensor behavior — an independent evidence source, not a diagnosis on its own. Machine and Incident pages show how this combines with rule findings and other evidence into the current assessment."
+        title="Machine Condition Estimation"
+        description="Estimated machine-condition states derived from recent sensor behavior — an independent evidence source, not a diagnosis on its own. Machine and Incident pages show how this combines with rule findings and other evidence into the current assessment."
         actions={
           <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
             Machine
@@ -186,7 +187,7 @@ export default function StateEstimationPage() {
                       {new Date(row.as_of_timestamp).toLocaleString()}
                     </td>
                     <td className="py-2 pr-4 text-xs text-zinc-700 dark:text-zinc-300">
-                      {STATE_LABELS[row.state_type] ?? humanize(row.state_type)}
+                      {STATE_TYPE_LABELS[row.state_type] ?? humanize(row.state_type)}
                     </td>
                     <td className="py-2 pr-4 font-mono text-xs text-zinc-900 dark:text-zinc-100">
                       {row.prediction_only ? "—" : row.state_value.toFixed(2)}

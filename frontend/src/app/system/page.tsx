@@ -32,7 +32,8 @@ function BackendConnectivityCard() {
 
       {readiness.isError && (
         <p className="mt-4 text-sm text-red-600 dark:text-red-400">
-          Could not reach the backend. Is it running? See docs/DEVELOPER_SETUP.md.
+          Could not reach the backend service. Confirm it is running and reachable from this
+          environment.
         </p>
       )}
 

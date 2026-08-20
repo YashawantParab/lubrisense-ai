@@ -13,6 +13,7 @@ import {
   SeverityBadge,
 } from "@/components/badges";
 import { EvidenceWhyDetails, evidenceBackingLine } from "@/components/condition-evidence";
+import { FindingCard } from "@/components/finding-card";
 import { PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
 import { SectionCard } from "@/components/section-card";
@@ -26,6 +27,7 @@ import {
   useStartInvestigation,
 } from "@/hooks/use-incidents";
 import { useCreateCase, useMaintenanceCases } from "@/hooks/use-maintenance";
+import { useFindings } from "@/hooks/use-rules";
 import { useAuth } from "@/lib/auth/context";
 import { humanize } from "@/lib/terminology";
 
@@ -33,6 +35,19 @@ const VALID_NEXT: Record<string, string> = {
   OPEN: "acknowledge",
   DETECTED: "acknowledge",
   ACKNOWLEDGED: "start-investigation",
+};
+
+const EVENT_DOT_CLASSES: Record<string, string> = {
+  INCIDENT_CREATED: "bg-amber-500",
+  SEVERITY_CHANGED: "bg-amber-500",
+  PRIORITY_CHANGED: "bg-amber-500",
+  EVIDENCE_ADDED: "bg-sky-500",
+  ACKNOWLEDGED: "bg-sky-500",
+  INVESTIGATION_STARTED: "bg-sky-500",
+  ACTION_PLANNED: "bg-sky-500",
+  RESOLVED: "bg-emerald-500",
+  CLOSED: "bg-zinc-400 dark:bg-zinc-600",
+  REOPENED: "bg-amber-500",
 };
 
 export default function IncidentDetailPage({
@@ -62,6 +77,15 @@ export default function IncidentDetailPage({
     () => (cases.data ?? []).find((c) => c.incident_id === incidentId),
     [cases.data, incidentId],
   );
+
+  // `getMachineFindings` only returns each finding's *current* state, which drops the
+  // findings behind a since-resolved incident — fetch by machine with no state filter so
+  // history is never silently hidden once the underlying issue recovers.
+  const machineFindings = useFindings({ machine_id: incident.data?.machine_id, limit: 200 });
+  const incidentFindings = useMemo(() => {
+    const ids = new Set(incident.data?.rule_finding_ids ?? []);
+    return (machineFindings.data ?? []).filter((f) => ids.has(f.id));
+  }, [machineFindings.data, incident.data?.rule_finding_ids]);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
@@ -189,11 +213,23 @@ export default function IncidentDetailPage({
               )}
             </SectionCard>
 
-            {whyBullets.length > 0 && (
+            {(incidentFindings.length > 0 || whyBullets.length > 0) && (
               <SectionCard title="Evidence">
-                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
                   {evidenceBackingLine(incident.data)}
                 </p>
+                {incidentFindings.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    {incidentFindings.map((finding) => (
+                      <FindingCard key={finding.id} finding={finding} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    This assessment is based on sensor-trend and model evidence rather than
+                    individual rule findings — see technical evidence below.
+                  </p>
+                )}
                 <EvidenceWhyDetails why={whyBullets} />
               </SectionCard>
             )}
@@ -237,16 +273,24 @@ export default function IncidentDetailPage({
                 error={timeline.error}
                 loadingLabel="Loading timeline…"
               >
-                <ol className="space-y-2 border-l border-zinc-200 pl-4 dark:border-zinc-800">
+                <ol className="space-y-4">
                   {(timeline.data ?? []).map((event) => (
-                    <li key={event.id} className="text-sm">
-                      <p className="font-medium text-zinc-900 dark:text-zinc-100">
-                        {humanize(event.event_type)}
-                      </p>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">{event.summary}</p>
-                      <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                        <RelativeTime iso={event.recorded_at} />
-                      </p>
+                    <li key={event.id} className="flex gap-3 text-sm">
+                      <span
+                        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                          EVENT_DOT_CLASSES[event.event_type] ?? "bg-zinc-400 dark:bg-zinc-600"
+                        }`}
+                        aria-hidden
+                      />
+                      <div>
+                        <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                          {humanize(event.event_type)}
+                        </p>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">{event.summary}</p>
+                        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                          <RelativeTime iso={event.recorded_at} />
+                        </p>
+                      </div>
                     </li>
                   ))}
                 </ol>

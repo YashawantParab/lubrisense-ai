@@ -119,7 +119,7 @@ async def _seed_flagship_extras() -> None:
                 },
                 firmware_version=gateway.firmware_version,
                 actor=AuditActor.system("hosted-demo-seed"),
-                reason="Hosted demo device/configuration context (docs/HOSTED_DEPLOYMENT.md).",
+                reason="Gateway sampling configuration captured during commissioning.",
                 source="hosted-demo-seed",
             )
             await session.commit()

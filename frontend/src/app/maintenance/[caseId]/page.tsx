@@ -7,6 +7,7 @@ import { DataState } from "@/components/data-state";
 import { FeedbackBadge, HumanReviewBadge, MaintenanceStateBadge } from "@/components/badges";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
+import { StatusPill } from "@/components/status-pill";
 import { useMachine } from "@/hooks/use-asset-hierarchy";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
@@ -22,7 +23,15 @@ import {
   useStartCase,
 } from "@/hooks/use-maintenance";
 import { useAuth } from "@/lib/auth/context";
-import { humanize } from "@/lib/terminology";
+import { humanize, type Tone } from "@/lib/terminology";
+
+function findingResultTone(result: string): Tone {
+  if (result === "CONFIRMED") return "ok";
+  if (result === "NOT_CONFIRMED") return "neutral";
+  if (result === "PARTIALLY_CONFIRMED") return "warn";
+  if (result === "DIFFERENT_ISSUE_FOUND") return "warn";
+  return "neutral";
+}
 
 const FINDING_RESULTS = [
   "CONFIRMED",
@@ -306,11 +315,19 @@ export default function MaintenanceCaseDetailPage({
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <SectionCard title="Findings">
-                <ul className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+              <SectionCard title="What the technician found">
+                <ul className="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
                   {(findings.data ?? []).map((f) => (
                     <li key={f.id}>
-                      {humanize(f.result)} — {f.notes}
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                          {f.observed_issue || humanize(f.result)}
+                        </span>
+                        <StatusPill tone={findingResultTone(f.result)}>{humanize(f.result)}</StatusPill>
+                      </div>
+                      {f.notes && (
+                        <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{f.notes}</p>
+                      )}
                     </li>
                   ))}
                   {(findings.data ?? []).length === 0 && (

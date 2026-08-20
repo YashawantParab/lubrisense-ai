@@ -53,8 +53,8 @@ def check_pressure_build_slow(
             }
         },
         limitations=[
-            "A ratio against baseline rise time, not a robust standardized distance "
-            "(no rise-time spread is tracked by the Phase 8 cycle baseline).",
+            "A ratio against baseline rise time, not a robust standardized distance — the "
+            "cycle baseline does not currently track rise-time spread.",
             "Consistent with pump degradation or restriction; does not distinguish them alone.",
         ],
         source_event_ids=list(cycle.source_event_ids),

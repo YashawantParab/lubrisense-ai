@@ -178,14 +178,14 @@ export default function IntelligencePage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-            Raw Intelligence
+            Technical Provenance
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-            Engineering/debug traceability — the three persisted assessment records
-            (condition, prognostic, decision) exactly as stored, for verifying the pipeline
-            end to end. This is not where to read what&rsquo;s happening on a machine — see
-            that machine&rsquo;s own page, or the incident it produced, for the reviewer-facing
-            explanation.
+            Detailed evidence and processing records for engineering validation and
+            traceability — the three persisted assessment records (condition, prognostic,
+            decision) exactly as stored. No business reviewer should need this page to
+            understand the product: see the machine&rsquo;s own page, or the incident it
+            produced, for the reviewer-facing explanation.
           </p>
         </div>
         <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">

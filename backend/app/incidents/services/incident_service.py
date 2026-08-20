@@ -39,6 +39,10 @@ def _title_for(machine_name: str, condition_type: str) -> str:
     return f"{condition_type.replace('_', ' ').title()} — {machine_name}"
 
 
+def _human(value: str) -> str:
+    return value.replace("_", " ").title()
+
+
 class IncidentService:
     def __init__(
         self, session: AsyncSession, policy: IncidentCorrelationPolicy | None = None
@@ -65,7 +69,7 @@ class IncidentService:
 
         if condition_type == "NORMAL_OPERATION":
             await self._resolve_open_incidents(
-                tenant_id, machine_id, reason="Condition returned to NORMAL_OPERATION."
+                tenant_id, machine_id, reason="Machine condition returned to normal operation."
             )
             return None
 
@@ -126,8 +130,9 @@ class IncidentService:
         await self._append_event(
             incident,
             IncidentEventType.INCIDENT_CREATED,
-            f"Incident created from {condition.condition_type.value} "
-            f"({condition.severity.value}/{bundle.decision.priority.value}).",
+            f"Incident opened — {_human(condition.condition_type.value)} "
+            f"({_human(condition.severity.value)} severity, "
+            f"{_human(bundle.decision.priority.value)} priority).",
         )
         await AuditService(self._session).record(
             tenant_id,
@@ -179,7 +184,7 @@ class IncidentService:
             await self._append_event(
                 incident,
                 IncidentEventType.SEVERITY_CHANGED,
-                f"Severity changed from {old} to {condition.severity.value}.",
+                f"Severity changed from {_human(old)} to {_human(condition.severity.value)}.",
             )
         if incident.priority != bundle.decision.priority:
             old = incident.priority.value
@@ -187,7 +192,7 @@ class IncidentService:
             await self._append_event(
                 incident,
                 IncidentEventType.PRIORITY_CHANGED,
-                f"Priority changed from {old} to {bundle.decision.priority.value}.",
+                f"Priority changed from {_human(old)} to {_human(bundle.decision.priority.value)}.",
             )
 
         incident.incident_type = condition.condition_type
@@ -198,7 +203,8 @@ class IncidentService:
         await self._append_event(
             incident,
             IncidentEventType.EVIDENCE_ADDED,
-            f"New evidence linked from a fresh {condition.condition_type.value} assessment.",
+            "New evidence linked — condition reassessed as "
+            f"{_human(condition.condition_type.value)}.",
         )
         return await self._incidents.save(incident)
 

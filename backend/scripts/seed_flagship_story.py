@@ -569,14 +569,14 @@ async def main() -> None:
                 "elevated, consistent with sustained restriction rather than an "
                 "independent bearing fault."
             ),
-            notes="Flagship demo story finding (Phase 36).",
+            notes="Confirmed on-site inspection of the distributor outlet.",
             technician_identifier="demo-technician",
         )
         await maintenance.record_action(
             tenant_id,  # type: ignore[arg-type]
             case.id,
             action_type=MaintenanceActionType.CLEANED,
-            notes="Cleared partial blockage at the distributor outlet (flagship demo story).",
+            notes="Cleared partial blockage at the distributor outlet; verified free flow before closing out.",
             recorded_by="demo-technician",
         )
         await session.commit()
@@ -667,7 +667,7 @@ async def main() -> None:
             classification=FeedbackClassification.TRUE_POSITIVE,
             confirmed_component="distributor",
             confirmed_finding="Partial blockage at the distributor outlet, cleared.",
-            notes="Flagship demo story — confirmed true positive, cleared and resolved.",
+            notes="Machine returned to normal operating condition after the blockage was cleared.",
             recorded_by="demo-technician",
         )
         await session.commit()

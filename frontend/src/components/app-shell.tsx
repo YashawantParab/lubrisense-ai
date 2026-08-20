@@ -25,19 +25,37 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/metrics", label: "Metrics" },
 ];
 
-const SECONDARY_NAV: NavItem[] = [
-  { href: "/configuration", label: "Configuration" },
-  { href: "/audit", label: "Audit" },
-  { href: "/hierarchy", label: "Asset Hierarchy" },
-  { href: "/sensors", label: "Sensor Inventory" },
-  { href: "/data-quality", label: "Data Quality" },
-  { href: "/baselines", label: "Baselines" },
-  { href: "/rules", label: "Rule Findings" },
-  { href: "/features", label: "Features" },
-  { href: "/ml", label: "ML" },
-  { href: "/state-estimation", label: "State Estimation" },
-  { href: "/intelligence", label: "Intelligence (raw)" },
-  { href: "/system", label: "System Status" },
+// Grouped per the Engineering IA (data collection -> intelligence pipeline ->
+// governance) rather than one flat list — a technical reviewer can find what they want
+// without a business reviewer ever needing to.
+const ENGINEERING_GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Data & Sensing",
+    items: [
+      { href: "/hierarchy", label: "Asset Hierarchy" },
+      { href: "/sensors", label: "Sensor Inventory" },
+      { href: "/data-quality", label: "Data Quality" },
+    ],
+  },
+  {
+    label: "Intelligence Engineering",
+    items: [
+      { href: "/baselines", label: "Baselines" },
+      { href: "/rules", label: "Rule Findings" },
+      { href: "/features", label: "Features" },
+      { href: "/ml", label: "ML Evidence" },
+      { href: "/state-estimation", label: "Condition Estimation" },
+      { href: "/intelligence", label: "Technical Provenance" },
+    ],
+  },
+  {
+    label: "Governance",
+    items: [
+      { href: "/configuration", label: "Configuration" },
+      { href: "/audit", label: "Audit" },
+      { href: "/system", label: "System Status" },
+    ],
+  },
 ];
 
 function NavLink({ item, active, onClick }: { item: NavItem; active: boolean; onClick?: () => void }) {
@@ -46,10 +64,33 @@ function NavLink({ item, active, onClick }: { item: NavItem; active: boolean; on
       href={item.href}
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      className={`block rounded-md px-3 py-1.5 text-sm transition-colors ${
+      className={`block rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
         active
-          ? "bg-sky-50 font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-400"
-          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          ? "bg-sky-500/15 text-sky-300"
+          : "text-slate-300 hover:bg-white/5 hover:text-white"
+      }`}
+    >
+      {item.label}
+    </Link>
+  );
+}
+
+function EngineeringLink({
+  item,
+  active,
+  onClick,
+}: {
+  item: NavItem;
+  active: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <Link
+      href={item.href}
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={`block rounded-md px-3 py-1 text-[13px] transition-colors ${
+        active ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
       }`}
     >
       {item.label}
@@ -89,39 +130,46 @@ function RoleSwitcher() {
 }
 
 function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   return (
     <>
-      <div className="px-4 py-4">
+      <div className="px-4 py-5">
         <Link href="/overview" className="block">
-          <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">LubriSense AI</span>
-          <span className="block text-xs text-zinc-500 dark:text-zinc-400">
-            Condition-driven lubrication
+          <span className="text-sm font-semibold tracking-wide text-white">LubriSense AI</span>
+          <span className="mt-0.5 block text-xs text-slate-400">
+            Condition-driven lubrication intelligence
           </span>
         </Link>
       </div>
       <nav aria-label="Primary" className="flex flex-col gap-0.5 px-2">
         {PRIMARY_NAV.map((item) => (
-          <NavLink
-            key={item.href}
-            item={item}
-            active={pathname === item.href || pathname.startsWith(`${item.href}/`)}
-            onClick={onNavigate}
-          />
+          <NavLink key={item.href} item={item} active={isActive(item.href)} onClick={onNavigate} />
         ))}
       </nav>
-      <div className="mt-6 px-4 text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
-        Engineering
+
+      <div className="mt-6 border-t border-white/10 pt-4">
+        <div className="px-4 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+          Engineering
+        </div>
+        {ENGINEERING_GROUPS.map((group) => (
+          <div key={group.label} className="mt-3">
+            <div className="px-4 text-[10px] font-medium tracking-wide text-slate-600 uppercase">
+              {group.label}
+            </div>
+            <nav aria-label={group.label} className="mt-1 flex flex-col gap-0.5 px-2">
+              {group.items.map((item) => (
+                <EngineeringLink
+                  key={item.href}
+                  item={item}
+                  active={isActive(item.href)}
+                  onClick={onNavigate}
+                />
+              ))}
+            </nav>
+          </div>
+        ))}
+        <div className="h-4" />
       </div>
-      <nav aria-label="Engineering" className="mt-1 flex flex-col gap-0.5 px-2 pb-4">
-        {SECONDARY_NAV.map((item) => (
-          <NavLink
-            key={item.href}
-            item={item}
-            active={pathname === item.href || pathname.startsWith(`${item.href}/`)}
-            onClick={onNavigate}
-          />
-        ))}
-      </nav>
     </>
   );
 }
@@ -132,18 +180,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-56 shrink-0 border-r border-zinc-200 bg-white lg:flex lg:flex-col dark:border-zinc-800 dark:bg-zinc-900">
+      <aside className="hidden w-60 shrink-0 overflow-y-auto bg-slate-900 lg:flex lg:flex-col">
         <SidebarContent pathname={pathname} />
       </aside>
 
       {mobileOpen && (
         <div className="fixed inset-0 z-40 flex lg:hidden">
           <div
-            className="fixed inset-0 bg-black/30"
+            className="fixed inset-0 bg-black/50"
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
-          <aside className="relative z-50 w-64 overflow-y-auto border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <aside className="relative z-50 w-64 overflow-y-auto bg-slate-900">
             <SidebarContent pathname={pathname} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>

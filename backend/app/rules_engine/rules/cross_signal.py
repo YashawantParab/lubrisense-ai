@@ -118,8 +118,8 @@ def check_leakage_pattern(
         limitations=[
             "Evidence is consistent with possible leakage; it does not confirm it.",
             "Does not localize where along the delivery path a leak might be.",
-            "Faster reservoir depletion has other possible causes (brief §13's "
-            "over-lubrication or increased duty cycle) not ruled out by this pattern alone.",
+            "Faster reservoir depletion has other possible causes (over-lubrication or "
+            "increased duty cycle) not ruled out by this pattern alone.",
         ],
         source_event_ids=sorted({eid for f in required for eid in f.source_event_ids}),
         baseline_version_ids=sorted({bid for f in required for bid in f.baseline_version_ids}),

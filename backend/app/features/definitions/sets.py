@@ -7,13 +7,13 @@ from app.features.domain.models import FeatureSetDefinition
 
 _USES = {
     "LUBRICATION_ANOMALY_V1": (
-        "Later unsupervised anomaly detection over lubrication and condition signals."
+        "Unsupervised anomaly detection over lubrication and condition signals."
     ),
     "FAILURE_CLASSIFICATION_V1": (
-        "Later supervised failure-pattern classification using observable evidence only."
+        "Supervised failure-pattern classification using observable evidence only."
     ),
-    "REFILL_FORECAST_V1": "Later reservoir depletion and refill-demand forecasting.",
-    "STATE_ESTIMATION_V1": "Later state-estimation input; Phase 10 performs no state estimation.",
+    "REFILL_FORECAST_V1": "Reservoir depletion and refill-demand forecasting.",
+    "STATE_ESTIMATION_V1": "Input to condition-state estimation, computed separately.",
 }
 
 _VERSIONS = {

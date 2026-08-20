@@ -6,7 +6,7 @@
  * before Phase 28/29 consolidated them (ADR-158).
  */
 
-export type Tone = "ok" | "warn" | "error" | "neutral";
+export type Tone = "ok" | "warn" | "error" | "info" | "neutral";
 
 /** SNAKE_CASE / UPPER_CASE enum value -> readable "Title Case" label. Never hides the
  * underlying value from technical/audit contexts — only used for primary product copy. */

@@ -160,9 +160,9 @@ def synthesize(
             primary = delivery_types[0]
             result = _single_hypothesis_result(evidence, policy, primary, votes[primary])
             bearing_note = (
-                f"Independent bearing evidence also present ({bearing_types[0]}) — "
-                "recorded separately, not folded into this delivery-focused assessment "
-                "(Phase 13 brief §13.10)."
+                f"Independent bearing evidence also present ({bearing_types[0].replace('_', ' ').title()}) "
+                "— recorded separately from this delivery-focused assessment, since one does "
+                "not necessarily explain the other."
             )
             return ConditionAssessmentResult(
                 condition_type=result.condition_type,
@@ -197,14 +197,13 @@ def synthesize(
         confidence="MODERATE" if (supporting and not contradicting) else "LOW",
         what_is_happening=(
             "Evidence disagrees on what is happening: "
-            + ", ".join(non_normal_types)
+            + ", ".join(t.replace("_", " ").title() for t in non_normal_types)
             + (" vs. normal-operation evidence" if normal_votes else "")
             + "."
         ),
         why=(
-            "Multiple evidence sources point to different, non-overlapping hypotheses; "
-            "this assessment reports the disagreement rather than picking one arbitrarily "
-            "(Phase 13 brief §13.8).",
+            "Multiple evidence sources point to different, non-overlapping explanations; "
+            "this assessment reports the disagreement rather than picking one arbitrarily.",
         ),
         supporting_evidence=tuple(supporting),
         contradicting_evidence=tuple(contradicting),

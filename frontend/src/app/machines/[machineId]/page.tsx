@@ -36,7 +36,8 @@ import {
 import { useMachineFindings } from "@/hooks/use-rules";
 import { useLatestStateEstimates } from "@/hooks/use-state-estimation";
 import { useMachineTelemetry } from "@/hooks/use-telemetry";
-import { humanize, stateTrendTone, toneForStatus } from "@/lib/terminology";
+import { interpretState, STATE_TYPE_LABELS } from "@/lib/state-interpretation";
+import { humanize, toneForStatus } from "@/lib/terminology";
 import type {
   BearingResponse,
   LubricationSystemResponse,
@@ -47,11 +48,6 @@ const HORIZON_LABELS: Record<string, string> = {
   ONE_HOUR: "1 hour",
   SIX_HOURS: "6 hours",
   TWENTY_FOUR_HOURS: "24 hours",
-};
-
-const STATE_TYPE_LABELS: Record<string, string> = {
-  LUBRICATION_DELIVERY_STATE: "Delivery state",
-  BEARING_CONDITION_STATE: "Bearing state",
 };
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -260,29 +256,44 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
               }
             />
 
-            {/* Operational status strip */}
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Status:</span>
-              {intelligence.data ? (
-                <>
-                  <SeverityBadge value={intelligence.data.condition.severity} />
-                  <span className="text-sm text-zinc-700 dark:text-zinc-300">
-                    {humanize(intelligence.data.condition.condition_type)}
-                  </span>
-                  <ConfidenceBadge value={intelligence.data.condition.confidence} />
-                </>
-              ) : (
-                <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                  {intelligence.isPending ? "Computing…" : "Unavailable"}
+            {/* Operational status strip — explicitly labeled "current" so it can never read
+                as contradicting a past, now-resolved incident shown elsewhere on the page. */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  Current condition:
                 </span>
-              )}
-              {activeIncident && (
+                {intelligence.data ? (
+                  <>
+                    <SeverityBadge value={intelligence.data.condition.severity} />
+                    <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                      {humanize(intelligence.data.condition.condition_type)}
+                    </span>
+                    <ConfidenceBadge value={intelligence.data.condition.confidence} />
+                  </>
+                ) : (
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {intelligence.isPending ? "Computing…" : "Unavailable"}
+                  </span>
+                )}
+              </div>
+              {activeIncident ? (
                 <Link
                   href={`/incidents/${activeIncident.id}`}
                   className="ml-auto flex items-center gap-1.5 text-sm text-sky-700 hover:underline dark:text-sky-400"
                 >
                   Active incident <IncidentStateBadge value={activeIncident.state} />
                 </Link>
+              ) : (
+                relevantIncident && (
+                  <Link
+                    href={`/incidents/${relevantIncident.id}`}
+                    className="ml-auto flex items-center gap-1.5 text-sm text-zinc-500 hover:underline dark:text-zinc-400"
+                  >
+                    Recent event: {relevantIncident.title}{" "}
+                    <IncidentStateBadge value={relevantIncident.state} />
+                  </Link>
+                )
               )}
             </div>
 
@@ -293,30 +304,31 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                   What the machine&rsquo;s raw evidence sources report.
                 </p>
                 {Object.keys(stateEstimates.data ?? {}).length > 0 && (
-                  <div className="mb-3 flex flex-col gap-2 border-b border-zinc-100 pb-3 dark:border-zinc-800">
-                    {Object.entries(stateEstimates.data ?? {}).map(([stateType, estimate]) => (
-                      <div key={stateType} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="text-zinc-600 dark:text-zinc-400">
-                          {STATE_TYPE_LABELS[stateType] ?? humanize(stateType)}
-                        </span>
-                        {estimate.prediction_only || estimate.uncertainty === "HIGH" ? (
-                          <StatusPill tone="neutral">Not confident yet</StatusPill>
-                        ) : (
-                          <span className="flex items-center gap-1.5">
-                            <span className="font-mono text-xs text-zinc-800 dark:text-zinc-200">
-                              {estimate.state_value.toFixed(2)}
+                  <div className="mb-3 flex flex-col gap-3 border-b border-zinc-100 pb-3 dark:border-zinc-800">
+                    {Object.entries(stateEstimates.data ?? {}).map(([stateType, estimate]) => {
+                      const unavailable =
+                        estimate.prediction_only || estimate.uncertainty === "HIGH";
+                      const interpretation = interpretState(estimate.trend, estimate.state_value, {
+                        unavailable,
+                      });
+                      return (
+                        <div key={stateType} className="text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-zinc-600 dark:text-zinc-400">
+                              {STATE_TYPE_LABELS[stateType] ?? humanize(stateType)}
                             </span>
-                            <StatusPill tone={stateTrendTone(estimate.trend)}>
-                              {humanize(estimate.trend)}
+                            <StatusPill tone={interpretation.tone}>
+                              {interpretation.headline}
                             </StatusPill>
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                    <p className="text-xs text-zinc-400 dark:text-zinc-600">
-                      Scale: 0 = normal · 1 = severely degraded — a trend estimate, not a
-                      failure probability.
-                    </p>
+                          </div>
+                          <p className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-600">
+                            {unavailable
+                              ? "Insufficient recent observations"
+                              : `Supporting: condition index ${estimate.state_value.toFixed(2)} (0 = normal · 1 = severely degraded)`}
+                          </p>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 <dl className="grid gap-2 text-sm">
@@ -347,7 +359,9 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
 
               <SectionCard title="Decision Intelligence">
                 <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-                  The synthesized diagnosis, its confidence, and the recommended response.
+                  {activeIncident
+                    ? "The synthesized diagnosis, its confidence, and the recommended response for the active issue below."
+                    : "The current recommendation, based on the machine's condition right now."}
                 </p>
                 {intelligence.data ? (
                   <div className="flex flex-col gap-2">
@@ -358,6 +372,12 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                     <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
                       {humanize(intelligence.data.decision.recommended_action)}
                     </p>
+                    {!activeIncident && relevantIncident && (
+                      <p className="text-xs text-zinc-400 dark:text-zinc-600">
+                        This reflects the machine&rsquo;s condition now — see Workflow Intelligence
+                        below for what was recommended during the recent incident.
+                      </p>
+                    )}
                     <div className="flex flex-wrap items-center gap-2">
                       <PriorityBadge value={intelligence.data.decision.priority} />
                       {intelligence.data.decision.human_review_required && <HumanReviewBadge />}
@@ -382,6 +402,9 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                 </p>
                 {relevantIncident ? (
                   <div className="flex flex-col gap-2 text-sm">
+                    <p className="text-xs font-medium text-zinc-400 dark:text-zinc-600">
+                      {activeIncident ? "Active incident" : "Most recent incident"}
+                    </p>
                     <div className="flex items-center justify-between gap-2">
                       <Link
                         href={`/incidents/${relevantIncident.id}`}
