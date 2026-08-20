@@ -110,9 +110,9 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
         ))}
       </nav>
       <div className="mt-6 px-4 text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
-        System
+        Engineering
       </div>
-      <nav aria-label="Secondary" className="mt-1 flex flex-col gap-0.5 px-2 pb-4">
+      <nav aria-label="Engineering" className="mt-1 flex flex-col gap-0.5 px-2 pb-4">
         {SECONDARY_NAV.map((item) => (
           <NavLink
             key={item.href}

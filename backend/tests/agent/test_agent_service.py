@@ -241,7 +241,9 @@ async def test_llm_provider_failure_degrades_gracefully(db_session: AsyncSession
     (with real gathered evidence/tool calls intact) rather than crashing."""
 
     class _FailingProvider:
-        def compose_answer(self, *, intent: str, evidence: dict[str, object]) -> str:
+        def compose_answer(
+            self, *, intent: str, evidence: dict[str, object], message: str = ""
+        ) -> str:
             raise RuntimeError("simulated provider outage")
 
     tenant, machine, incident = await seed_restriction_incident(db_session)

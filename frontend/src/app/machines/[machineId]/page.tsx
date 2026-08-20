@@ -3,6 +3,7 @@
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
 
+import { EvidenceWhyDetails, evidenceBackingLine } from "@/components/condition-evidence";
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -172,7 +173,6 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   const devices = useMachineDevices(machineId);
   const configChanges = useMachineConfigurationChanges(machineId);
   const [assetDetailsOpen, setAssetDetailsOpen] = useState(false);
-  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [changeHistoryOpen, setChangeHistoryOpen] = useState(false);
 
   usePageTitle(hierarchy.data ? hierarchy.data.machine.name : "Machine");
@@ -299,8 +299,8 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                         <span className="text-zinc-600 dark:text-zinc-400">
                           {STATE_TYPE_LABELS[stateType] ?? humanize(stateType)}
                         </span>
-                        {estimate.prediction_only ? (
-                          <StatusPill tone="neutral">No recent observation</StatusPill>
+                        {estimate.prediction_only || estimate.uncertainty === "HIGH" ? (
+                          <StatusPill tone="neutral">Not confident yet</StatusPill>
                         ) : (
                           <span className="flex items-center gap-1.5">
                             <span className="font-mono text-xs text-zinc-800 dark:text-zinc-200">
@@ -313,6 +313,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                         )}
                       </div>
                     ))}
+                    <p className="text-xs text-zinc-400 dark:text-zinc-600">
+                      Scale: 0 = normal · 1 = severely degraded — a trend estimate, not a
+                      failure probability.
+                    </p>
                   </div>
                 )}
                 <dl className="grid gap-2 text-sm">
@@ -478,94 +482,78 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
 
             {/* Evidence panel */}
             {intelligence.data && (
-              <SectionCard
-                title="Evidence"
-                actions={
-                  <button
-                    type="button"
-                    onClick={() => setEvidenceOpen((v) => !v)}
-                    className="text-xs text-sky-600 hover:underline dark:text-sky-400"
-                  >
-                    {evidenceOpen ? "Hide technical detail" : "Show technical detail"}
-                  </button>
-                }
-              >
+              <SectionCard title="Evidence">
                 <p className="text-sm text-zinc-700 dark:text-zinc-300">
-                  {intelligence.data.condition.evidence_summary.what_is_happening}
+                  {evidenceBackingLine(intelligence.data.condition)}
                 </p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div>
-                    <dt className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Why</dt>
-                    <dd className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                      <ul className="list-inside list-disc space-y-1">
-                        {intelligence.data.condition.evidence_summary.why.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </dd>
-                  </div>
-                  <div>
                     <dt className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                      Data trust / unknowns
+                      Data trust
                     </dt>
                     <dd className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                      <p>
-                        Data trustworthiness:{" "}
-                        {humanize(intelligence.data.condition.evidence_summary.data_trustworthiness)}
-                      </p>
-                      {intelligence.data.condition.evidence_summary.unknowns.length > 0 && (
-                        <ul className="mt-1 list-inside list-disc space-y-1">
+                      {humanize(intelligence.data.condition.evidence_summary.data_trustworthiness)}
+                    </dd>
+                  </div>
+                  {intelligence.data.condition.evidence_summary.unknowns.length > 0 && (
+                    <div>
+                      <dt className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        Unknowns
+                      </dt>
+                      <dd className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                        <ul className="list-inside list-disc space-y-1">
                           {intelligence.data.condition.evidence_summary.unknowns.map((item) => (
                             <li key={item}>{item}</li>
                           ))}
                         </ul>
-                      )}
-                    </dd>
-                  </div>
+                      </dd>
+                    </div>
+                  )}
                 </div>
-                {evidenceOpen && (
-                  <div className="mt-4 space-y-3 border-t border-zinc-100 pt-3 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-                    {intelligence.data.condition.evidence_summary.supporting_evidence.length > 0 && (
-                      <div>
-                        <p className="font-medium text-zinc-700 dark:text-zinc-300">
-                          Supporting evidence
-                        </p>
-                        <ul className="mt-1 list-inside list-disc">
-                          {intelligence.data.condition.evidence_summary.supporting_evidence.map((e) => (
+                <EvidenceWhyDetails why={intelligence.data.condition.evidence_summary.why}>
+                  <p className="text-zinc-700 dark:text-zinc-300">
+                    {intelligence.data.condition.evidence_summary.what_is_happening}
+                  </p>
+                  {intelligence.data.condition.evidence_summary.supporting_evidence.length > 0 && (
+                    <div>
+                      <p className="font-medium text-zinc-700 dark:text-zinc-300">
+                        Supporting evidence
+                      </p>
+                      <ul className="mt-1 list-inside list-disc">
+                        {intelligence.data.condition.evidence_summary.supporting_evidence.map((e) => (
+                          <li key={e}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {intelligence.data.condition.evidence_summary.contradicting_evidence.length > 0 && (
+                    <div>
+                      <p className="font-medium text-zinc-700 dark:text-zinc-300">
+                        Contradicting evidence
+                      </p>
+                      <ul className="mt-1 list-inside list-disc">
+                        {intelligence.data.condition.evidence_summary.contradicting_evidence.map(
+                          (e) => (
                             <li key={e}>{e}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {intelligence.data.condition.evidence_summary.contradicting_evidence.length > 0 && (
-                      <div>
-                        <p className="font-medium text-zinc-700 dark:text-zinc-300">
-                          Contradicting evidence
-                        </p>
-                        <ul className="mt-1 list-inside list-disc">
-                          {intelligence.data.condition.evidence_summary.contradicting_evidence.map(
-                            (e) => (
-                              <li key={e}>{e}</li>
-                            ),
-                          )}
-                        </ul>
-                      </div>
-                    )}
-                    {intelligence.data.condition.limitations.length > 0 && (
-                      <div>
-                        <p className="font-medium text-zinc-700 dark:text-zinc-300">Limitations</p>
-                        <ul className="mt-1 list-inside list-disc">
-                          {intelligence.data.condition.limitations.map((l) => (
-                            <li key={l}>{l}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <p>Policy version: {intelligence.data.condition.policy_version}</p>
-                    <p>Engine version: {intelligence.data.condition.engine_version}</p>
-                    <p>Condition id: {intelligence.data.condition.id}</p>
-                  </div>
-                )}
+                          ),
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  {intelligence.data.condition.limitations.length > 0 && (
+                    <div>
+                      <p className="font-medium text-zinc-700 dark:text-zinc-300">Limitations</p>
+                      <ul className="mt-1 list-inside list-disc">
+                        {intelligence.data.condition.limitations.map((l) => (
+                          <li key={l}>{l}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <p>Policy version: {intelligence.data.condition.policy_version}</p>
+                  <p>Engine version: {intelligence.data.condition.engine_version}</p>
+                  <p>Condition id: {intelligence.data.condition.id}</p>
+                </EvidenceWhyDetails>
               </SectionCard>
             )}
 

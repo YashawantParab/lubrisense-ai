@@ -10,6 +10,7 @@ import {
   PriorityBadge,
   SeverityBadge,
 } from "@/components/badges";
+import { EvidenceWhyDetails, evidenceBackingLine } from "@/components/condition-evidence";
 import { RelativeTime } from "@/components/relative-time";
 import { useMachine } from "@/hooks/use-asset-hierarchy";
 import { useIntelligenceView } from "@/hooks/use-intelligence";
@@ -81,21 +82,11 @@ export function PriorityAssetCard({ incident }: { incident: IncidentResponse }) 
                 {humanize(incident.incident_type)}
               </span>
             </div>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{incident.summary}</p>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+              {evidenceBackingLine(incident)}
+            </p>
+            <EvidenceWhyDetails why={whyBullets} />
           </div>
-
-          {whyBullets.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
-                Why the system believes this
-              </p>
-              <ul className="mt-1 list-inside list-disc space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-                {whyBullets.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           <div>
             <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">

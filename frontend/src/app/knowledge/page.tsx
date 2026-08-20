@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
@@ -34,9 +35,17 @@ export default function KnowledgePage() {
       />
 
       <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          Ask a question
-        </h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            Ask a question
+          </h2>
+          <Link
+            href="/assistant"
+            className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+          >
+            Ask about a specific machine or incident instead →
+          </Link>
+        </div>
         <div className="flex gap-2">
           <input
             value={query}
@@ -58,7 +67,7 @@ export default function KnowledgePage() {
           <div className="mt-4 space-y-3">
             <div className="flex items-center gap-2">
               <StatusPill tone={ask.data.status === "INSUFFICIENT" ? "warn" : "ok"}>
-                {ask.data.status}
+                {humanize(ask.data.status)}
               </StatusPill>
             </div>
             <p className="whitespace-pre-line text-sm text-zinc-700 dark:text-zinc-300">
@@ -138,7 +147,7 @@ export default function KnowledgePage() {
                         {doc.version}
                       </td>
                       <td className="px-4 py-2">
-                        <StatusPill tone={statusTone(doc.status)}>{doc.status}</StatusPill>
+                        <StatusPill tone={statusTone(doc.status)}>{humanize(doc.status)}</StatusPill>
                       </td>
                       <td className="px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400">
                         {doc.tenant_id ? "Tenant" : "Global"}

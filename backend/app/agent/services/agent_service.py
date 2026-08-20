@@ -213,7 +213,9 @@ class AgentService:
 
         try:
             answer = _LLM_CIRCUIT_BREAKER.call(
-                lambda: self._provider.compose_answer(intent=intent, evidence=evidence)
+                lambda: self._provider.compose_answer(
+                    intent=intent, evidence=evidence, message=request.message
+                )
             )
         except CircuitOpenError as exc:
             answer = (

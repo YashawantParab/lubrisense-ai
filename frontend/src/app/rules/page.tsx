@@ -3,8 +3,10 @@
 import { useState } from "react";
 
 import { DataState } from "@/components/data-state";
+import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { useFindings, useFindingsSummary } from "@/hooks/use-rules";
+import { humanize } from "@/lib/terminology";
 import type {
   EvidenceStrength,
   RuleFindingSeverity,
@@ -55,18 +57,10 @@ export default function RulesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-12">
-      <header>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-          Rule Findings
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Deterministic evidence patterns from telemetry, data quality, and baselines
-          (Phase 9) — evidence language only (&ldquo;consistent with...&rdquo;), never a
-          confirmed diagnosis. Feeds a future Condition Intelligence phase; not itself a
-          health score. Sourced live from{" "}
-          <code className="font-mono text-xs">GET /api/v1/rules/*</code>.
-        </p>
-      </header>
+      <PageHeader
+        title="Rule Findings"
+        description="Deterministic evidence patterns detected from telemetry, data quality, and baselines — evidence language only (“consistent with...”), never a confirmed diagnosis on its own. Feeds Condition Intelligence alongside state estimates and ML evidence; not itself a health score."
+      />
 
       <DataState
         isPending={summary.isPending}
@@ -84,7 +78,7 @@ export default function RulesPage() {
             {(["ACTIVE", "CANDIDATE", "RECOVERING"] as const).map((s) => (
               <SummaryCard
                 key={s}
-                label={s}
+                label={humanize(s)}
                 value={summary.data!.findings_by_state[s] ?? 0}
                 tone={
                   toneForState(s) === "error"
@@ -108,7 +102,7 @@ export default function RulesPage() {
             >
               {STATES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {humanize(s)}
                 </option>
               ))}
               <option value="">All states</option>
@@ -121,7 +115,7 @@ export default function RulesPage() {
               <option value="">All severities</option>
               {SEVERITIES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {humanize(s)}
                 </option>
               ))}
             </select>
@@ -137,7 +131,7 @@ export default function RulesPage() {
           {findings.data && findings.data.length === 0 ? (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
               No findings match this filter — either the fleet shows no evidence patterns
-              right now, or the rules worker hasn&apos;t evaluated any machines yet.
+              right now, or no machines have been evaluated yet.
             </p>
           ) : (
             findings.data && (
@@ -163,23 +157,23 @@ export default function RulesPage() {
                           className="cursor-pointer border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50"
                         >
                           <td className="py-2 pr-4 text-zinc-800 dark:text-zinc-200">
-                            {f.finding_type.replace(/_/g, " ")}
+                            {humanize(f.finding_type)}
                           </td>
                           <td className="py-2 pr-4 font-mono text-xs text-zinc-500">
-                            {f.component_type}
+                            {humanize(f.component_type)}
                             {f.component_id ? ` ${f.component_id.slice(0, 8)}…` : ""}
                           </td>
                           <td className="py-2 pr-4">
                             <StatusPill tone={toneForSeverity(f.severity)}>
-                              {f.severity}
+                              {humanize(f.severity)}
                             </StatusPill>
                           </td>
                           <td className="py-2 pr-4">
-                            <StatusPill tone={toneForState(f.state)}>{f.state}</StatusPill>
+                            <StatusPill tone={toneForState(f.state)}>{humanize(f.state)}</StatusPill>
                           </td>
                           <td className="py-2 pr-4">
                             <StatusPill tone={toneForEvidenceStrength(f.evidence_strength)}>
-                              {f.evidence_strength}
+                              {humanize(f.evidence_strength)}
                             </StatusPill>
                           </td>
                           <td className="py-2 pr-4 text-xs text-zinc-500 dark:text-zinc-400">
@@ -211,7 +205,7 @@ export default function RulesPage() {
                                   <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
                                     rule <span className="font-mono">{f.rule_id}</span> v
                                     {f.rule_version} · policy {f.config_version} · category{" "}
-                                    {f.category} · candidate cycles{" "}
+                                    {humanize(f.category)} · candidate cycles{" "}
                                     {f.candidate_stable_cycles}
                                   </p>
                                 </div>

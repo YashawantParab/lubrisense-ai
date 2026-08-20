@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import { HumanReviewBadge } from "@/components/badges";
@@ -10,6 +11,8 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useSendChat } from "@/hooks/use-agent";
 import { useIncidents } from "@/hooks/use-incidents";
+import { useMaintenanceCases } from "@/hooks/use-maintenance";
+import { humanize } from "@/lib/terminology";
 import type { ChatResponse } from "@/lib/api/agent-types";
 
 interface ConversationTurn {
@@ -25,11 +28,17 @@ function AssistantPageInner() {
   const [machineId, setMachineId] = useState(searchParams.get("machineId") ?? "");
   const incidents = useIncidents({ machineId: machineId || undefined });
   const [incidentId, setIncidentId] = useState(searchParams.get("incidentId") ?? "");
+  const [caseId, setCaseId] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [expandedToolCalls, setExpandedToolCalls] = useState<number | null>(null);
   const chat = useSendChat();
+  const cases = useMaintenanceCases();
+  const casesForIncident = useMemo(
+    () => (cases.data ?? []).filter((c) => c.incident_id === incidentId),
+    [cases.data, incidentId],
+  );
 
   const machines = useMemo(
     () =>
@@ -53,6 +62,7 @@ function AssistantPageInner() {
         session_id: sessionId,
         machine_id: machineId || undefined,
         incident_id: incidentId || undefined,
+        maintenance_case_id: caseId || undefined,
       },
       {
         onSuccess: (response) => {
@@ -71,6 +81,11 @@ function AssistantPageInner() {
       <PageHeader
         title="Assistant"
         description="Explains persisted intelligence, retrieves approved knowledge, and prepares draft artifacts — it never diagnoses independently, controls machinery, or acts without human review."
+        actions={
+          <Link href="/knowledge" className="text-xs text-sky-600 hover:underline dark:text-sky-400">
+            Browse the knowledge base →
+          </Link>
+        }
       />
 
       <div className="flex flex-wrap items-end gap-2 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
@@ -96,7 +111,10 @@ function AssistantPageInner() {
           Incident context
           <select
             value={incidentId}
-            onChange={(e) => setIncidentId(e.target.value)}
+            onChange={(e) => {
+              setIncidentId(e.target.value);
+              setCaseId("");
+            }}
             disabled={!machineId}
             className="min-w-52 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900"
           >
@@ -108,6 +126,23 @@ function AssistantPageInner() {
             ))}
           </select>
         </label>
+        {casesForIncident.length > 0 && (
+          <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Maintenance case context
+            <select
+              value={caseId}
+              onChange={(e) => setCaseId(e.target.value)}
+              className="min-w-52 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              <option value="">None</option>
+              {casesForIncident.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {humanize(c.recommended_action)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {contextMachine && (
           <span className="ml-auto text-xs text-zinc-500 dark:text-zinc-400">
             Asking about <span className="font-medium text-zinc-700 dark:text-zinc-300">{contextMachine.name}</span>
@@ -151,7 +186,7 @@ function AssistantPageInner() {
                     </h3>
                     <ul className="mt-1 space-y-0.5 text-xs text-amber-700 dark:text-amber-400">
                       {turn.response.draft_artifacts.map((a, i) => (
-                        <li key={i}>{a.kind}</li>
+                        <li key={i}>{humanize(a.kind)}</li>
                       ))}
                     </ul>
                   </div>
@@ -195,13 +230,13 @@ function AssistantPageInner() {
                       className="text-xs text-sky-600 hover:underline dark:text-sky-400"
                     >
                       {expandedToolCalls === index ? "Hide" : "Show"}{" "}
-                      {turn.response.tool_calls.length} tool call(s)
+                      {turn.response.tool_calls.length} evidence lookup(s)
                     </button>
                     {expandedToolCalls === index && (
                       <ul className="mt-1 space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
                         {turn.response.tool_calls.map((t, i) => (
                           <li key={i}>
-                            {t.tool_name} — {t.status}: {t.summary}
+                            {humanize(t.tool_name)} — {humanize(t.status)}: {t.summary}
                           </li>
                         ))}
                       </ul>

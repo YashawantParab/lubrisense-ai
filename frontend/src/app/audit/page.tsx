@@ -63,7 +63,7 @@ export default function AuditPage() {
                     <tr key={event.id}>
                       <td className="px-3 py-2">
                         <StatusPill tone={actorTone(event.actor_type)}>
-                          {event.actor_type}
+                          {humanize(event.actor_type)}
                         </StatusPill>
                         <span className="ml-2 text-zinc-600 dark:text-zinc-400">
                           {event.actor_id}

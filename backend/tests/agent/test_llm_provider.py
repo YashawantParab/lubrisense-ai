@@ -92,3 +92,53 @@ def test_work_order_draft_artifact_is_labeled_draft() -> None:
     assert "DRAFT" in answer
     assert "not submitted externally" in answer.lower()
     assert "DEMO-WO-TEST" in answer
+
+
+_MULTI_EVIDENCE = {
+    "condition": {
+        "condition_type": "DEVELOPING_RESTRICTION_PATTERN",
+        "severity": "HIGH",
+        "confidence": "HIGH",
+        "what_is_happening": "Test condition text.",
+    },
+    "decision": {
+        "recommended_action": "INSPECT_LUBRICATION_PATH",
+        "priority": "URGENT",
+        "recommended_window": "NOW",
+        "risk_if_deferred": "Test risk text.",
+    },
+}
+
+
+def test_differently_phrased_questions_lead_with_different_sections() -> None:
+    """Regression test: within GENERAL intent, every question previously produced
+    byte-identical output regardless of what was actually asked (compose_answer
+    discarded `intent` and never saw the raw message at all) — a real repetitive-answer
+    defect, not a false impression. Same underlying facts, different emphasis/ordering
+    based on the real question."""
+    why_answer = PROVIDER.compose_answer(
+        intent="GENERAL", evidence=_MULTI_EVIDENCE, message="Why is this happening?"
+    )
+    action_answer = PROVIDER.compose_answer(
+        intent="GENERAL", evidence=_MULTI_EVIDENCE, message="What should I do about it?"
+    )
+
+    assert why_answer != action_answer
+    assert why_answer.startswith("What is happening")
+    assert action_answer.startswith("What you should do")
+    # No fact is ever added or dropped by reordering — both sections still present in both.
+    for answer in (why_answer, action_answer):
+        assert "DEVELOPING_RESTRICTION_PATTERN" in answer
+        assert "INSPECT_LUBRICATION_PATH" in answer
+
+
+def test_unrecognized_question_keeps_the_original_default_order() -> None:
+    """No `message` (or a message matching no known focus keyword) must produce the
+    exact same output as before this change — existing callers that don't pass `message`
+    must see no behavior change."""
+    with_default = PROVIDER.compose_answer(intent="GENERAL", evidence=_MULTI_EVIDENCE)
+    with_unmatched = PROVIDER.compose_answer(
+        intent="GENERAL", evidence=_MULTI_EVIDENCE, message="hello there"
+    )
+    assert with_default == with_unmatched
+    assert with_default.startswith("What is happening")

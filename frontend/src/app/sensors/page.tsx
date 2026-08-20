@@ -4,9 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 
 import { DataState } from "@/components/data-state";
+import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { useSensors } from "@/hooks/use-asset-hierarchy";
-import { toneForStatus } from "@/lib/status-tone";
+import { humanize, toneForStatus } from "@/lib/terminology";
 
 const SENSOR_TYPES = [
   "PRESSURE",
@@ -42,14 +43,10 @@ export default function SensorInventoryPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-12">
-      <header>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Sensor Inventory</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Fleet-wide sensor configuration from{" "}
-          <code className="font-mono text-xs">GET /api/v1/sensors</code>. No live readings —
-          telemetry arrives in a later phase.
-        </p>
-      </header>
+      <PageHeader
+        title="Sensor Inventory"
+        description="Every sensor commissioned across your fleet, its attachment point, and its configuration status — the registry telemetry, baselines, and rules are all built on top of. Live telemetry readings are on each machine's own page."
+      />
 
       <div className="flex flex-wrap gap-3">
         <select
@@ -63,7 +60,7 @@ export default function SensorInventoryPage() {
           <option value="">All sensor types</option>
           {SENSOR_TYPES.map((type) => (
             <option key={type} value={type}>
-              {type}
+              {humanize(type)}
             </option>
           ))}
         </select>
@@ -78,7 +75,7 @@ export default function SensorInventoryPage() {
           <option value="">All statuses</option>
           {SENSOR_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {humanize(s)}
             </option>
           ))}
         </select>
@@ -117,7 +114,7 @@ export default function SensorInventoryPage() {
                       </td>
                       <td className="py-2 pr-4 text-zinc-800 dark:text-zinc-200">{sensor.name}</td>
                       <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">
-                        {sensor.sensor_type}
+                        {humanize(sensor.sensor_type)}
                       </td>
                       <td className="py-2 pr-4">
                         <Link
@@ -128,7 +125,7 @@ export default function SensorInventoryPage() {
                           }
                           className="text-sky-600 hover:underline dark:text-sky-400"
                         >
-                          {sensor.attached_entity_type}
+                          {humanize(sensor.attached_entity_type)}
                         </Link>
                       </td>
                       <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">
@@ -141,7 +138,9 @@ export default function SensorInventoryPage() {
                         {sensor.calibration_date ?? "—"}
                       </td>
                       <td className="py-2 pr-4">
-                        <StatusPill tone={toneForStatus(sensor.status)}>{sensor.status}</StatusPill>
+                        <StatusPill tone={toneForStatus(sensor.status)}>
+                          {humanize(sensor.status)}
+                        </StatusPill>
                       </td>
                     </tr>
                   ))}

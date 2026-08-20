@@ -12,6 +12,7 @@ import {
   PriorityBadge,
   SeverityBadge,
 } from "@/components/badges";
+import { EvidenceWhyDetails, evidenceBackingLine } from "@/components/condition-evidence";
 import { PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
 import { SectionCard } from "@/components/section-card";
@@ -75,7 +76,7 @@ export default function IncidentDetailPage({
             <PageHeader
               breadcrumbs={[{ label: "Incidents", href: "/incidents" }, { label: incident.data.title }]}
               title={incident.data.title}
-              description={incident.data.summary}
+              description={evidenceBackingLine(incident.data)}
               actions={<IncidentStateBadge value={incident.data.state} />}
             />
 
@@ -191,13 +192,9 @@ export default function IncidentDetailPage({
             {whyBullets.length > 0 && (
               <SectionCard title="Evidence">
                 <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  Why the system believes {humanize(incident.data.incident_type)} is occurring.
+                  {evidenceBackingLine(incident.data)}
                 </p>
-                <ul className="list-inside list-disc space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
-                  {whyBullets.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
+                <EvidenceWhyDetails why={whyBullets} />
               </SectionCard>
             )}
 

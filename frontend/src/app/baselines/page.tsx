@@ -3,10 +3,21 @@
 import { useState } from "react";
 
 import { DataState } from "@/components/data-state";
+import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { useSensors } from "@/hooks/use-asset-hierarchy";
 import { useCurrentBaseline, useSensorBaselines, useBaselineSummary } from "@/hooks/use-baselines";
+import { humanize } from "@/lib/terminology";
 import type { BaselineState, DeviationClassification } from "@/lib/api/baselines-types";
+
+const STAT_LABELS: Record<string, string> = {
+  median: "Median",
+  mad: "Median abs. deviation",
+  mean: "Mean",
+  p05: "5th percentile",
+  p75: "75th percentile",
+  p95: "95th percentile",
+};
 
 const READINESS_ORDER = ["ACTIVE", "BUILDING", "INSUFFICIENT_DATA", "STALE", "INVALIDATED"];
 
@@ -53,15 +64,10 @@ export default function BaselinesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-12">
-      <header>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Baselines</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          What is normal for each sensor, under its own operating context (Phase 8) — a
-          statistical reference for later rules/ML/condition-intelligence phases to build on,
-          not a fault diagnosis or health score. Sourced live from{" "}
-          <code className="font-mono text-xs">GET /api/v1/baselines/*</code>.
-        </p>
-      </header>
+      <PageHeader
+        title="Baselines"
+        description="What normal looks like for each sensor, under its own operating context — the statistical reference rules and other evidence sources compare against. A baseline profile is not itself a fault diagnosis or health score."
+      />
 
       <DataState
         isPending={summary.isPending}
@@ -79,7 +85,7 @@ export default function BaselinesPage() {
             {READINESS_ORDER.map((state) => (
               <SummaryCard
                 key={state}
-                label={state.replace(/_/g, " ")}
+                label={humanize(state)}
                 value={summary.data.profiles_by_state[state] ?? 0}
                 tone={
                   toneForState(state as BaselineState) === "ok"
@@ -114,7 +120,7 @@ export default function BaselinesPage() {
             >
               {sensors.data?.items.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.sensor_code} — {s.sensor_type}
+                  {s.sensor_code} — {humanize(s.sensor_type)}
                 </option>
               ))}
             </select>
@@ -140,7 +146,7 @@ export default function BaselinesPage() {
                         : "neutral"
                   }
                 >
-                  {sensorBaselines.data.readiness.label}
+                  {humanize(sensorBaselines.data.readiness.label)}
                 </StatusPill>
                 <span>
                   ({sensorBaselines.data.readiness.active_count} active,{" "}
@@ -151,9 +157,8 @@ export default function BaselinesPage() {
 
               {sensorBaselines.data.profiles.length === 0 ? (
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No baseline profiles yet for this sensor — the baseline worker refreshes on a
-                  configurable cadence (docs/BASELINES.md §16); a brand-new sensor may not have
-                  been evaluated yet.
+                  No baseline profiles yet for this sensor — baselines refresh on a regular
+                  cadence, so a brand-new sensor may not have been evaluated yet.
                 </p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -176,13 +181,13 @@ export default function BaselinesPage() {
                           className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
                         >
                           <td className="py-2 pr-4 text-zinc-800 dark:text-zinc-200">
-                            {p.strategy.replace(/_/g, " ")}
+                            {humanize(p.strategy)}
                           </td>
                           <td className="py-2 pr-4 font-mono text-xs text-zinc-600 dark:text-zinc-400">
                             {p.context_key || "—"}
                           </td>
                           <td className="py-2 pr-4">
-                            <StatusPill tone={toneForState(p.state)}>{p.state}</StatusPill>
+                            <StatusPill tone={toneForState(p.state)}>{humanize(p.state)}</StatusPill>
                           </td>
                           <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">
                             v{p.version}
@@ -216,10 +221,11 @@ export default function BaselinesPage() {
           {selectedSensor ? ` — ${selectedSensor.sensor_code}` : ""}
         </h2>
         <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-          Walks the fallback hierarchy (exact context → operating state → sensor-level →
-          engineering reference, docs/BASELINES.md §6) for the chosen context, and — if a
-          reading is entered — computes an explainable deviation. This is a distance, not a
-          fault diagnosis.
+          Resolves the best-available reference for the chosen context (an exact match,
+          falling back to a coarser one when needed), and — if a reading is entered below —
+          computes an explainable deviation. This is a statistical distance, not a fault
+          diagnosis, and the input below is an engineering verification tool, not a live
+          reading.
         </p>
 
         <div className="mb-3 flex flex-wrap gap-3">
@@ -229,10 +235,10 @@ export default function BaselinesPage() {
             className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
           >
             <option value="">Any operating state</option>
-            <option value="STOPPED">STOPPED</option>
-            <option value="RUNNING_LOW_LOAD">RUNNING_LOW_LOAD</option>
-            <option value="RUNNING_NORMAL_LOAD">RUNNING_NORMAL_LOAD</option>
-            <option value="RUNNING_HIGH_LOAD">RUNNING_HIGH_LOAD</option>
+            <option value="STOPPED">{humanize("STOPPED")}</option>
+            <option value="RUNNING_LOW_LOAD">{humanize("RUNNING_LOW_LOAD")}</option>
+            <option value="RUNNING_NORMAL_LOAD">{humanize("RUNNING_NORMAL_LOAD")}</option>
+            <option value="RUNNING_HIGH_LOAD">{humanize("RUNNING_HIGH_LOAD")}</option>
           </select>
           <input
             type="number"
@@ -254,7 +260,7 @@ export default function BaselinesPage() {
               <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
                 <span>Resolved via:</span>
                 <StatusPill tone={current.data.source === "NONE" ? "neutral" : "ok"}>
-                  {current.data.source}
+                  {humanize(current.data.source)}
                 </StatusPill>
               </div>
 
@@ -264,7 +270,9 @@ export default function BaselinesPage() {
                     ["median", "mad", "mean", "p05", "p75", "p95"] as const
                   ).map((key) => (
                     <div key={key}>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">{key}</p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {STAT_LABELS[key]}
+                      </p>
                       <p className="font-mono text-zinc-800 dark:text-zinc-200">
                         {current.data!.profile!.statistics![key] !== undefined
                           ? current.data!.profile!.statistics![key].toFixed(2)
@@ -282,7 +290,7 @@ export default function BaselinesPage() {
               {current.data.deviation && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-3 text-sm dark:border-zinc-800">
                   <StatusPill tone={toneForDeviation(current.data.deviation.classification)}>
-                    {current.data.deviation.classification.replace(/_/g, " ")}
+                    {humanize(current.data.deviation.classification)}
                   </StatusPill>
                   {current.data.deviation.standardized_distance !== null && (
                     <span className="text-xs text-zinc-500 dark:text-zinc-400">

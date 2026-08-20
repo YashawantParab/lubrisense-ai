@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 
 import { DataState } from "@/components/data-state";
+import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useFeatureSets, useLatestMachineFeatures } from "@/hooks/use-features";
+import { humanize } from "@/lib/terminology";
 
 function displayValue(value: unknown): string {
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(4);
@@ -39,15 +41,13 @@ export default function FeaturesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-            Feature Vectors
-          </h1>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-            Machine
+      <PageHeader
+        title="Feature Vectors"
+        description="The exact engineered inputs an ML model computed a result from — dot-notation names are ML feature-engineering identifiers, one row per input, purely for tracing an ML result back to its source data."
+        actions={
+          <div className="flex flex-wrap gap-3">
+            <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Machine
             <select
               value={effectiveMachineId}
               onChange={(event) => setMachineId(event.target.value)}
@@ -74,8 +74,9 @@ export default function FeaturesPage() {
               ))}
             </select>
           </label>
-        </div>
-      </header>
+          </div>
+        }
+      />
 
       <DataState
         isPending={hierarchy.isPending || featureSets.isPending || vector.isPending}
@@ -109,7 +110,7 @@ export default function FeaturesPage() {
               <div className="flex items-center gap-3 text-sm text-zinc-700 dark:text-zinc-300">
                 <span>Quality state</span>
                 <StatusPill tone={vector.data.quality_summary.state === "TRUSTED" ? "ok" : "warn"}>
-                  {String(vector.data.quality_summary.state ?? "UNKNOWN")}
+                  {humanize(String(vector.data.quality_summary.state ?? "UNKNOWN"))}
                 </StatusPill>
               </div>
               <button

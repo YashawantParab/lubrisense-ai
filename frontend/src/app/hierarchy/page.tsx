@@ -3,9 +3,10 @@
 import Link from "next/link";
 
 import { DataState } from "@/components/data-state";
+import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
-import { toneForStatus } from "@/lib/status-tone";
+import { humanize, toneForStatus } from "@/lib/terminology";
 import type {
   HierarchyCustomerAccount,
   HierarchyPlant,
@@ -29,7 +30,7 @@ function MachineRow({
           {machine.name}
           <span className="text-xs text-zinc-400">({machine.machine_type})</span>
         </span>
-        <StatusPill tone={toneForStatus(machine.status)}>{machine.status}</StatusPill>
+        <StatusPill tone={toneForStatus(machine.status)}>{humanize(machine.status)}</StatusPill>
       </Link>
     </li>
   );
@@ -84,9 +85,9 @@ function CustomerNode({ customer }: { customer: HierarchyCustomerAccount }) {
           {customer.name}
         </h2>
         <div className="flex items-center gap-2">
-          <StatusPill tone="neutral">{customer.service_tier}</StatusPill>
+          <StatusPill tone="neutral">{humanize(customer.service_tier)}</StatusPill>
           <StatusPill tone={toneForStatus(customer.commercial_status)}>
-            {customer.commercial_status}
+            {humanize(customer.commercial_status)}
           </StatusPill>
         </div>
       </div>
@@ -104,14 +105,10 @@ export default function HierarchyPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-12">
-      <header>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Asset Hierarchy</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Customer → Site → Plant → Production Line → Machine, live from{" "}
-          <code className="font-mono text-xs">GET /api/v1/hierarchy</code>. Select a machine to
-          inspect its bearings, lubrication system, and sensors.
-        </p>
-      </header>
+      <PageHeader
+        title="Asset Hierarchy"
+        description="Your full organizational structure — customer, site, plant, production line, and every machine on it. Select a machine to open its detail page."
+      />
 
       <DataState
         isPending={hierarchy.isPending}

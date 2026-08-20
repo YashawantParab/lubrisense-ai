@@ -209,12 +209,12 @@ export default function FleetPage() {
                       </td>
                       <td className="px-4 py-2.5">
                         <StatusPill tone={toneForStatus(row.machine.status)}>
-                          {row.machine.status}
+                          {humanize(row.machine.status)}
                         </StatusPill>
                       </td>
                       <td className="px-4 py-2.5">
                         <StatusPill tone={toneForStatus(row.machine.criticality)}>
-                          {row.machine.criticality}
+                          {humanize(row.machine.criticality)}
                         </StatusPill>
                       </td>
                     </tr>

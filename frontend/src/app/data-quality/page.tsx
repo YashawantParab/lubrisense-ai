@@ -3,8 +3,10 @@
 import { useState } from "react";
 
 import { DataState } from "@/components/data-state";
+import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { useQualityIssues, useQualitySummary } from "@/hooks/use-data-quality";
+import { humanize } from "@/lib/terminology";
 import type { IssueSeverity, QualityState } from "@/lib/api/data-quality-types";
 
 const SEVERITIES: IssueSeverity[] = ["CRITICAL", "ERROR", "WARNING", "INFO"];
@@ -44,15 +46,10 @@ export default function DataQualityPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-12">
-      <header>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Data Quality</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Whether telemetry can be trusted before it ever reaches baselines, rules, or ML
-          (Phase 7). This is a data-quality signal, not a machine-condition diagnosis — no
-          health score, no failure prediction. Sourced live from{" "}
-          <code className="font-mono text-xs">GET /api/v1/data-quality/*</code>.
-        </p>
-      </header>
+      <PageHeader
+        title="Data Quality"
+        description="Whether telemetry can be trusted before it feeds any downstream evidence — baselines, rules, or ML. This is a signal about data trustworthiness, not a machine-condition diagnosis: no health score, no failure prediction here."
+      />
 
       <DataState
         isPending={summary.isPending}
@@ -70,7 +67,7 @@ export default function DataQualityPage() {
             {QUALITY_STATES.map((state) => (
               <SummaryCard
                 key={state}
-                label={state.replace(/_/g, " ")}
+                label={humanize(state)}
                 value={summary.data.sensors_by_quality_state[state] ?? 0}
                 tone={
                   toneForQualityState(state) === "ok"
@@ -109,7 +106,7 @@ export default function DataQualityPage() {
               <option value="">All severities</option>
               {SEVERITIES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {humanize(s)}
                 </option>
               ))}
             </select>
@@ -124,8 +121,8 @@ export default function DataQualityPage() {
         >
           {issues.data && issues.data.length === 0 ? (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              No quality issues match this filter — either the fleet is clean, or the
-              data-quality worker hasn&apos;t evaluated any telemetry yet.
+              No quality issues match this filter — either the fleet is clean, or telemetry
+              for it hasn&apos;t been evaluated yet.
             </p>
           ) : (
             issues.data && (
@@ -152,19 +149,19 @@ export default function DataQualityPage() {
                           {issue.sensor_id.slice(0, 8)}…
                         </td>
                         <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">
-                          {issue.dimension}
+                          {humanize(issue.dimension)}
                         </td>
                         <td className="py-2 pr-4 text-zinc-800 dark:text-zinc-200">
-                          {issue.issue_type}
+                          {humanize(issue.issue_type)}
                         </td>
                         <td className="py-2 pr-4">
                           <StatusPill tone={toneForSeverity(issue.severity)}>
-                            {issue.severity}
+                            {humanize(issue.severity)}
                           </StatusPill>
                         </td>
                         <td className="py-2 pr-4">
                           <StatusPill tone={issue.status === "ACTIVE" ? "warn" : "neutral"}>
-                            {issue.status}
+                            {humanize(issue.status)}
                           </StatusPill>
                         </td>
                         <td className="max-w-md py-2 pr-4 text-xs text-zinc-600 dark:text-zinc-400">

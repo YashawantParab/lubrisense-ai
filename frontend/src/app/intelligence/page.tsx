@@ -47,7 +47,7 @@ function DecisionCard({ decision }: { decision: DecisionAssessmentResponse }) {
     <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          What should I do?
+          Decision record
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={priorityTone(decision.priority)}>{decision.priority}</StatusPill>
@@ -98,7 +98,7 @@ function ProgCard({ forecasts }: { forecasts: PrognosticAssessmentResponse[] }) 
   if (forecasts.length === 0) {
     return (
       <div className="rounded-lg border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-        What may happen next? No forecast is available yet — no state estimate has been
+        Prognostic record: no forecast is available yet — no state estimate has been
         computed for this machine.
       </div>
     );
@@ -115,7 +115,7 @@ function ProgCard({ forecasts }: { forecasts: PrognosticAssessmentResponse[] }) 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-        What may happen next?
+        Prognostic record
       </h2>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         {Object.entries(byStateType).map(([stateType, rows]) => (
@@ -178,11 +178,14 @@ export default function IntelligencePage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-            Intelligence
+            Raw Intelligence
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Combined condition, prognostic, and decision view — three separately persisted
-            layers, shown together for one machine.
+          <p className="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+            Engineering/debug traceability — the three persisted assessment records
+            (condition, prognostic, decision) exactly as stored, for verifying the pipeline
+            end to end. This is not where to read what&rsquo;s happening on a machine — see
+            that machine&rsquo;s own page, or the incident it produced, for the reviewer-facing
+            explanation.
           </p>
         </div>
         <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
@@ -212,7 +215,7 @@ export default function IntelligencePage() {
             <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                  What is happening?
+                  Condition record
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusPill tone={severityTone(view.data.condition.severity)}>

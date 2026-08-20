@@ -11,10 +11,12 @@ import { RelativeTime } from "@/components/relative-time";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useEvaluateMachine, useIncidents } from "@/hooks/use-incidents";
+import { useAuth } from "@/lib/auth/context";
 import { humanize } from "@/lib/terminology";
 
 export default function IncidentsPage() {
   usePageTitle("Incidents");
+  const { can } = useAuth();
   const hierarchy = useHierarchy();
   const [machineId, setMachineId] = useState("");
   const incidents = useIncidents();
@@ -30,45 +32,49 @@ export default function IncidentsPage() {
   );
   const effectiveMachineId = machineId || machines[0]?.id || "";
   const evaluate = useEvaluateMachine(effectiveMachineId);
+  const canEvaluate = can("INCIDENT_MANAGE");
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
       <PageHeader
         title="Incidents"
         description="Correlated evidence for one evolving operational problem — never one row per evaluation cycle."
-        actions={
-          <>
-            <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-              <select
-                value={effectiveMachineId}
-                onChange={(event) => setMachineId(event.target.value)}
-                className="min-w-52 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-              >
-                {machines.map((machine) => (
-                  <option key={machine.id} value={machine.id}>
-                    {machine.name} · {machine.asset_code}
-                  </option>
-                ))}
-              </select>
-            </label>
+      />
+
+      {canEvaluate && (
+        <details className="rounded-lg border border-dashed border-zinc-300 px-4 py-2 dark:border-zinc-700">
+          <summary className="cursor-pointer text-xs font-medium text-zinc-500 select-none dark:text-zinc-400">
+            Engineering: manually re-evaluate a machine
+          </summary>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select
+              value={effectiveMachineId}
+              onChange={(event) => setMachineId(event.target.value)}
+              className="min-w-52 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              {machines.map((machine) => (
+                <option key={machine.id} value={machine.id}>
+                  {machine.name} · {machine.asset_code}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               disabled={!effectiveMachineId || evaluate.isPending}
               onClick={() => evaluate.mutate()}
-              className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+              className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
-              {evaluate.isPending ? "Evaluating…" : "Evaluate machine"}
+              {evaluate.isPending ? "Evaluating…" : "Evaluate now"}
             </button>
-          </>
-        }
-      />
-
-      {evaluate.isSuccess && (
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {evaluate.data
-            ? `Incident ${evaluate.data.state === "OPEN" ? "created/updated" : "updated"}: ${humanize(evaluate.data.incident_type)}.`
-            : "Current evidence does not warrant an incident (healthy, ambiguous, insufficient, or data-quality limited)."}
-        </p>
+          </div>
+          {evaluate.isSuccess && (
+            <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              {evaluate.data
+                ? `Incident ${evaluate.data.state === "OPEN" ? "created/updated" : "updated"}: ${humanize(evaluate.data.incident_type)}.`
+                : "Current evidence does not warrant an incident (healthy, ambiguous, insufficient, or data-quality limited)."}
+            </p>
+          )}
+        </details>
       )}
 
       <DataState
@@ -80,7 +86,7 @@ export default function IncidentsPage() {
         {(incidents.data ?? []).length === 0 ? (
           <EmptyState
             title="No incidents"
-            description="Evaluate a machine above, or wait for one to be automatically detected."
+            description="Incidents are created automatically when evidence warrants attention — none have been detected yet."
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">

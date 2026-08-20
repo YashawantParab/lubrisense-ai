@@ -175,7 +175,7 @@ export default function MaintenanceCaseDetailPage({
               )}
             </SectionCard>
 
-            <SectionCard title={`Checklist (${caseQuery.data.checklist_template_id})`}>
+            <SectionCard title="Inspection checklist">
               <ul className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
                 {caseQuery.data.checklist.map((item) => (
                   <li key={item.text}>• {item.text}</li>
