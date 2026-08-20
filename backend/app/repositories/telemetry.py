@@ -24,6 +24,13 @@ from app.domain.models import Telemetry
 DEFAULT_QUERY_LIMIT = 200
 MAX_QUERY_LIMIT = 2000
 
+# PostgreSQL's wire protocol caps a single statement at 65535 bind parameters, and asyncpg
+# enforces that same limit. A batch this size keeps every chunk's parameter count
+# (batch rows * columns per row) comfortably under that ceiling — with headroom for the
+# widest existing telemetry envelope (~33 columns) and any columns added later — while
+# still issuing few enough round trips for a large seed script to stay fast.
+MAX_INSERT_BIND_PARAMS = 30000
+
 
 class TelemetryRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -32,20 +39,32 @@ class TelemetryRepository:
     async def batch_insert_idempotent(self, rows: Sequence[dict[str, Any]]) -> int:
         """`INSERT ... ON CONFLICT (event_id, source_timestamp) DO NOTHING` — the
         idempotency mechanism for at-least-once delivery (ADR-053). Returns the number of
-        rows actually inserted (i.e. excluding duplicates already present)."""
+        rows actually inserted (i.e. excluding duplicates already present).
+
+        Chunks `rows` into bounded-size inserts so the bind-parameter count
+        (rows-per-chunk * columns-per-row) never approaches PostgreSQL/asyncpg's ~65535
+        parameter ceiling — a single flagship-story or bulk-telemetry seed can easily carry
+        tens of thousands of rows, which as one statement blows well past that limit."""
         if not rows:
             return 0
-        # `Telemetry.__table__` (Core), not the ORM class: a Core insert resolves `.values()`
-        # keys as raw DB column names (so `"metadata"` means the `metadata` column), whereas
-        # `pg_insert(Telemetry)` triggers SQLAlchemy 2.0's ORM-enabled insert, which resolves
-        # keys as Python attribute names and collides with `Telemetry.metadata`
-        # (the inherited `Base.metadata` registry, not the mapped `metadata_` column).
-        insert_stmt = pg_insert(Telemetry.__table__).values(list(rows))  # type: ignore[arg-type]
-        returning_stmt = insert_stmt.on_conflict_do_nothing(constraint="pk_telemetry").returning(
-            Telemetry.event_id
-        )
-        result = await self.session.execute(returning_stmt)
-        return len(result.fetchall())
+        columns_per_row = len(rows[0])
+        batch_size = max(1, MAX_INSERT_BIND_PARAMS // columns_per_row)
+        inserted = 0
+        for offset in range(0, len(rows), batch_size):
+            chunk = rows[offset : offset + batch_size]
+            # `Telemetry.__table__` (Core), not the ORM class: a Core insert resolves
+            # `.values()` keys as raw DB column names (so `"metadata"` means the `metadata`
+            # column), whereas `pg_insert(Telemetry)` triggers SQLAlchemy 2.0's ORM-enabled
+            # insert, which resolves keys as Python attribute names and collides with
+            # `Telemetry.metadata` (the inherited `Base.metadata` registry, not the mapped
+            # `metadata_` column).
+            insert_stmt = pg_insert(Telemetry.__table__).values(list(chunk))  # type: ignore[arg-type]
+            returning_stmt = insert_stmt.on_conflict_do_nothing(
+                constraint="pk_telemetry"
+            ).returning(Telemetry.event_id)
+            result = await self.session.execute(returning_stmt)
+            inserted += len(result.fetchall())
+        return inserted
 
     async def get_by_sensor_time_range(
         self,
