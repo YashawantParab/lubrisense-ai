@@ -76,7 +76,7 @@ export default function KnowledgePage() {
             {ask.data.citations.length > 0 && (
               <div>
                 <h3 className="mb-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                  Citations
+                  Approved knowledge cited
                 </h3>
                 <ul className="space-y-1 text-xs text-zinc-600 dark:text-zinc-400">
                   {ask.data.citations.map((c) => (

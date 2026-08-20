@@ -65,7 +65,7 @@ def test_chat_grounds_answer_in_real_evidence(client: TestClient, api_tenant: Te
     )
     assert response.status_code == 200
     body = response.json()
-    assert "DEVELOPING_RESTRICTION_PATTERN" in body["answer"]
+    assert "Developing Restriction Pattern" in body["answer"]
     assert len(body["citations"]) > 0
     assert len(body["tool_calls"]) > 0
     assert body["human_review_required"] is True

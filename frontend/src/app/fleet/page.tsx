@@ -7,6 +7,7 @@ import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
 import { IncidentStateBadge, SeverityBadge } from "@/components/badges";
 import { PageHeader } from "@/components/page-header";
+import { RelativeTime } from "@/components/relative-time";
 import { StatusPill } from "@/components/status-pill";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
@@ -71,6 +72,23 @@ export default function FleetPage() {
         });
       } else {
         existing.count += 1;
+      }
+    }
+    return map;
+  }, [incidents]);
+
+  // A machine that just recovered from a real incident is a stronger, more interesting
+  // story than an untouched "healthy" machine — collapsing it into a bare "Normal
+  // operation" pill the moment it resolves hides that story. Surfaces the single most
+  // recent resolved/closed incident per machine so it stays visible after recovery.
+  const recentResolvedByMachine = useMemo(() => {
+    const map = new Map<string, { incidentId: string; severity: string; resolvedAt: string }>();
+    for (const incident of incidents ?? []) {
+      if (incident.state !== "RESOLVED" && incident.state !== "CLOSED") continue;
+      const at = incident.resolved_at ?? incident.closed_at ?? incident.first_detected_at;
+      const existing = map.get(incident.machine_id);
+      if (!existing || new Date(at).getTime() > new Date(existing.resolvedAt).getTime()) {
+        map.set(incident.machine_id, { incidentId: incident.id, severity: incident.severity, resolvedAt: at });
       }
     }
     return map;
@@ -180,7 +198,7 @@ export default function FleetPage() {
                               title="The machine with the most complete, real intelligence story right now"
                               className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-sky-700 uppercase dark:bg-sky-500/15 dark:text-sky-400"
                             >
-                              Flagship story
+                              Priority story
                             </span>
                           )}
                         </div>
@@ -201,7 +219,24 @@ export default function FleetPage() {
                             )}
                           </div>
                         ) : (
-                          <StatusPill tone="ok">Normal operation</StatusPill>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusPill tone="ok">Normal operation</StatusPill>
+                            {recentResolvedByMachine.has(row.machine.id) && (
+                              <Link
+                                href={`/incidents/${recentResolvedByMachine.get(row.machine.id)!.incidentId}`}
+                                className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                              >
+                                Recently resolved
+                                <SeverityBadge
+                                  value={recentResolvedByMachine.get(row.machine.id)!.severity}
+                                />
+                                <RelativeTime
+                                  iso={recentResolvedByMachine.get(row.machine.id)!.resolvedAt}
+                                  className="text-zinc-400 dark:text-zinc-600"
+                                />
+                              </Link>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-400">

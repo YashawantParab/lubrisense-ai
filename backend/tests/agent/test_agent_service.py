@@ -59,8 +59,8 @@ async def test_flagship_flow_grounds_answer_in_real_persisted_evidence(
             incident_id=incident.id,
         )
     )
-    assert "DEVELOPING_RESTRICTION_PATTERN" in response.answer
-    assert "INSPECT_LUBRICATION_PATH" in response.answer
+    assert "Developing Restriction Pattern" in response.answer
+    assert "Inspect Lubrication Path" in response.answer
     assert incident.title in response.answer
     assert len(response.citations) > 0
     tool_names = {t.tool_name for t in response.tool_calls}
@@ -91,7 +91,10 @@ async def test_answer_never_invents_a_different_condition_type(db_session: Async
             tenant_id=tenant.id, message="Why was this incident created?", machine_id=machine.id
         )
     )
-    assert real_condition.condition_type.value in response.answer
+    def _human(value: str) -> str:
+        return value.replace("_", " ").title()
+
+    assert _human(real_condition.condition_type.value) in response.answer
     for fake_condition in (
         "DELIVERY_BLOCKAGE_PATTERN",
         "POSSIBLE_LEAKAGE_PATTERN",
@@ -99,6 +102,7 @@ async def test_answer_never_invents_a_different_condition_type(db_session: Async
     ):
         if fake_condition != real_condition.condition_type.value:
             assert fake_condition not in response.answer
+            assert _human(fake_condition) not in response.answer
 
 
 @pytest.mark.asyncio

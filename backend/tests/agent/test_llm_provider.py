@@ -22,7 +22,7 @@ def test_condition_is_quoted_verbatim_never_invented() -> None:
         }
     }
     answer = PROVIDER.compose_answer(intent="GENERAL", evidence=evidence)
-    assert "DEVELOPING_RESTRICTION_PATTERN" in answer
+    assert "Developing Restriction Pattern" in answer
     assert "Test evidence text." in answer
 
 
@@ -36,7 +36,7 @@ def test_decision_recommended_action_is_quoted_verbatim() -> None:
         }
     }
     answer = PROVIDER.compose_answer(intent="GENERAL", evidence=evidence)
-    assert "INSPECT_LUBRICATION_PATH" in answer
+    assert "Inspect Lubrication Path" in answer
     assert "Test risk text." in answer
 
 
@@ -124,12 +124,12 @@ def test_differently_phrased_questions_lead_with_different_sections() -> None:
     )
 
     assert why_answer != action_answer
-    assert why_answer.startswith("What is happening")
-    assert action_answer.startswith("What you should do")
+    assert why_answer.startswith("Current condition")
+    assert action_answer.startswith("Recommended action")
     # No fact is ever added or dropped by reordering — both sections still present in both.
     for answer in (why_answer, action_answer):
-        assert "DEVELOPING_RESTRICTION_PATTERN" in answer
-        assert "INSPECT_LUBRICATION_PATH" in answer
+        assert "Developing Restriction Pattern" in answer
+        assert "Inspect Lubrication Path" in answer
 
 
 def test_unrecognized_question_keeps_the_original_default_order() -> None:
@@ -141,4 +141,4 @@ def test_unrecognized_question_keeps_the_original_default_order() -> None:
         intent="GENERAL", evidence=_MULTI_EVIDENCE, message="hello there"
     )
     assert with_default == with_unmatched
-    assert with_default.startswith("What is happening")
+    assert with_default.startswith("Current condition")

@@ -110,6 +110,12 @@ export default function MaintenanceCaseDetailPage({
                 <>
                   <MaintenanceStateBadge value={caseQuery.data.state} />
                   {caseQuery.data.human_review_required && <HumanReviewBadge />}
+                  <Link
+                    href={`/assistant?machineId=${caseQuery.data.machine_id}&incidentId=${caseQuery.data.incident_id}&caseId=${caseId}`}
+                    className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+                  >
+                    Ask Assistant
+                  </Link>
                 </>
               }
             />

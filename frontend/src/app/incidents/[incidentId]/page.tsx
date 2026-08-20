@@ -81,7 +81,10 @@ export default function IncidentDetailPage({
   // `getMachineFindings` only returns each finding's *current* state, which drops the
   // findings behind a since-resolved incident — fetch by machine with no state filter so
   // history is never silently hidden once the underlying issue recovers.
-  const machineFindings = useFindings({ machine_id: incident.data?.machine_id, limit: 200 });
+  const machineFindings = useFindings(
+    { machine_id: incident.data?.machine_id, limit: 200 },
+    { enabled: Boolean(incident.data?.machine_id) },
+  );
   const incidentFindings = useMemo(() => {
     const ids = new Set(incident.data?.rule_finding_ids ?? []);
     return (machineFindings.data ?? []).filter((f) => ids.has(f.id));
@@ -101,7 +104,17 @@ export default function IncidentDetailPage({
               breadcrumbs={[{ label: "Incidents", href: "/incidents" }, { label: incident.data.title }]}
               title={incident.data.title}
               description={evidenceBackingLine(incident.data)}
-              actions={<IncidentStateBadge value={incident.data.state} />}
+              actions={
+                <>
+                  <IncidentStateBadge value={incident.data.state} />
+                  <Link
+                    href={`/assistant?machineId=${incident.data.machine_id}&incidentId=${incidentId}`}
+                    className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+                  >
+                    Ask Assistant
+                  </Link>
+                </>
+              }
             />
 
             <SectionCard>

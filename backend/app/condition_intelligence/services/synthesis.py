@@ -159,10 +159,11 @@ def synthesize(
         if len(bearing_types) == 1 and len(delivery_types) == 1:
             primary = delivery_types[0]
             result = _single_hypothesis_result(evidence, policy, primary, votes[primary])
+            bearing_label = bearing_types[0].replace("_", " ").title()
             bearing_note = (
-                f"Independent bearing evidence also present ({bearing_types[0].replace('_', ' ').title()}) "
-                "— recorded separately from this delivery-focused assessment, since one does "
-                "not necessarily explain the other."
+                f"Independent bearing evidence also present ({bearing_label}) — recorded "
+                "separately from this delivery-focused assessment, since one does not "
+                "necessarily explain the other."
             )
             return ConditionAssessmentResult(
                 condition_type=result.condition_type,

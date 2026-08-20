@@ -20,10 +20,11 @@ export function useFindingsSummary() {
   });
 }
 
-export function useFindings(params: RuleFindingsParams = {}) {
+export function useFindings(params: RuleFindingsParams = {}, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["rules", "findings", params],
     queryFn: () => getFindings(params),
+    enabled: options.enabled ?? true,
     refetchInterval: 15_000,
   });
 }

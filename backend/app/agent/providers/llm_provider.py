@@ -64,8 +64,19 @@ def _focus_for(message: str) -> str | None:
     return None
 
 
+def _human(value: object) -> str:
+    return str(value).replace("_", " ").title()
+
+
 class DemoLLMProvider:
-    """Deterministic, dependency-free, no external call — see module docstring."""
+    """Deterministic, dependency-free, no external call — see module docstring.
+
+    Every enum-shaped evidence value (`condition_type`, `severity`, `state`, ...) is
+    humanized before it goes into `answer` text — this is the literal chat prose an
+    external reviewer reads, so it follows the same "human meaning first, raw identifier
+    only in technical detail" rule as the rest of the product; the raw values are still
+    exposed unmodified as structured `evidence`/`tool_calls` data for anyone who needs
+    them."""
 
     def compose_answer(self, *, intent: str, evidence: dict[str, Any], message: str = "") -> str:
         del intent
@@ -74,31 +85,35 @@ class DemoLLMProvider:
         condition = evidence.get("condition")
         if condition:
             sections["condition"] = (
-                f"What is happening: {condition['condition_type']} "
-                f"({condition['severity']}, confidence {condition['confidence']}). "
+                f"Current condition: {_human(condition['condition_type'])} "
+                f"({_human(condition['severity'])} severity, "
+                f"{_human(condition['confidence']).lower()} confidence). "
                 f"{condition['what_is_happening']}"
             )
 
         decision = evidence.get("decision")
         if decision:
             sections["decision"] = (
-                f"What you should do: {decision['recommended_action']} "
-                f"(priority {decision['priority']}, window {decision['recommended_window']}). "
+                f"Recommended action: {_human(decision['recommended_action'])} "
+                f"({_human(decision['priority'])} priority, "
+                f"{_human(decision['recommended_window']).lower()} window). "
                 f"{decision['risk_if_deferred']}"
             )
 
         incident = evidence.get("incident")
         if incident:
             sections["incident"] = (
-                f"Incident: {incident['title']} — currently {incident['state']} "
-                f"({incident['severity']}/{incident['priority']})."
+                f"Incident: {incident['title']} — currently "
+                f"{_human(incident['state']).lower()} "
+                f"({_human(incident['severity'])} severity, "
+                f"{_human(incident['priority'])} priority)."
             )
 
         maintenance_case = evidence.get("maintenance_case")
         if maintenance_case:
             sections["maintenance_case"] = (
-                f"Maintenance case state: {maintenance_case['state']} "
-                f"(recommended action: {maintenance_case['recommended_action']})."
+                f"Maintenance case: {_human(maintenance_case['state']).lower()} "
+                f"(recommended action: {_human(maintenance_case['recommended_action'])})."
             )
 
         procedure_results = evidence.get("procedure_results") or []

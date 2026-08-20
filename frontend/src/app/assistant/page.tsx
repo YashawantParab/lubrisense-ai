@@ -21,6 +21,51 @@ interface ConversationTurn {
   response?: ChatResponse;
 }
 
+/**
+ * Human category for each allowlisted backend tool (`app.agent.tools.tool_functions`) —
+ * the assistant never shows a raw tool/function name (e.g. `get_current_condition`) to a
+ * reviewer; it shows what kind of evidence that call actually grounded the answer in.
+ */
+const TOOL_LABELS: Record<string, string> = {
+  get_asset_context: "Machine identity",
+  get_current_condition: "Condition assessment",
+  get_current_decision: "Decision Intelligence",
+  get_current_prognostic: "Forecast",
+  get_incident: "Incident record",
+  get_incident_timeline: "Incident timeline",
+  get_maintenance_case: "Maintenance record",
+  get_telemetry_summary: "Sensor coverage",
+  search_approved_documentation: "Approved knowledge",
+  search_similar_service_cases: "Maintenance history",
+  generate_checklist_draft: "Inspection checklist (draft)",
+  draft_work_order: "Work order (draft)",
+};
+
+function toolLabel(toolName: string): string {
+  return TOOL_LABELS[toolName] ?? humanize(toolName);
+}
+
+type AssistantContext = "none" | "machine" | "incident" | "case";
+
+const STARTER_PROMPTS: Record<AssistantContext, string[]> = {
+  none: [],
+  machine: [
+    "What is this machine's current condition?",
+    "What evidence supports that assessment?",
+    "What should maintenance do next?",
+  ],
+  incident: [
+    "Why was this incident created?",
+    "What evidence supports this diagnosis?",
+    "What is the recommended action and why?",
+  ],
+  case: [
+    "What did the technician find?",
+    "Was the diagnosis confirmed?",
+    "Summarize this case for a manager",
+  ],
+};
+
 function AssistantPageInner() {
   usePageTitle("Assistant");
   const searchParams = useSearchParams();
@@ -28,7 +73,7 @@ function AssistantPageInner() {
   const [machineId, setMachineId] = useState(searchParams.get("machineId") ?? "");
   const incidents = useIncidents({ machineId: machineId || undefined });
   const [incidentId, setIncidentId] = useState(searchParams.get("incidentId") ?? "");
-  const [caseId, setCaseId] = useState("");
+  const [caseId, setCaseId] = useState(searchParams.get("caseId") ?? "");
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
@@ -50,15 +95,24 @@ function AssistantPageInner() {
     [hierarchy.data],
   );
   const contextMachine = machines.find((m) => m.id === machineId);
+  const contextIncident = (incidents.data ?? []).find((i) => i.id === incidentId);
 
-  const handleSend = () => {
-    if (!message) return;
-    const userMessage = message;
-    setTurns((prev) => [...prev, { role: "user", content: userMessage }]);
+  const assistantContext: AssistantContext = caseId
+    ? "case"
+    : incidentId
+      ? "incident"
+      : machineId
+        ? "machine"
+        : "none";
+  const starterPrompts = STARTER_PROMPTS[assistantContext];
+
+  const sendMessage = (text: string) => {
+    if (!text) return;
+    setTurns((prev) => [...prev, { role: "user", content: text }]);
     setMessage("");
     chat.mutate(
       {
-        message: userMessage,
+        message: text,
         session_id: sessionId,
         machine_id: machineId || undefined,
         incident_id: incidentId || undefined,
@@ -75,6 +129,7 @@ function AssistantPageInner() {
       },
     );
   };
+  const handleSend = () => sendMessage(message);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
@@ -145,18 +200,60 @@ function AssistantPageInner() {
         )}
         {contextMachine && (
           <span className="ml-auto text-xs text-zinc-500 dark:text-zinc-400">
-            Asking about <span className="font-medium text-zinc-700 dark:text-zinc-300">{contextMachine.name}</span>
+            Asking about{" "}
+            <span className="font-medium text-zinc-700 dark:text-zinc-300">
+              {contextMachine.name}
+            </span>
+            {contextIncident && <> · {contextIncident.title}</>}
           </span>
         )}
       </div>
 
       <div className="flex flex-col gap-4">
-        {turns.length === 0 && (
-          <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-600">
-            Select a machine (and incident, if one is open) above, then ask what is
-            happening and what to do about it.
-          </p>
-        )}
+        {turns.length === 0 &&
+          (assistantContext === "none" ? (
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-zinc-300 py-10 text-center dark:border-zinc-700">
+              <p className="text-base font-medium text-zinc-700 dark:text-zinc-300">
+                Select a machine to get started
+              </p>
+              <p className="max-w-md text-sm text-zinc-500 dark:text-zinc-400">
+                The assistant explains one machine&rsquo;s persisted condition, decision, and
+                maintenance history at a time — it doesn&rsquo;t reason across the fleet. Pick a
+                machine above, or jump in from a machine, incident, or maintenance page with
+                &ldquo;Ask Assistant&rdquo;.
+              </p>
+              <div className="mt-1 flex gap-3 text-xs">
+                <Link href="/fleet" className="text-sky-600 hover:underline dark:text-sky-400">
+                  Browse fleet →
+                </Link>
+                <Link href="/knowledge" className="text-sky-600 hover:underline dark:text-sky-400">
+                  Browse knowledge base →
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-zinc-300 py-10 text-center dark:border-zinc-700">
+              <p className="text-base font-medium text-zinc-700 dark:text-zinc-300">
+                Ask about {contextMachine?.name ?? "this machine"}
+              </p>
+              <p className="max-w-md text-sm text-zinc-500 dark:text-zinc-400">
+                Answers are grounded in this machine&rsquo;s persisted condition, decision, and
+                maintenance records — never a fresh diagnosis of its own.
+              </p>
+              <div className="mt-1 flex flex-wrap justify-center gap-2">
+                {starterPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => sendMessage(prompt)}
+                    className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/60"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         {turns.map((turn, index) => (
           <div
             key={index}
@@ -195,7 +292,7 @@ function AssistantPageInner() {
                 {turn.response.citations.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                      Cited sources
+                      Approved knowledge cited
                     </h3>
                     <ul className="mt-1 space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
                       {turn.response.citations.map((c, i) => (
@@ -222,21 +319,36 @@ function AssistantPageInner() {
 
                 {turn.response.tool_calls.length > 0 && (
                   <div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                        Grounded in:
+                      </span>
+                      {Array.from(
+                        new Set(
+                          turn.response.tool_calls
+                            .filter((t) => t.status === "OK")
+                            .map((t) => toolLabel(t.tool_name)),
+                        ),
+                      ).map((label) => (
+                        <StatusPill key={label} tone="info">
+                          {label}
+                        </StatusPill>
+                      ))}
+                    </div>
                     <button
                       type="button"
                       onClick={() =>
                         setExpandedToolCalls(expandedToolCalls === index ? null : index)
                       }
-                      className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                      className="mt-1 text-xs text-sky-600 hover:underline dark:text-sky-400"
                     >
-                      {expandedToolCalls === index ? "Hide" : "Show"}{" "}
-                      {turn.response.tool_calls.length} evidence lookup(s)
+                      {expandedToolCalls === index ? "Hide" : "Show"} technical detail
                     </button>
                     {expandedToolCalls === index && (
                       <ul className="mt-1 space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
                         {turn.response.tool_calls.map((t, i) => (
                           <li key={i}>
-                            {humanize(t.tool_name)} — {humanize(t.status)}: {t.summary}
+                            {toolLabel(t.tool_name)} — {humanize(t.status)}: {t.summary}
                           </li>
                         ))}
                       </ul>

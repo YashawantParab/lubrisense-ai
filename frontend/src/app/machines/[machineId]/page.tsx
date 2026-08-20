@@ -26,7 +26,7 @@ import { useMachineHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useMachineBaselines } from "@/hooks/use-baselines";
 import { useMachineConfigurationChanges, useMachineDevices } from "@/hooks/use-device-management";
 import { useIncidents } from "@/hooks/use-incidents";
-import { useIntelligenceView } from "@/hooks/use-intelligence";
+import { useDecisionHistory, useIntelligenceView } from "@/hooks/use-intelligence";
 import {
   useMaintenanceActions,
   useMaintenanceCases,
@@ -43,6 +43,12 @@ import type {
   LubricationSystemResponse,
   SensorResponse,
 } from "@/lib/api/asset-hierarchy-types";
+import type { DecisionAssessmentResponse } from "@/lib/api/intelligence-types";
+
+// Pressure/flow/vibration/bearing temperature carry the story for the failure modes this
+// platform models — leading with them (rather than an arbitrary/alphabetical order) means a
+// reviewer sees the signals that actually explain a diagnosis first.
+const SIGNAL_PRIORITY = ["PRESSURE", "FLOW", "VIBRATION_RMS", "BEARING_TEMPERATURE"];
 
 const HORIZON_LABELS: Record<string, string> = {
   ONE_HOUR: "1 hour",
@@ -208,11 +214,63 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   const caseActions = useMaintenanceActions(machineCase?.id ?? "");
   const caseFeedback = useMaintenanceFeedback(machineCase?.id ?? "");
 
+  const decisionHistory = useDecisionHistory(machineId);
+  // The decision persisted closest to the incident's own detection time — i.e. "what was
+  // recommended while this was actually happening", read from real history rather than
+  // re-deriving it from the (now different) live condition.
+  const duringIncidentDecision = useMemo(() => {
+    if (!relevantIncident) return undefined;
+    const target = new Date(relevantIncident.first_detected_at).getTime();
+    let best: DecisionAssessmentResponse | undefined;
+    let bestDiff = Infinity;
+    for (const d of decisionHistory.data ?? []) {
+      const diff = Math.abs(new Date(d.as_of_timestamp).getTime() - target);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = d;
+      }
+    }
+    return best;
+  }, [decisionHistory.data, relevantIncident]);
+  const showDecisionComparison = Boolean(
+    !activeIncident &&
+      relevantIncident &&
+      duringIncidentDecision &&
+      intelligence.data &&
+      duringIncidentDecision.id !== intelligence.data.decision.id &&
+      (duringIncidentDecision.recommended_action !== intelligence.data.decision.recommended_action ||
+        duringIncidentDecision.priority !== intelligence.data.decision.priority),
+  );
+
   const measurementTypes = useMemo(() => {
     const types = new Set<string>();
     for (const reading of telemetry.data ?? []) types.add(reading.measurement_type);
-    return Array.from(types);
+    return Array.from(types).sort((a, b) => {
+      const ai = SIGNAL_PRIORITY.indexOf(a);
+      const bi = SIGNAL_PRIORITY.indexOf(b);
+      if (ai === -1 && bi === -1) return a.localeCompare(b);
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
   }, [telemetry.data]);
+
+  const telemetryStoryMarkers = useMemo(() => {
+    const markers: { label: string; iso: string; tone: "warn" | "info" | "ok" }[] = [];
+    if (relevantIncident) {
+      markers.push({ label: "Detected", iso: relevantIncident.first_detected_at, tone: "warn" });
+    }
+    if (machineCase?.started_at) {
+      markers.push({ label: "Inspection started", iso: machineCase.started_at, tone: "info" });
+    }
+    if (machineCase?.completed_at) {
+      markers.push({ label: "Maintenance complete", iso: machineCase.completed_at, tone: "info" });
+    }
+    if (relevantIncident?.resolved_at) {
+      markers.push({ label: "Recovered", iso: relevantIncident.resolved_at, tone: "ok" });
+    }
+    return markers;
+  }, [relevantIncident, machineCase]);
 
   const baselineRangeFor = (measurementType: string): [number, number] | null => {
     const profile = (baselines.data?.profiles ?? []).find(
@@ -369,10 +427,22 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                       <SeverityBadge value={intelligence.data.condition.severity} />
                       <ConfidenceBadge value={intelligence.data.condition.confidence} />
                     </div>
+                    {showDecisionComparison && duringIncidentDecision && (
+                      <div className="flex flex-col gap-0.5 border-b border-zinc-100 pb-2 text-sm dark:border-zinc-800">
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          During incident:{" "}
+                          <span className="text-zinc-700 dark:text-zinc-300">
+                            {humanize(duringIncidentDecision.recommended_action)}
+                          </span>{" "}
+                          — {humanize(duringIncidentDecision.priority)}
+                        </span>
+                      </div>
+                    )}
                     <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                      {showDecisionComparison ? "Current: " : ""}
                       {humanize(intelligence.data.decision.recommended_action)}
                     </p>
-                    {!activeIncident && relevantIncident && (
+                    {!activeIncident && relevantIncident && !showDecisionComparison && (
                       <p className="text-xs text-zinc-400 dark:text-zinc-600">
                         This reflects the machine&rsquo;s condition now — see Workflow Intelligence
                         below for what was recommended during the recent incident.
@@ -601,6 +671,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                         measurementType={type}
                         readings={telemetry.data ?? []}
                         baselineRange={baselineRangeFor(type)}
+                        storyMarkers={telemetryStoryMarkers}
                       />
                     ))}
                   </div>

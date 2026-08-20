@@ -1,23 +1,52 @@
 "use client";
 
-import { Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Line,
+  LineChart,
+  ReferenceArea,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { humanize } from "@/lib/terminology";
 import type { TelemetryReadingResponse } from "@/lib/api/telemetry-types";
 
+export interface TelemetryStoryMarker {
+  label: string;
+  iso: string;
+  tone: "warn" | "info" | "ok";
+}
+
+const MARKER_COLOR: Record<TelemetryStoryMarker["tone"], string> = {
+  warn: "#d97706",
+  info: "#0284c7",
+  ok: "#059669",
+};
+
 /** A restrained, single-series time chart for one measurement type on one machine
  * (Phase 28 brief §28.9). Deliberately not interactive/zoomable — this reference
  * platform's telemetry volumes don't need it, and CLAUDE.md's visual language calls for
- * "restrained charts," not a full analytics-grade charting surface (ADR-159). */
+ * "restrained charts," not a full analytics-grade charting surface (ADR-159).
+ *
+ * `storyMarkers` overlays real, persisted incident/maintenance timestamps (detected,
+ * intervention, recovered) so the calm-baseline / developing-issue / response / recovery
+ * shape of a real event is visible directly on the chart — never a fabricated annotation,
+ * only timestamps the platform actually recorded, and only drawn when they fall inside
+ * this series' own data window. */
 export function TelemetryChart({
   measurementType,
   readings,
   baselineRange,
+  storyMarkers,
 }: {
   measurementType: string;
   readings: TelemetryReadingResponse[];
   /** optional [low, high] expected-range band, when a baseline exists for this sensor */
   baselineRange?: [number, number] | null;
+  storyMarkers?: TelemetryStoryMarker[];
 }) {
   const points = readings
     .filter((r) => r.measurement_type === measurementType && r.value !== null)
@@ -30,6 +59,10 @@ export function TelemetryChart({
 
   const unit = readings.find((r) => r.measurement_type === measurementType)?.unit ?? "";
   const hasBadQuality = points.some((p) => p.quality !== "GOOD");
+  const visibleMarkers = (storyMarkers ?? []).filter((m) => {
+    const t = new Date(m.iso).getTime();
+    return points.length > 0 && t >= points[0].t && t <= points[points.length - 1].t;
+  });
 
   if (points.length === 0) {
     return (
@@ -80,6 +113,21 @@ export function TelemetryChart({
                 stroke="none"
               />
             )}
+            {visibleMarkers.map((marker) => (
+              <ReferenceLine
+                key={`${marker.label}-${marker.iso}`}
+                x={new Date(marker.iso).getTime()}
+                stroke={MARKER_COLOR[marker.tone]}
+                strokeDasharray="3 3"
+                strokeWidth={1.25}
+                label={{
+                  value: marker.label,
+                  position: "insideTopLeft",
+                  fontSize: 9,
+                  fill: MARKER_COLOR[marker.tone],
+                }}
+              />
+            ))}
             <Line
               type="monotone"
               dataKey="value"
@@ -94,6 +142,11 @@ export function TelemetryChart({
       {hasBadQuality && (
         <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
           Includes readings flagged with a data-quality limitation — see Evidence for detail.
+        </p>
+      )}
+      {visibleMarkers.length > 0 && (
+        <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-600">
+          Dashed lines mark this machine&rsquo;s recorded incident/maintenance timestamps.
         </p>
       )}
     </div>
