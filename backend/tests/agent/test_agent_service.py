@@ -48,7 +48,32 @@ async def test_flagship_flow_grounds_answer_in_real_persisted_evidence(
     db_session: AsyncSession,
 ) -> None:
     """Mandatory flagship flow (Phase 19 brief §19.14): retrieve ConditionAssessment,
-    DecisionAssessment, incident, search approved docs, answer grounded with citations."""
+    DecisionAssessment, incident, search approved docs, answer grounded with citations.
+
+    Seeds its own approved document rather than assuming a pre-existing global corpus —
+    CI's Postgres starts empty (only `scripts/seed_knowledge_corpus.py` populates the real
+    demo corpus, and nothing runs that in CI), so relying on it here would only pass
+    against a manually-seeded local/hosted database (see tests/knowledge/test_retrieval.py's
+    module docstring for the same reasoning)."""
+    knowledge = KnowledgeService(db_session)
+    document = await knowledge.ingest(
+        DocumentDraft(
+            document_key="flagship-flow-test-restriction-guide",
+            title="Restriction Inspection Guide",
+            document_type="TROUBLESHOOTING_GUIDE",
+            version="1.0.0",
+            source_name="Test",
+            content=(
+                "# Restriction Inspection Guide\n\n"
+                "## Inspection Steps\n\n"
+                "Visually inspect the lubrication path for a developing restriction "
+                "pattern, including the distributor outlet for a partial blockage."
+            ),
+        )
+    )
+    await knowledge.submit_for_review(document.id)
+    await knowledge.approve(document.id, approved_by="tester")
+
     tenant, machine, incident = await seed_restriction_incident(db_session)
     agent = AgentService(db_session)
     response = await agent.chat(

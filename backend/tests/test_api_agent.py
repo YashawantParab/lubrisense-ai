@@ -13,6 +13,8 @@ from app.domain.enums import RuleFindingSeverity, RuleFindingType, SensorType
 from app.domain.models import Tenant
 from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
+from app.knowledge.domain.models import DocumentDraft
+from app.knowledge.services.knowledge_service import KnowledgeService
 from tests.factories import make_customer, make_machine, make_plant, make_production_line, make_site
 from tests.incidents.helpers import active_rule_finding
 from tests.rules_engine.helpers import make_circuit, make_lubrication_system, make_topology_sensor
@@ -22,6 +24,34 @@ async def _committed_incident(tenant: Tenant) -> tuple[uuid.UUID, uuid.UUID]:
     database = Database(get_settings())
     try:
         async with database.session() as session:
+            # Seeds its own approved document rather than assuming a pre-existing global
+            # corpus — CI's Postgres starts empty (only scripts/seed_knowledge_corpus.py
+            # populates the real demo corpus, and nothing runs that in CI); see
+            # tests/knowledge/test_retrieval.py's module docstring for the same reasoning.
+            knowledge = KnowledgeService(session)
+            document = await knowledge.ingest(
+                DocumentDraft(
+                    # `ingest()` is idempotent by `document_key` (Phase 18 brief §18.15) —
+                    # this helper commits (unlike the rolled-back `db_session` fixture), so
+                    # a fixed key would collide with the already-APPROVED document left
+                    # behind by a prior run and fail `submit_for_review` the second time.
+                    document_key=f"api-agent-test-restriction-guide-{uuid.uuid4()}",
+                    title="Restriction Inspection Guide",
+                    document_type="TROUBLESHOOTING_GUIDE",
+                    version="1.0.0",
+                    source_name="Test",
+                    content=(
+                        "# Restriction Inspection Guide\n\n"
+                        "## Inspection Steps\n\n"
+                        "Visually inspect the lubrication path for a developing "
+                        "restriction pattern, including the distributor outlet for a "
+                        "partial blockage."
+                    ),
+                )
+            )
+            await knowledge.submit_for_review(document.id)
+            await knowledge.approve(document.id, approved_by="tester")
+
             customer = await make_customer(session, tenant)
             site = await make_site(session, tenant, customer)
             plant = await make_plant(session, tenant, site)
