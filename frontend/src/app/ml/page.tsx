@@ -3,28 +3,106 @@
 import { useMemo, useState } from "react";
 
 import { DataState } from "@/components/data-state";
+import { EmptyState } from "@/components/empty-state";
+import { ModelStatusBadge } from "@/components/badges";
+import { PageHeader } from "@/components/page-header";
+import { RelativeTime } from "@/components/relative-time";
+import { SectionCard } from "@/components/section-card";
 import { StatusPill } from "@/components/status-pill";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
-import { useLatestMachineInference } from "@/hooks/use-ml";
+import { useLatestMachineInference, useModel, useModels } from "@/hooks/use-ml";
+import { humanize, SERVABLE_MODEL_STATUSES } from "@/lib/terminology";
 
-const MODEL_IDS = ["LUBRICATION_ANOMALY_V1", "FAILURE_CLASSIFICATION_V1"] as const;
+// Only these two model ids are wired into the live per-machine inference endpoint
+// (backend/app/api/v1/ml.py `_KNOWN_MODEL_IDS`) — the registry can hold other models
+// (e.g. a STAGING baseline classifier) that this page still lists above, just without a
+// "try live inference" panel, since the API itself would reject an unknown model_id.
+const LIVE_INFERENCE_MODEL_IDS = ["LUBRICATION_ANOMALY_V1", "FAILURE_CLASSIFICATION_V1"] as const;
 
-function statusTone(status: string): "ok" | "warn" | "error" | "neutral" {
-  if (status === "OK") return "ok";
-  if (status === "UNKNOWN") return "warn";
-  if (status === "INSUFFICIENT_FEATURES") return "neutral";
-  return "neutral";
+function isPlainValue(value: unknown): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
 
-function formatPercent(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+function formatMetricValue(value: number | string | boolean): string {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? String(value) : value.toFixed(4);
+  }
+  return String(value);
+}
+
+function ModelMetricsGrid({ metrics }: { metrics: Record<string, unknown> }) {
+  const scalarEntries = Object.entries(metrics).filter(([, value]) => isPlainValue(value));
+  if (scalarEntries.length === 0) return null;
+  return (
+    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {scalarEntries.map(([key, value]) => (
+        <div key={key}>
+          <dt className="text-xs text-zinc-500 dark:text-zinc-400">{humanize(key)}</dt>
+          <dd className="mt-0.5 font-mono text-sm text-zinc-900 dark:text-zinc-100">
+            {formatMetricValue(value as string | number | boolean)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function LiveInferencePanel({ machineId, modelId }: { machineId: string; modelId: string }) {
+  const inference = useLatestMachineInference(machineId, modelId);
+
+  return (
+    <DataState
+      isPending={inference.isPending}
+      isError={false}
+      error={undefined}
+      loadingLabel="Running inference…"
+    >
+      {inference.isError ? (
+        <EmptyState
+          title="Not used for live scoring yet"
+          description="This model version has not been promoted to VALIDATED (or later), so it does not independently score machines yet — the registry entry above is real, evaluated evidence, just not currently servable."
+        />
+      ) : inference.data ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-700 dark:text-zinc-300">
+            <span>Status</span>
+            <StatusPill tone={inference.data.status === "OK" ? "ok" : "neutral"}>
+              {humanize(inference.data.status)}
+            </StatusPill>
+            {inference.data.result_kind === "ANOMALY" && inference.data.status === "OK" && (
+              <>
+                <span>Anomaly score</span>
+                <StatusPill tone={inference.data.anomalous ? "warn" : "ok"}>
+                  {inference.data.anomaly_score?.toFixed(4)}{" "}
+                  {inference.data.anomalous ? "(anomalous)" : "(within threshold)"}
+                </StatusPill>
+              </>
+            )}
+            {inference.data.result_kind === "CLASSIFICATION" && (
+              <>
+                <span>Predicted class</span>
+                <StatusPill tone={inference.data.predicted_class === "NORMAL" ? "ok" : "warn"}>
+                  {inference.data.predicted_class ?? "—"}
+                </StatusPill>
+              </>
+            )}
+          </div>
+          <p className="text-xs text-zinc-400 dark:text-zinc-600">
+            As of <RelativeTime iso={inference.data.as_of_timestamp} /> · model{" "}
+            {inference.data.model_version}
+          </p>
+        </div>
+      ) : null}
+    </DataState>
+  );
 }
 
 export default function MLPage() {
   const hierarchy = useHierarchy();
+  const models = useModels();
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [machineId, setMachineId] = useState("");
-  const [modelId, setModelId] = useState<(typeof MODEL_IDS)[number]>("LUBRICATION_ANOMALY_V1");
-  const [showDetail, setShowDetail] = useState(false);
+  const [showRawDetail, setShowRawDetail] = useState(false);
 
   const machines = useMemo(
     () =>
@@ -35,176 +113,158 @@ export default function MLPage() {
       ) ?? [],
     [hierarchy.data],
   );
-
   const effectiveMachineId = machineId || machines[0]?.id || "";
-  const inference = useLatestMachineInference(effectiveMachineId, modelId);
-  const selectedMachine = machines.find((machine) => machine.id === effectiveMachineId);
 
-  const probabilities = inference.data
-    ? Object.entries(inference.data.class_probabilities).sort(([, a], [, b]) => b - a)
-    : [];
+  const sortedModels = useMemo(
+    () => [...(models.data ?? [])].sort((a, b) => a.model_id.localeCompare(b.model_id)),
+    [models.data],
+  );
+  const effectiveModelId = selectedModelId || sortedModels[0]?.model_id || "";
+
+  const detail = useModel(effectiveModelId);
+  const canTryLiveInference = (LIVE_INFERENCE_MODEL_IDS as readonly string[]).includes(
+    effectiveModelId,
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-            ML Model Evidence
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Evidence only — not a diagnosis or maintenance decision. See Condition Intelligence
-            (later phase) for how this combines with rules.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-            Machine
-            <select
-              value={effectiveMachineId}
-              onChange={(event) => setMachineId(event.target.value)}
-              className="min-w-52 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-            >
-              {machines.map((machine) => (
-                <option key={machine.id} value={machine.id}>
-                  {machine.name} · {machine.asset_code}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-            Model
-            <select
-              value={modelId}
-              onChange={(event) => setModelId(event.target.value as (typeof MODEL_IDS)[number])}
-              className="min-w-60 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-            >
-              {MODEL_IDS.map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </header>
+      <PageHeader
+        title="ML Model Evidence"
+        description="Model output is one evidence source among several (rules, state estimation, technician history) that feed Condition Intelligence — it never independently makes a maintenance decision. A model only scores live machines once promoted from EXPERIMENT to VALIDATED or later."
+      />
 
       <DataState
-        isPending={hierarchy.isPending || inference.isPending}
-        isError={hierarchy.isError || inference.isError}
-        error={hierarchy.error ?? inference.error}
-        loadingLabel="Running inference…"
+        isPending={models.isPending}
+        isError={models.isError}
+        error={models.error}
+        loadingLabel="Loading model registry…"
       >
-        {inference.data && (
-          <>
-            <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ["Machine", selectedMachine?.name ?? effectiveMachineId.slice(0, 8)],
-                ["Model version", inference.data.model_version],
-                ["As of", new Date(inference.data.as_of_timestamp).toLocaleString()],
-                ["Missing features", String(inference.data.missing_features.length)],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
-                >
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
-                  <p className="mt-1 break-words text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                    {value}
-                  </p>
-                </div>
-              ))}
-            </section>
-
-            <section className="flex flex-wrap items-center justify-between gap-3 border-y border-zinc-200 py-3 dark:border-zinc-800">
-              <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-700 dark:text-zinc-300">
-                <span>Status</span>
-                <StatusPill tone={statusTone(inference.data.status)}>
-                  {inference.data.status}
-                </StatusPill>
-
-                {inference.data.result_kind === "ANOMALY" && inference.data.status === "OK" && (
-                  <>
-                    <span>Anomaly score</span>
-                    <StatusPill tone={inference.data.anomalous ? "warn" : "ok"}>
-                      {inference.data.anomaly_score?.toFixed(4)}{" "}
-                      {inference.data.anomalous ? "(anomalous)" : "(within threshold)"}
-                    </StatusPill>
-                  </>
-                )}
-
-                {inference.data.result_kind === "CLASSIFICATION" && (
-                  <>
-                    <span>Predicted class</span>
-                    <StatusPill tone={inference.data.predicted_class === "NORMAL" ? "ok" : "warn"}>
-                      {inference.data.predicted_class ?? "—"}
-                    </StatusPill>
-                    {inference.data.confidence_category && (
-                      <StatusPill
-                        tone={inference.data.confidence_category === "HIGH" ? "ok" : "neutral"}
-                      >
-                        confidence: {inference.data.confidence_category}
-                      </StatusPill>
-                    )}
-                  </>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDetail((visible) => !visible)}
-                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-              >
-                {showDetail ? "Hide detail" : "Show detail"}
-              </button>
-            </section>
-
-            {inference.data.result_kind === "CLASSIFICATION" && probabilities.length > 0 && (
-              <section className="overflow-x-auto rounded-lg border border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                      <th className="py-2 pr-4 font-medium">Class</th>
-                      <th className="py-2 font-medium">Probability</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {probabilities.map(([label, value]) => (
-                      <tr
-                        key={label}
-                        className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
-                      >
-                        <td className="py-2 pr-4 font-mono text-xs text-zinc-700 dark:text-zinc-300">
-                          {label}
-                        </td>
-                        <td className="py-2 font-mono text-xs text-zinc-900 dark:text-zinc-100">
-                          {formatPercent(value)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            )}
-
-            {showDetail && (
-              <section className="grid gap-4 lg:grid-cols-2">
-                {[
-                  ["Features used", inference.data.features_used],
-                  ["Missing features", inference.data.missing_features],
-                  ["Quality summary", inference.data.quality_summary],
-                  ["Explanation", inference.data.explanation],
-                ].map(([label, value]) => (
-                  <div key={String(label)}>
-                    <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                      {String(label)}
-                    </h2>
-                    <pre className="max-h-72 overflow-auto rounded-md bg-zinc-900 p-3 text-xs text-zinc-100 dark:bg-black">
-                      {JSON.stringify(value, null, 2)}
-                    </pre>
-                  </div>
+        {sortedModels.length === 0 ? (
+          <EmptyState
+            title="No models registered"
+            description="The ML model registry is empty in this environment — nothing has been trained or registered yet."
+          />
+        ) : (
+          <div className="flex flex-col gap-6">
+            <SectionCard title="Registered models">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {sortedModels.map((model) => (
+                  <button
+                    key={`${model.model_id}@${model.model_version}`}
+                    type="button"
+                    onClick={() => setSelectedModelId(model.model_id)}
+                    className={`rounded-lg border p-3 text-left transition-colors ${
+                      effectiveModelId === model.model_id
+                        ? "border-sky-400 bg-sky-50 dark:border-sky-600 dark:bg-sky-500/10"
+                        : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                        {model.model_id}
+                      </span>
+                      <ModelStatusBadge value={model.status} />
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      {humanize(model.model_type)} · v{model.model_version}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-600">
+                      Trained <RelativeTime iso={model.training_time} />
+                    </p>
+                  </button>
                 ))}
-              </section>
+              </div>
+            </SectionCard>
+
+            {detail.data && (
+              <SectionCard
+                title={`${detail.data.model_id} — evaluation`}
+                actions={
+                  <div className="flex items-center gap-2">
+                    <ModelStatusBadge value={detail.data.status} />
+                    {!SERVABLE_MODEL_STATUSES.has(detail.data.status) && (
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                        Evidence only — not yet used for maintenance decisions.
+                      </span>
+                    )}
+                  </div>
+                }
+              >
+                <ModelMetricsGrid metrics={detail.data.metrics} />
+
+                {detail.data.limitations.length > 0 && (
+                  <div className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                    <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                      Documented limitations
+                    </p>
+                    <ul className="mt-1 list-inside list-disc text-sm text-zinc-700 dark:text-zinc-300">
+                      {detail.data.limitations.map((limitation) => (
+                        <li key={limitation}>{limitation}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-zinc-100 pt-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                  <span>{detail.data.features.length} feature(s)</span>
+                  <span>Dataset: {detail.data.dataset_id}@{detail.data.dataset_version}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowRawDetail((v) => !v)}
+                    className="ml-auto text-sky-600 hover:underline dark:text-sky-400"
+                  >
+                    {showRawDetail ? "Hide" : "Show"} full evaluation detail
+                  </button>
+                </div>
+
+                {showRawDetail && (
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    {[
+                      ["Metrics", detail.data.metrics],
+                      ["Thresholds", detail.data.thresholds],
+                      ["Hyperparameters", detail.data.hyperparameters],
+                      ["Features used", detail.data.features],
+                    ].map(([label, value]) => (
+                      <div key={String(label)}>
+                        <p className="mb-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                          {String(label)}
+                        </p>
+                        <pre className="max-h-64 overflow-auto rounded-md bg-zinc-900 p-3 text-xs text-zinc-100 dark:bg-black">
+                          {JSON.stringify(value, null, 2)}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
             )}
-          </>
+
+            {effectiveModelId && canTryLiveInference && (
+              <SectionCard
+                title="Try live inference"
+                actions={
+                  <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    Machine
+                    <select
+                      value={effectiveMachineId}
+                      onChange={(event) => setMachineId(event.target.value)}
+                      className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                    >
+                      {machines.map((machine) => (
+                        <option key={machine.id} value={machine.id}>
+                          {machine.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                }
+              >
+                {effectiveMachineId && (
+                  <LiveInferencePanel machineId={effectiveMachineId} modelId={effectiveModelId} />
+                )}
+              </SectionCard>
+            )}
+          </div>
         )}
       </DataState>
     </div>

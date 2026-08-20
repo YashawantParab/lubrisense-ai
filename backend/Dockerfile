@@ -40,6 +40,16 @@ COPY --from=builder /repo/backend/app ./backend/app
 COPY --from=builder /repo/backend/alembic ./backend/alembic
 COPY --from=builder /repo/backend/alembic.ini ./backend/
 
+# Real, already-trained model registry (Phase 11) — committed to git specifically so it
+# survives a fresh checkout (see ml-service/artifacts/models' entry in .gitignore). Copied
+# straight from the build context (not `--from=builder`, which never receives this path —
+# only ml-service/ml_service package code does). docker-compose.yml's local dev mode
+# bind-mounts this same host directory read-only at the identical container path instead
+# of baking it in (so a fresh local training run is picked up without a rebuild); a hosted
+# deploy has no host filesystem to mount from, so it needs its own copy of the same real
+# data at the same path `ML_ARTIFACTS_DIR` expects.
+COPY ml-service/artifacts/models /data/ml-artifacts
+
 ENV PATH="/repo/backend/.venv/bin:$PATH" \
     PYTHONPATH="/repo/backend:/repo/ml-service" \
     PYTHONUNBUFFERED=1 \

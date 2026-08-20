@@ -9,6 +9,7 @@ import {
   humanize,
   incidentStateTone,
   maintenanceStateTone,
+  modelStatusTone,
   priorityTone,
   provenanceTone,
   qualityLabel,
@@ -66,4 +67,8 @@ export function CapabilityLevelBadge({ value }: { value: string }) {
 
 export function CompatibilityBadge({ value }: { value: string }) {
   return <StatusPill tone={compatibilityTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function ModelStatusBadge({ value }: { value: string }) {
+  return <StatusPill tone={modelStatusTone(value)}>{humanize(value)}</StatusPill>;
 }

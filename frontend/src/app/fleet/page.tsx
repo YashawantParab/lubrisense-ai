@@ -10,8 +10,8 @@ import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
-import { useIncidents } from "@/hooks/use-incidents";
-import { toneForStatus } from "@/lib/terminology";
+import { usePriorityIncident } from "@/hooks/use-priority-incident";
+import { humanize, toneForStatus } from "@/lib/terminology";
 import type { HierarchyMachine } from "@/lib/api/asset-hierarchy-types";
 
 interface FleetRow {
@@ -27,7 +27,7 @@ type AttentionFilter = "all" | "needs-attention";
 export default function FleetPage() {
   usePageTitle("Fleet");
   const hierarchy = useHierarchy();
-  const incidents = useIncidents();
+  const { data: incidents, priorityIncident } = usePriorityIncident();
   const [search, setSearch] = useState("");
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>("all");
 
@@ -55,8 +55,11 @@ export default function FleetPage() {
   }, [hierarchy.data]);
 
   const openIncidentsByMachine = useMemo(() => {
-    const map = new Map<string, { count: number; maxSeverity: string; state: string }>();
-    for (const incident of incidents.data ?? []) {
+    const map = new Map<
+      string,
+      { count: number; maxSeverity: string; state: string; conditionType: string }
+    >();
+    for (const incident of incidents ?? []) {
       if (incident.state === "RESOLVED" || incident.state === "CLOSED") continue;
       const existing = map.get(incident.machine_id);
       if (!existing) {
@@ -64,13 +67,14 @@ export default function FleetPage() {
           count: 1,
           maxSeverity: incident.severity,
           state: incident.state,
+          conditionType: incident.incident_type,
         });
       } else {
         existing.count += 1;
       }
     }
     return map;
-  }, [incidents.data]);
+  }, [incidents]);
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -144,37 +148,64 @@ export default function FleetPage() {
               <thead>
                 <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
                   <th className="px-4 py-2 font-medium">Machine</th>
+                  <th className="px-4 py-2 font-medium">Condition</th>
                   <th className="px-4 py-2 font-medium">Location</th>
-                  <th className="px-4 py-2 font-medium">Type</th>
                   <th className="px-4 py-2 font-medium">Status</th>
                   <th className="px-4 py-2 font-medium">Criticality</th>
-                  <th className="px-4 py-2 font-medium">Active incident</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRows.map((row) => {
                   const incidentInfo = openIncidentsByMachine.get(row.machine.id);
+                  const isPriority = priorityIncident?.machine_id === row.machine.id;
                   return (
                     <tr
                       key={row.machine.id}
-                      className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                      className={`border-b border-zinc-100 last:border-0 dark:border-zinc-800 ${
+                        isPriority ? "bg-sky-50/60 dark:bg-sky-500/[0.06]" : ""
+                      }`}
                     >
-                      <td className="px-4 py-2.5">
-                        <Link
-                          href={`/machines/${row.machine.id}`}
-                          className="font-medium text-sky-700 hover:underline dark:text-sky-400"
-                        >
-                          {row.machine.name}
-                        </Link>
-                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {row.machine.asset_code}
+                      <td
+                        className={`px-4 py-2.5 ${isPriority ? "border-l-2 border-sky-500" : ""}`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Link
+                            href={`/machines/${row.machine.id}`}
+                            className="font-medium text-sky-700 hover:underline dark:text-sky-400"
+                          >
+                            {row.machine.name}
+                          </Link>
+                          {isPriority && (
+                            <span
+                              title="The machine with the most complete, real intelligence story right now"
+                              className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-sky-700 uppercase dark:bg-sky-500/15 dark:text-sky-400"
+                            >
+                              Flagship story
+                            </span>
+                          )}
                         </div>
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {row.machine.asset_code} · {row.machine.machine_type}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {incidentInfo ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <SeverityBadge value={incidentInfo.maxSeverity} />
+                            <span className="text-xs text-zinc-700 dark:text-zinc-300">
+                              {humanize(incidentInfo.conditionType)}
+                            </span>
+                            <IncidentStateBadge value={incidentInfo.state} />
+                            {incidentInfo.count > 1 && (
+                              <span className="text-xs text-zinc-500">+{incidentInfo.count - 1}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <StatusPill tone="ok">Normal operation</StatusPill>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-400">
                         {row.customerName} / {row.siteName} / {row.plantName} / {row.lineName}
-                      </td>
-                      <td className="px-4 py-2.5 text-zinc-600 dark:text-zinc-400">
-                        {row.machine.machine_type}
                       </td>
                       <td className="px-4 py-2.5">
                         <StatusPill tone={toneForStatus(row.machine.status)}>
@@ -185,19 +216,6 @@ export default function FleetPage() {
                         <StatusPill tone={toneForStatus(row.machine.criticality)}>
                           {row.machine.criticality}
                         </StatusPill>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {incidentInfo ? (
-                          <div className="flex items-center gap-1.5">
-                            <SeverityBadge value={incidentInfo.maxSeverity} />
-                            <IncidentStateBadge value={incidentInfo.state} />
-                            {incidentInfo.count > 1 && (
-                              <span className="text-xs text-zinc-500">+{incidentInfo.count - 1}</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-zinc-400 dark:text-zinc-600">None</span>
-                        )}
                       </td>
                     </tr>
                   );

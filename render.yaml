@@ -33,7 +33,10 @@ services:
       - key: REDIS_URL
         sync: false # optional — see docs/HOSTED_DEPLOYMENT.md §7; omit if not provisioning Redis
       - key: ML_ARTIFACTS_DIR
-        value: /tmp/ml-artifacts
+        # Matches the path backend/Dockerfile bakes the real, committed model registry
+        # into (ml-service/artifacts/models) — /tmp/ml-artifacts was never populated by
+        # anything, so the model registry API always returned empty on a fresh deploy.
+        value: /data/ml-artifacts
       - key: LOG_FORMAT
         value: json
       - key: UVICORN_WORKERS

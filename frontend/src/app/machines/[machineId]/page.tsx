@@ -26,10 +26,16 @@ import { useMachineBaselines } from "@/hooks/use-baselines";
 import { useMachineConfigurationChanges, useMachineDevices } from "@/hooks/use-device-management";
 import { useIncidents } from "@/hooks/use-incidents";
 import { useIntelligenceView } from "@/hooks/use-intelligence";
-import { useMaintenanceCases } from "@/hooks/use-maintenance";
+import {
+  useMaintenanceActions,
+  useMaintenanceCases,
+  useMaintenanceFeedback,
+  useMaintenanceFindings,
+} from "@/hooks/use-maintenance";
 import { useMachineFindings } from "@/hooks/use-rules";
+import { useLatestStateEstimates } from "@/hooks/use-state-estimation";
 import { useMachineTelemetry } from "@/hooks/use-telemetry";
-import { humanize, toneForStatus } from "@/lib/terminology";
+import { humanize, stateTrendTone, toneForStatus } from "@/lib/terminology";
 import type {
   BearingResponse,
   LubricationSystemResponse,
@@ -40,6 +46,11 @@ const HORIZON_LABELS: Record<string, string> = {
   ONE_HOUR: "1 hour",
   SIX_HOURS: "6 hours",
   TWENTY_FOUR_HOURS: "24 hours",
+};
+
+const STATE_TYPE_LABELS: Record<string, string> = {
+  LUBRICATION_DELIVERY_STATE: "Delivery state",
+  BEARING_CONDITION_STATE: "Bearing state",
 };
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -156,6 +167,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   const incidents = useIncidents({ machineId });
   const cases = useMaintenanceCases();
   const findings = useMachineFindings(machineId);
+  const stateEstimates = useLatestStateEstimates(machineId);
   const baselines = useMachineBaselines(machineId);
   const devices = useMachineDevices(machineId);
   const configChanges = useMachineConfigurationChanges(machineId);
@@ -169,10 +181,36 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
     () => (incidents.data ?? []).find((i) => i.state !== "RESOLVED" && i.state !== "CLOSED"),
     [incidents.data],
   );
-  const machineCase = useMemo(
-    () => (cases.data ?? []).find((c) => c.machine_id === machineId),
-    [cases.data, machineId],
-  );
+  // The incident Workflow Intelligence tells its story from — the open one if there is
+  // one, otherwise the most recently detected one. Gating this on `activeIncident` alone
+  // meant the whole panel (including the maintenance outcome and technician feedback)
+  // silently disappeared the moment an incident resolved — exactly the "outcome" part of
+  // the story a reviewer most needs to see.
+  const relevantIncident = useMemo(() => {
+    if (activeIncident) return activeIncident;
+    const rows = incidents.data ?? [];
+    if (rows.length === 0) return undefined;
+    return [...rows].sort(
+      (a, b) => new Date(b.first_detected_at).getTime() - new Date(a.first_detected_at).getTime(),
+    )[0];
+  }, [activeIncident, incidents.data]);
+  // Prefer the case linked to the currently-open incident; otherwise the machine's most
+  // recently created case — a plain "first match" silently picked a stale case once a
+  // machine had accumulated more than one over its history.
+  const machineCase = useMemo(() => {
+    const matches = (cases.data ?? []).filter((c) => c.machine_id === machineId);
+    if (matches.length === 0) return undefined;
+    const linkedToActive = activeIncident
+      ? matches.find((c) => c.incident_id === activeIncident.id)
+      : undefined;
+    if (linkedToActive) return linkedToActive;
+    return [...matches].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )[0];
+  }, [cases.data, machineId, activeIncident]);
+  const caseFindings = useMaintenanceFindings(machineCase?.id ?? "");
+  const caseActions = useMaintenanceActions(machineCase?.id ?? "");
+  const caseFeedback = useMaintenanceFeedback(machineCase?.id ?? "");
 
   const measurementTypes = useMemo(() => {
     const types = new Set<string>();
@@ -251,9 +289,32 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
             {/* Three intelligence layers */}
             <div className="grid gap-4 lg:grid-cols-3">
               <SectionCard title="Machine Intelligence">
-                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
                   What the machine&rsquo;s raw evidence sources report.
                 </p>
+                {Object.keys(stateEstimates.data ?? {}).length > 0 && (
+                  <div className="mb-3 flex flex-col gap-2 border-b border-zinc-100 pb-3 dark:border-zinc-800">
+                    {Object.entries(stateEstimates.data ?? {}).map(([stateType, estimate]) => (
+                      <div key={stateType} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-zinc-600 dark:text-zinc-400">
+                          {STATE_TYPE_LABELS[stateType] ?? humanize(stateType)}
+                        </span>
+                        {estimate.prediction_only ? (
+                          <StatusPill tone="neutral">No recent observation</StatusPill>
+                        ) : (
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs text-zinc-800 dark:text-zinc-200">
+                              {estimate.state_value.toFixed(2)}
+                            </span>
+                            <StatusPill tone={stateTrendTone(estimate.trend)}>
+                              {humanize(estimate.trend)}
+                            </StatusPill>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <dl className="grid gap-2 text-sm">
                   <div className="flex items-center justify-between">
                     <dt className="text-zinc-500 dark:text-zinc-400">Rule findings</dt>
@@ -264,10 +325,6 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                     <dd>{intelligence.data?.condition.ml_result_ids.length ?? 0} result(s)</dd>
                   </div>
                   <div className="flex items-center justify-between">
-                    <dt className="text-zinc-500 dark:text-zinc-400">State estimates</dt>
-                    <dd>{intelligence.data?.condition.state_estimate_ids.length ?? 0} used</dd>
-                  </div>
-                  <div className="flex items-center justify-between">
                     <dt className="text-zinc-500 dark:text-zinc-400">Baseline readiness</dt>
                     <dd>{baselines.data?.readiness.label ?? "—"}</dd>
                   </div>
@@ -275,8 +332,9 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                 {(findings.data?.findings.length ?? 0) > 0 && (
                   <ul className="mt-3 space-y-1 border-t border-zinc-100 pt-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
                     {findings.data!.findings.slice(0, 3).map((f) => (
-                      <li key={f.id}>
-                        {humanize(f.finding_type)} — {humanize(f.severity)}
+                      <li key={f.id} className="flex items-center justify-between gap-2">
+                        <span>{humanize(f.finding_type)}</span>
+                        <SeverityBadge value={f.severity} />
                       </li>
                     ))}
                   </ul>
@@ -284,11 +342,15 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
               </SectionCard>
 
               <SectionCard title="Decision Intelligence">
-                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  The synthesized recommendation and its confidence.
+                <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+                  The synthesized diagnosis, its confidence, and the recommended response.
                 </p>
                 {intelligence.data ? (
                   <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 pb-2 dark:border-zinc-800">
+                      <SeverityBadge value={intelligence.data.condition.severity} />
+                      <ConfidenceBadge value={intelligence.data.condition.confidence} />
+                    </div>
                     <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
                       {humanize(intelligence.data.decision.recommended_action)}
                     </p>
@@ -311,35 +373,50 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
               </SectionCard>
 
               <SectionCard title="Workflow Intelligence">
-                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  Incident and maintenance response state.
+                <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+                  Incident and maintenance response — human-controlled, end to end.
                 </p>
-                {activeIncident ? (
+                {relevantIncident ? (
                   <div className="flex flex-col gap-2 text-sm">
-                    <Link
-                      href={`/incidents/${activeIncident.id}`}
-                      className="text-sky-700 hover:underline dark:text-sky-400"
-                    >
-                      {activeIncident.title}
-                    </Link>
-                    <IncidentStateBadge value={activeIncident.state} />
-                    {machineCase && (
-                      <>
-                        <Link
-                          href={`/maintenance/${machineCase.id}`}
-                          className="mt-2 text-sky-700 hover:underline dark:text-sky-400"
-                        >
-                          Maintenance case
-                        </Link>
-                        <MaintenanceStateBadge value={machineCase.state} />
-                        {machineCase.feedback_classification && (
-                          <FeedbackBadge value={machineCase.feedback_classification} />
+                    <div className="flex items-center justify-between gap-2">
+                      <Link
+                        href={`/incidents/${relevantIncident.id}`}
+                        className="text-sky-700 hover:underline dark:text-sky-400"
+                      >
+                        {relevantIncident.title}
+                      </Link>
+                      <IncidentStateBadge value={relevantIncident.state} />
+                    </div>
+                    {machineCase ? (
+                      <div className="flex flex-col gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-800">
+                        <div className="flex items-center justify-between gap-2">
+                          <Link
+                            href={`/maintenance/${machineCase.id}`}
+                            className="text-sky-700 hover:underline dark:text-sky-400"
+                          >
+                            {humanize(machineCase.recommended_action)}
+                          </Link>
+                          <MaintenanceStateBadge value={machineCase.state} />
+                        </div>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {caseFindings.data?.length ?? 0} technician finding(s) ·{" "}
+                          {caseActions.data?.length ?? 0} action(s) recorded
+                        </p>
+                        {caseFeedback.data && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">Outcome:</span>
+                            <FeedbackBadge value={caseFeedback.data.classification} />
+                          </div>
                         )}
-                      </>
+                      </div>
+                    ) : (
+                      <p className="border-t border-zinc-100 pt-2 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
+                        No maintenance case opened yet.
+                      </p>
                     )}
                   </div>
                 ) : (
-                  <EmptyState title="No active incident" description="This machine has no open incident right now." />
+                  <EmptyState title="No incidents on record" description="This machine has no incident history yet." />
                 )}
               </SectionCard>
             </div>

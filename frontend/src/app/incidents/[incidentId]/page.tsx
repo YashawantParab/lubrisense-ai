@@ -1,10 +1,17 @@
 "use client";
 
-import { use } from "react";
+import { use, useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { DataState } from "@/components/data-state";
-import { IncidentStateBadge, PriorityBadge, SeverityBadge } from "@/components/badges";
+import {
+  FeedbackBadge,
+  IncidentStateBadge,
+  MaintenanceStateBadge,
+  PriorityBadge,
+  SeverityBadge,
+} from "@/components/badges";
 import { PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
 import { SectionCard } from "@/components/section-card";
@@ -17,7 +24,7 @@ import {
   useResolveIncident,
   useStartInvestigation,
 } from "@/hooks/use-incidents";
-import { useCreateCase } from "@/hooks/use-maintenance";
+import { useCreateCase, useMaintenanceCases } from "@/hooks/use-maintenance";
 import { useAuth } from "@/lib/auth/context";
 import { humanize } from "@/lib/terminology";
 
@@ -37,6 +44,7 @@ export default function IncidentDetailPage({
   const { can } = useAuth();
   const incident = useIncident(incidentId);
   const timeline = useIncidentTimeline(incidentId);
+  const cases = useMaintenanceCases();
   const acknowledge = useAcknowledgeIncident(incidentId);
   const startInvestigation = useStartInvestigation(incidentId);
   const resolve = useResolveIncident(incidentId);
@@ -48,6 +56,11 @@ export default function IncidentDetailPage({
   const state = incident.data?.state;
   const nextAction = state ? VALID_NEXT[state] : undefined;
   const canManage = can("INCIDENT_MANAGE");
+  const whyBullets = incident.data?.evidence_refs.why ?? [];
+  const linkedCase = useMemo(
+    () => (cases.data ?? []).find((c) => c.incident_id === incidentId),
+    [cases.data, incidentId],
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
@@ -67,7 +80,13 @@ export default function IncidentDetailPage({
             />
 
             <SectionCard>
-              <dl className="grid grid-cols-2 gap-3 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-4">
+              <dl className="grid grid-cols-2 gap-3 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-5">
+                <div>
+                  <dt>Condition</dt>
+                  <dd className="mt-0.5 font-medium text-zinc-900 dark:text-zinc-100">
+                    {humanize(incident.data.incident_type)}
+                  </dd>
+                </div>
                 <div>
                   <dt>Severity</dt>
                   <dd className="mt-0.5">
@@ -165,6 +184,51 @@ export default function IncidentDetailPage({
               ) : (
                 <p className="mt-4 text-xs text-zinc-400 dark:text-zinc-600">
                   Your current demo role cannot manage incident lifecycle transitions.
+                </p>
+              )}
+            </SectionCard>
+
+            {whyBullets.length > 0 && (
+              <SectionCard title="Evidence">
+                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  Why the system believes {humanize(incident.data.incident_type)} is occurring.
+                </p>
+                <ul className="list-inside list-disc space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                  {whyBullets.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </SectionCard>
+            )}
+
+            <SectionCard title="Maintenance response">
+              {linkedCase ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Link
+                      href={`/maintenance/${linkedCase.id}`}
+                      className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-400"
+                    >
+                      {humanize(linkedCase.recommended_action)}
+                    </Link>
+                    <MaintenanceStateBadge value={linkedCase.state} />
+                  </div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Priority: {humanize(linkedCase.priority)} · Window:{" "}
+                    {humanize(linkedCase.recommended_window)}
+                  </p>
+                  {linkedCase.feedback_classification && (
+                    <div className="flex items-center gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-800">
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                        Technician outcome:
+                      </span>
+                      <FeedbackBadge value={linkedCase.feedback_classification} />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  No maintenance case has been opened for this incident yet.
                 </p>
               )}
             </SectionCard>

@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 
 import { IncidentStateBadge, ProvenanceBadge, SeverityBadge } from "@/components/badges";
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { PriorityAssetCard } from "@/components/priority-asset-card";
 import { RelativeTime } from "@/components/relative-time";
 import { SectionCard } from "@/components/section-card";
 import { StatusPill } from "@/components/status-pill";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useFleetOverview } from "@/hooks/use-overview";
-import { useIncidents } from "@/hooks/use-incidents";
+import { usePriorityIncident } from "@/hooks/use-priority-incident";
 import { useNorthStar } from "@/hooks/use-product-metrics";
 import { customerStatusTone, humanize } from "@/lib/terminology";
 
@@ -22,20 +24,29 @@ function pct(value: number | null): string {
 export default function OverviewPage() {
   usePageTitle("Overview");
   const fleet = useFleetOverview();
-  const incidents = useIncidents();
+  const { data: incidents, priorityIncident } = usePriorityIncident();
   const northStar = useNorthStar();
 
-  const attentionIncidents = (incidents.data ?? [])
-    .filter((i) => i.state !== "RESOLVED" && i.state !== "CLOSED")
-    .sort((a, b) => new Date(b.first_detected_at).getTime() - new Date(a.first_detected_at).getTime())
-    .slice(0, 8);
+  const otherAttentionIncidents = useMemo(
+    () =>
+      (incidents ?? [])
+        .filter((i) => i.id !== priorityIncident?.id)
+        .filter((i) => i.state !== "RESOLVED" && i.state !== "CLOSED")
+        .sort(
+          (a, b) => new Date(b.first_detected_at).getTime() - new Date(a.first_detected_at).getTime(),
+        )
+        .slice(0, 6),
+    [incidents, priorityIncident],
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
       <PageHeader
         title="Overview"
-        description="Your operational home screen — real fleet coverage, active incidents, and North-Star progress, all traceable to persisted platform data."
+        description="What's happening across your fleet, what the system believes it means, and what to do about it — every claim below traces back to persisted platform data."
       />
+
+      {priorityIncident && <PriorityAssetCard incident={priorityIncident} />}
 
       <DataState isPending={fleet.isPending} isError={fleet.isError} error={fleet.error}>
         {fleet.data && (
@@ -59,22 +70,17 @@ export default function OverviewPage() {
               ))}
             </div>
 
-            <SectionCard
-              title="Needs attention"
-              actions={
-                <Link href="/fleet" className="text-xs text-sky-600 hover:underline dark:text-sky-400">
-                  View fleet
-                </Link>
-              }
-            >
-              {attentionIncidents.length === 0 ? (
-                <EmptyState
-                  title="Nothing needs attention right now"
-                  description="No open incidents across your fleet."
-                />
-              ) : (
+            {otherAttentionIncidents.length > 0 && (
+              <SectionCard
+                title="Also needs attention"
+                actions={
+                  <Link href="/fleet" className="text-xs text-sky-600 hover:underline dark:text-sky-400">
+                    View fleet
+                  </Link>
+                }
+              >
                 <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {attentionIncidents.map((incident) => (
+                  {otherAttentionIncidents.map((incident) => (
                     <li key={incident.id} className="flex items-center justify-between gap-3 py-2">
                       <div className="flex items-center gap-2">
                         <SeverityBadge value={incident.severity} />
@@ -95,8 +101,15 @@ export default function OverviewPage() {
                     </li>
                   ))}
                 </ul>
-              )}
-            </SectionCard>
+              </SectionCard>
+            )}
+
+            {!priorityIncident && otherAttentionIncidents.length === 0 && (
+              <EmptyState
+                title="Nothing needs attention right now"
+                description="No incidents recorded across your fleet yet."
+              />
+            )}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <SectionCard title="Asset coverage">

@@ -1,0 +1,26 @@
+{
+  "FAILURE_CLASSIFICATION_BASELINE_V1": {
+    "versions": {
+      "1.0.0": {
+        "status": "STAGING",
+        "training_time": "2026-08-19T08:44:40.629608+00:00"
+      }
+    }
+  },
+  "FAILURE_CLASSIFICATION_V1": {
+    "versions": {
+      "1.0.0": {
+        "status": "EXPERIMENT",
+        "training_time": "2026-08-19T08:44:40.638825+00:00"
+      }
+    }
+  },
+  "LUBRICATION_ANOMALY_V1": {
+    "versions": {
+      "1.0.0": {
+        "status": "EXPERIMENT",
+        "training_time": "2026-08-19T08:44:27.204721+00:00"
+      }
+    }
+  }
+}

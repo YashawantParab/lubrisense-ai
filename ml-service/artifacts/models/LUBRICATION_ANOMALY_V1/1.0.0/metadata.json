@@ -1,0 +1,162 @@
+{
+  "model_id": "LUBRICATION_ANOMALY_V1",
+  "model_version": "1.0.0",
+  "model_type": "ANOMALY_ISOLATION_FOREST",
+  "training_time": "2026-08-19T08:44:27.204721+00:00",
+  "dataset_id": "PHASE11_ANOMALY",
+  "dataset_version": "1.0.0",
+  "feature_set": "LUBRICATION_ANOMALY_V1",
+  "feature_set_version": "1.0.2",
+  "features": [
+    "availability.has_bearing_temp_sensor",
+    "availability.has_cycle_completion_sensor",
+    "availability.has_flow_sensor",
+    "availability.has_load_sensor",
+    "availability.has_lubricant_temp_sensor",
+    "availability.has_piston_movement_sensor",
+    "availability.has_pressure_sensor",
+    "availability.has_pump_current_sensor",
+    "availability.has_pump_runtime_sensor",
+    "availability.has_reservoir_level_sensor",
+    "availability.has_rpm_sensor",
+    "availability.has_vibration_peak_sensor",
+    "availability.has_vibration_rms_sensor",
+    "bearing_temp.current",
+    "bearing_temp.rolling_mad.1h",
+    "bearing_temp.rolling_median.1h",
+    "bearing_temp.rolling_p95.1h",
+    "bearing_temp.slope.1h",
+    "cross.vibration_vs_rpm",
+    "pressure.current",
+    "pressure.first_difference",
+    "pressure.rate_per_minute",
+    "pressure.relative_difference",
+    "pressure.rolling_count.15m",
+    "pressure.rolling_median.15m",
+    "pressure.rolling_p95.15m",
+    "pressure.rolling_stddev.15m",
+    "pressure.slope.15m",
+    "pump_current.current",
+    "pump_current.first_difference",
+    "pump_current.rate_per_minute",
+    "pump_current.relative_difference",
+    "pump_current.rolling_max.15m",
+    "pump_current.rolling_mean.15m",
+    "pump_current.rolling_stddev.15m",
+    "quality.caution_fraction.15m",
+    "quality.communication_loss_recent",
+    "quality.issue_count.1h",
+    "quality.late_fraction.15m",
+    "quality.missing_fraction.15m",
+    "quality.sensor_drift_suspected_recent",
+    "quality.trusted_fraction.15m",
+    "reservoir_level.current",
+    "reservoir_level.first_difference",
+    "reservoir_level.rate_per_minute",
+    "reservoir_level.relative_difference",
+    "reservoir_level.rolling_median.6h",
+    "reservoir_level.rolling_range.6h",
+    "reservoir_level.slope.6h",
+    "rpm.current",
+    "rpm.rolling_median.15m",
+    "rpm.rolling_stddev.15m",
+    "vibration_rms.current",
+    "vibration_rms.rolling_mad.1h",
+    "vibration_rms.rolling_median.1h",
+    "vibration_rms.rolling_p95.1h",
+    "vibration_rms.slope.1h"
+  ],
+  "hyperparameters": {
+    "n_estimators": 200,
+    "contamination": 0.02
+  },
+  "metrics": {
+    "sample_count": 434,
+    "healthy_false_positive_rate": 0.14942528735632185,
+    "binary_precision": 0.8712871287128713,
+    "binary_recall": 0.25360230547550433,
+    "binary_f1": 0.39285714285714285,
+    "pr_auc": 0.8367114104394537,
+    "detection_rate_by_scenario": {
+      "INDEPENDENT_BEARING_FAULT": 0.58,
+      "SUDDEN_BLOCKAGE": 0.02702702702702703,
+      "LEAKAGE": 0.030303030303030304,
+      "LOW_RESERVOIR": 0.3055555555555556,
+      "GRADUAL_RESTRICTION": 0.18571428571428572,
+      "PUMP_DEGRADATION": 0.05714285714285714,
+      "SENSOR_DROPOUT": 0.05555555555555555
+    },
+    "warning_lead_time_by_run_seconds": {
+      "bearing-fault-2": 3000.0,
+      "blockage-2": null,
+      "leakage-2": null,
+      "low-reservoir-1": -1800.0,
+      "multi-fault-1": null,
+      "pump-degradation-2": null,
+      "restriction-2": -15000.0,
+      "restriction-second-asset-1": 1800.0,
+      "sensor-dropout-2": null
+    },
+    "top_deviating_features": [
+      {
+        "feature": "reservoir_level.rolling_median.6h",
+        "avg_abs_z": 129.00579921451893
+      },
+      {
+        "feature": "reservoir_level.current",
+        "avg_abs_z": 52.89687180558531
+      },
+      {
+        "feature": "reservoir_level.rolling_range.6h",
+        "avg_abs_z": 30.21876227689562
+      },
+      {
+        "feature": "reservoir_level.relative_difference",
+        "avg_abs_z": 9.365270517834269
+      },
+      {
+        "feature": "reservoir_level.first_difference",
+        "avg_abs_z": 4.755173965627041
+      },
+      {
+        "feature": "pressure.rolling_median.15m",
+        "avg_abs_z": 2.3581160348696004
+      },
+      {
+        "feature": "pressure.rolling_p95.15m",
+        "avg_abs_z": 1.8843396230576661
+      },
+      {
+        "feature": "bearing_temp.rolling_mad.1h",
+        "avg_abs_z": 1.6330172565565129
+      },
+      {
+        "feature": "pressure.rolling_stddev.15m",
+        "avg_abs_z": 1.4278531733692172
+      },
+      {
+        "feature": "vibration_rms.current",
+        "avg_abs_z": 1.385507876884836
+      }
+    ]
+  },
+  "thresholds": {
+    "anomaly_score": 0.5041638130251662,
+    "target_validation_fpr": 0.05
+  },
+  "seed": 42,
+  "code_version": "0.1.0",
+  "status": "EXPERIMENT",
+  "limitations": [
+    "trained on a modest synthetic dataset generated from a bounded number of simulator scenario runs; not validated for production machinery"
+  ],
+  "minimum_required_features": [
+    "pressure.current",
+    "pump_current.current",
+    "bearing_temp.current",
+    "vibration_rms.current"
+  ],
+  "artifact_path": "/Users/test/Documents/Projects/lubrisense-ai/ml-service/artifacts/models/LUBRICATION_ANOMALY_V1/1.0.0/model.joblib",
+  "preprocessor_path": "",
+  "artifact_checksum": "ce9d5254d178b4e6d329066856f5d7e4614e6ffc2975d41051d9d5345c6da480"
+}

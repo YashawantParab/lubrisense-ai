@@ -79,6 +79,29 @@ export function qualityLabel(value: string): string {
   return humanize(value);
 }
 
+// --- State estimation trend -----------------------------------------------------------
+
+export function stateTrendTone(value: string): Tone {
+  if (value === "IMPROVING") return "ok";
+  if (value === "DETERIORATING") return "warn";
+  if (value === "STABLE") return "neutral";
+  return "neutral";
+}
+
+// --- ML model lifecycle status (Phase 11/32 registry) ------------------------------
+// Never a claim this UI is entitled to promote a model past what the registry itself
+// says — this only maps the registry's own status string to a display tone.
+
+export function modelStatusTone(value: string): Tone {
+  if (value === "PRODUCTION" || value === "VALIDATED") return "ok";
+  if (value === "STAGING") return "warn";
+  if (value === "EXPERIMENT") return "neutral";
+  if (value === "RETIRED" || value === "REJECTED") return "error";
+  return "neutral";
+}
+
+export const SERVABLE_MODEL_STATUSES = new Set(["VALIDATED", "STAGING", "PRODUCTION"]);
+
 // --- Incident / lifecycle state -------------------------------------------------------
 
 export function incidentStateTone(value: string): Tone {

@@ -1,0 +1,531 @@
+{
+  "model_id": "FAILURE_CLASSIFICATION_V1",
+  "model_version": "1.0.0",
+  "model_type": "CLASSIFIER_PRIMARY_HIST_GRADIENT_BOOSTING",
+  "training_time": "2026-08-19T08:44:40.638825+00:00",
+  "dataset_id": "PHASE11_CLASSIFIER",
+  "dataset_version": "1.0.0",
+  "feature_set": "FAILURE_CLASSIFICATION_V1",
+  "feature_set_version": "1.0.2",
+  "features": [
+    "availability.has_bearing_temp_sensor",
+    "availability.has_cycle_completion_sensor",
+    "availability.has_flow_sensor",
+    "availability.has_load_sensor",
+    "availability.has_lubricant_temp_sensor",
+    "availability.has_piston_movement_sensor",
+    "availability.has_pressure_sensor",
+    "availability.has_pump_current_sensor",
+    "availability.has_pump_runtime_sensor",
+    "availability.has_reservoir_level_sensor",
+    "availability.has_rpm_sensor",
+    "availability.has_vibration_peak_sensor",
+    "availability.has_vibration_rms_sensor",
+    "bearing_temp.current",
+    "bearing_temp.rolling_mad.1h",
+    "bearing_temp.rolling_median.1h",
+    "bearing_temp.rolling_p95.1h",
+    "bearing_temp.slope.1h",
+    "cross.vibration_vs_rpm",
+    "pressure.current",
+    "pressure.first_difference",
+    "pressure.rate_per_minute",
+    "pressure.relative_difference",
+    "pressure.rolling_count.15m",
+    "pressure.rolling_median.15m",
+    "pressure.rolling_p95.15m",
+    "pressure.rolling_stddev.15m",
+    "pressure.slope.15m",
+    "pump_current.current",
+    "pump_current.first_difference",
+    "pump_current.rate_per_minute",
+    "pump_current.relative_difference",
+    "pump_current.rolling_max.15m",
+    "pump_current.rolling_mean.15m",
+    "pump_current.rolling_stddev.15m",
+    "quality.caution_fraction.15m",
+    "quality.communication_loss_recent",
+    "quality.issue_count.1h",
+    "quality.late_fraction.15m",
+    "quality.missing_fraction.15m",
+    "quality.sensor_drift_suspected_recent",
+    "quality.trusted_fraction.15m",
+    "reservoir_level.current",
+    "reservoir_level.first_difference",
+    "reservoir_level.rate_per_minute",
+    "reservoir_level.relative_difference",
+    "reservoir_level.rolling_median.6h",
+    "reservoir_level.rolling_range.6h",
+    "reservoir_level.slope.6h",
+    "rpm.current",
+    "rpm.rolling_median.15m",
+    "rpm.rolling_stddev.15m",
+    "vibration_rms.current",
+    "vibration_rms.rolling_mad.1h",
+    "vibration_rms.rolling_median.1h",
+    "vibration_rms.rolling_p95.1h",
+    "vibration_rms.slope.1h",
+    "context.cycle_phase",
+    "context.load_bucket",
+    "context.operating_state",
+    "context.rpm_bucket",
+    "context.sensor_availability_mask"
+  ],
+  "hyperparameters": {},
+  "metrics": {
+    "sample_count": 434,
+    "test_report": {
+      "labels": [
+        "BLOCKAGE",
+        "INDEPENDENT_BEARING_ISSUE",
+        "LEAKAGE",
+        "NORMAL",
+        "PUMP_DEGRADATION",
+        "RESTRICTION",
+        "SENSOR_FAULT",
+        "UNKNOWN"
+      ],
+      "precision": {
+        "BLOCKAGE": 0.06521739130434782,
+        "INDEPENDENT_BEARING_ISSUE": 0.7906976744186046,
+        "LEAKAGE": 0.0,
+        "NORMAL": 0.3225806451612903,
+        "PUMP_DEGRADATION": 0.0,
+        "RESTRICTION": 0.0,
+        "SENSOR_FAULT": 0.0,
+        "UNKNOWN": 0.1346153846153846
+      },
+      "recall": {
+        "BLOCKAGE": 0.08108108108108109,
+        "INDEPENDENT_BEARING_ISSUE": 0.68,
+        "LEAKAGE": 0.0,
+        "NORMAL": 0.11494252873563218,
+        "PUMP_DEGRADATION": 0.0,
+        "RESTRICTION": 0.0,
+        "SENSOR_FAULT": 0.0,
+        "UNKNOWN": 0.3888888888888889
+      },
+      "f1": {
+        "BLOCKAGE": 0.07228915662650602,
+        "INDEPENDENT_BEARING_ISSUE": 0.7311827956989247,
+        "LEAKAGE": 0.0,
+        "NORMAL": 0.1694915254237288,
+        "PUMP_DEGRADATION": 0.0,
+        "RESTRICTION": 0.0,
+        "SENSOR_FAULT": 0.0,
+        "UNKNOWN": 0.2
+      },
+      "support": {
+        "BLOCKAGE": 37,
+        "INDEPENDENT_BEARING_ISSUE": 100,
+        "LEAKAGE": 33,
+        "NORMAL": 87,
+        "PUMP_DEGRADATION": 35,
+        "RESTRICTION": 70,
+        "SENSOR_FAULT": 36,
+        "UNKNOWN": 36
+      },
+      "macro_f1": 0.14662043471864494,
+      "weighted_f1": 0.225204472527506,
+      "confusion_matrix": [
+        [
+          3,
+          9,
+          0,
+          10,
+          0,
+          2,
+          0,
+          13
+        ],
+        [
+          0,
+          68,
+          0,
+          0,
+          5,
+          0,
+          0,
+          27
+        ],
+        [
+          0,
+          3,
+          0,
+          1,
+          0,
+          0,
+          0,
+          29
+        ],
+        [
+          29,
+          1,
+          12,
+          10,
+          5,
+          20,
+          0,
+          10
+        ],
+        [
+          0,
+          0,
+          16,
+          2,
+          0,
+          16,
+          0,
+          1
+        ],
+        [
+          1,
+          3,
+          3,
+          0,
+          60,
+          0,
+          0,
+          3
+        ],
+        [
+          0,
+          0,
+          1,
+          2,
+          0,
+          26,
+          0,
+          7
+        ],
+        [
+          13,
+          2,
+          0,
+          6,
+          0,
+          1,
+          0,
+          14
+        ]
+      ],
+      "pr_auc_one_vs_rest": {
+        "BLOCKAGE": 0.1468868349313749,
+        "INDEPENDENT_BEARING_ISSUE": 0.8869274379628111,
+        "LEAKAGE": 0.15886881447512394,
+        "NORMAL": 0.31047652515458257,
+        "PUMP_DEGRADATION": 0.046284420099430894,
+        "RESTRICTION": 0.09800142445998256,
+        "SENSOR_FAULT": 0.06312884030227008,
+        "UNKNOWN": 0.11225810737693598
+      }
+    },
+    "unknown_rate": 0.23963133640552994,
+    "train_report": {
+      "labels": [
+        "BLOCKAGE",
+        "INDEPENDENT_BEARING_ISSUE",
+        "LEAKAGE",
+        "NORMAL",
+        "PUMP_DEGRADATION",
+        "RESTRICTION",
+        "SENSOR_FAULT",
+        "UNKNOWN"
+      ],
+      "precision": {
+        "BLOCKAGE": 1.0,
+        "INDEPENDENT_BEARING_ISSUE": 1.0,
+        "LEAKAGE": 1.0,
+        "NORMAL": 1.0,
+        "PUMP_DEGRADATION": 1.0,
+        "RESTRICTION": 1.0,
+        "SENSOR_FAULT": 1.0,
+        "UNKNOWN": 1.0
+      },
+      "recall": {
+        "BLOCKAGE": 1.0,
+        "INDEPENDENT_BEARING_ISSUE": 1.0,
+        "LEAKAGE": 1.0,
+        "NORMAL": 1.0,
+        "PUMP_DEGRADATION": 1.0,
+        "RESTRICTION": 1.0,
+        "SENSOR_FAULT": 1.0,
+        "UNKNOWN": 1.0
+      },
+      "f1": {
+        "BLOCKAGE": 1.0,
+        "INDEPENDENT_BEARING_ISSUE": 1.0,
+        "LEAKAGE": 1.0,
+        "NORMAL": 1.0,
+        "PUMP_DEGRADATION": 1.0,
+        "RESTRICTION": 1.0,
+        "SENSOR_FAULT": 1.0,
+        "UNKNOWN": 1.0
+      },
+      "support": {
+        "BLOCKAGE": 36,
+        "INDEPENDENT_BEARING_ISSUE": 69,
+        "LEAKAGE": 35,
+        "NORMAL": 86,
+        "PUMP_DEGRADATION": 35,
+        "RESTRICTION": 34,
+        "SENSOR_FAULT": 69,
+        "UNKNOWN": 35
+      },
+      "macro_f1": 1.0,
+      "weighted_f1": 1.0,
+      "confusion_matrix": [
+        [
+          36,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          69,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          35,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          86,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          35,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          34,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          69,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          35
+        ]
+      ],
+      "pr_auc_one_vs_rest": {
+        "BLOCKAGE": 1.0,
+        "INDEPENDENT_BEARING_ISSUE": 0.9999999999999997,
+        "LEAKAGE": 1.0,
+        "NORMAL": 1.0,
+        "PUMP_DEGRADATION": 1.0,
+        "RESTRICTION": 1.0,
+        "SENSOR_FAULT": 0.9999999999999997,
+        "UNKNOWN": 1.0
+      }
+    },
+    "validation_report": {
+      "labels": [
+        "BLOCKAGE",
+        "INDEPENDENT_BEARING_ISSUE",
+        "LEAKAGE",
+        "NORMAL",
+        "PUMP_DEGRADATION",
+        "RESTRICTION",
+        "SENSOR_FAULT",
+        "UNKNOWN"
+      ],
+      "precision": {
+        "BLOCKAGE": 0.0,
+        "INDEPENDENT_BEARING_ISSUE": 0.0,
+        "LEAKAGE": 0.0,
+        "NORMAL": 1.0,
+        "PUMP_DEGRADATION": 0.0,
+        "RESTRICTION": 0.0,
+        "SENSOR_FAULT": 1.0,
+        "UNKNOWN": 0.0
+      },
+      "recall": {
+        "BLOCKAGE": 0.0,
+        "INDEPENDENT_BEARING_ISSUE": 0.0,
+        "LEAKAGE": 0.0,
+        "NORMAL": 0.05555555555555555,
+        "PUMP_DEGRADATION": 0.0,
+        "RESTRICTION": 0.0,
+        "SENSOR_FAULT": 0.02702702702702703,
+        "UNKNOWN": 0.0
+      },
+      "f1": {
+        "BLOCKAGE": 0.0,
+        "INDEPENDENT_BEARING_ISSUE": 0.0,
+        "LEAKAGE": 0.0,
+        "NORMAL": 0.10526315789473684,
+        "PUMP_DEGRADATION": 0.0,
+        "RESTRICTION": 0.0,
+        "SENSOR_FAULT": 0.05263157894736842,
+        "UNKNOWN": 0.0
+      },
+      "support": {
+        "BLOCKAGE": 0,
+        "INDEPENDENT_BEARING_ISSUE": 0,
+        "LEAKAGE": 0,
+        "NORMAL": 36,
+        "PUMP_DEGRADATION": 0,
+        "RESTRICTION": 0,
+        "SENSOR_FAULT": 37,
+        "UNKNOWN": 0
+      },
+      "macro_f1": 0.019736842105263157,
+      "weighted_f1": 0.07858687815428983,
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          31
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          17,
+          0,
+          0,
+          0,
+          4,
+          0,
+          1,
+          15
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "pr_auc_one_vs_rest": {
+        "NORMAL": 0.8716894193277416,
+        "SENSOR_FAULT": 0.3859024203790427
+      }
+    }
+  },
+  "thresholds": {
+    "unknown_confidence_threshold": 0.45,
+    "moderate": 0.55,
+    "high": 0.8
+  },
+  "seed": 42,
+  "code_version": "0.1.0",
+  "status": "EXPERIMENT",
+  "limitations": [
+    "trained on a modest synthetic dataset generated from a bounded number of simulator scenario runs; single-label classifier cannot represent true multi-fault ground truth; not validated for production machinery"
+  ],
+  "minimum_required_features": [
+    "pressure.current",
+    "pump_current.current",
+    "bearing_temp.current",
+    "vibration_rms.current"
+  ],
+  "artifact_path": "/Users/test/Documents/Projects/lubrisense-ai/ml-service/artifacts/models/FAILURE_CLASSIFICATION_V1/1.0.0/model.joblib",
+  "preprocessor_path": "",
+  "artifact_checksum": "54659d20e57b68b27f8875e43413e721941ffa259d35eabf1cec011f4151fede"
+}

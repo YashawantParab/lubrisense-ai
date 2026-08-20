@@ -1,11 +1,13 @@
 "use client";
 
 import { use, useState } from "react";
+import Link from "next/link";
 
 import { DataState } from "@/components/data-state";
 import { FeedbackBadge, HumanReviewBadge, MaintenanceStateBadge } from "@/components/badges";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
+import { useMachine } from "@/hooks/use-asset-hierarchy";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
   useCompleteCase,
@@ -53,6 +55,7 @@ export default function MaintenanceCaseDetailPage({
   const { caseId } = use(params);
   const { can } = useAuth();
   const caseQuery = useMaintenanceCase(caseId);
+  const machine = useMachine(caseQuery.data?.machine_id ?? "");
   const findings = useMaintenanceFindings(caseId);
   const actions = useMaintenanceActions(caseId);
   const feedback = useMaintenanceFeedback(caseId);
@@ -93,7 +96,7 @@ export default function MaintenanceCaseDetailPage({
                 { label: humanize(caseQuery.data.recommended_action) },
               ]}
               title={humanize(caseQuery.data.recommended_action)}
-              description={`Window: ${humanize(caseQuery.data.recommended_window)} · Priority: ${humanize(caseQuery.data.priority)}`}
+              description={`${machine.data ? `${machine.data.name} · ` : ""}Window: ${humanize(caseQuery.data.recommended_window)} · Priority: ${humanize(caseQuery.data.priority)}`}
               actions={
                 <>
                   <MaintenanceStateBadge value={caseQuery.data.state} />
@@ -101,6 +104,23 @@ export default function MaintenanceCaseDetailPage({
                 </>
               }
             />
+
+            <p className="-mt-4 flex flex-wrap items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+              {machine.data && (
+                <Link
+                  href={`/machines/${caseQuery.data.machine_id}`}
+                  className="text-sky-600 hover:underline dark:text-sky-400"
+                >
+                  View machine ({machine.data.name})
+                </Link>
+              )}
+              <Link
+                href={`/incidents/${caseQuery.data.incident_id}`}
+                className="text-sky-600 hover:underline dark:text-sky-400"
+              >
+                View originating incident
+              </Link>
+            </p>
 
             <SectionCard>
               {canWrite ? (

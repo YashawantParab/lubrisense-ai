@@ -46,11 +46,19 @@ edge/data/edge/
 *.db-wal
 edge/data/edge/*.lock
 
-# ML service generated artifacts/datasets (Phase 11) — model binaries and generated
-# training data are never committed; docs/results/model_evaluation.json (a small, git-safe
-# merged summary) and docs/MODEL_CARD.md/docs/ML_ARCHITECTURE.md are. See
-# docs/ML_ARCHITECTURE.md.
-ml-service/artifacts/
+# ML service generated training data (Phase 11) is never committed; docs/results/
+# model_evaluation.json (a small, git-safe merged summary) and docs/MODEL_CARD.md/
+# docs/ML_ARCHITECTURE.md are. See docs/ML_ARCHITECTURE.md.
+#
+# ml-service/artifacts/{models,evaluation} ARE committed (small, ~2MB, no proprietary
+# data) — the real registry `backend/app/ml/registry.py` reads at ML_ARTIFACTS_DIR. A
+# Render/hosted deploy builds from a fresh git checkout with no host filesystem to
+# bind-mount from the way docker-compose.yml's local dev mount does, so without these
+# committed the hosted model registry is always empty regardless of ML_ARTIFACTS_DIR
+# (backend/Dockerfile bakes this same directory into the runtime image — see its comment).
+ml-service/artifacts/*
+!ml-service/artifacts/models/
+!ml-service/artifacts/evaluation/
 ml-service/data/runs/
 ml-service/data/ground_truth/
 ml-service/data/datasets/
