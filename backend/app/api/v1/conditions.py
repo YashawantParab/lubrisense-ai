@@ -42,6 +42,21 @@ async def get_latest_condition(
     return ConditionAssessmentResponse.model_validate(assessment)
 
 
+@router.get("/fleet-latest", response_model=list[ConditionAssessmentResponse])
+async def get_fleet_latest_conditions(
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[ConditionAssessmentResponse]:
+    """Read-only — one row per machine, its most recent already-persisted assessment.
+    Never recomputes (unlike `/machines/{id}/latest`, which calls `ConditionEngine.
+    assess()`): this route powers fleet-wide views (Overview attention queue, Fleet
+    condition column) where recomputing N machines per page load would be wasteful and
+    would silently change condition history just from a reviewer loading a page."""
+    service = ConditionQueryService(session)
+    results = await service.latest_for_tenant(tenant.id)
+    return [ConditionAssessmentResponse.model_validate(r) for r in results]
+
+
 @router.get("/machines/{machine_id}/history", response_model=list[ConditionAssessmentResponse])
 async def get_condition_history(
     machine_id: uuid.UUID,

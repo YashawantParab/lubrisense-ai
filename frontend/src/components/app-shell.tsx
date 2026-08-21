@@ -20,6 +20,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/fleet", label: "Fleet" },
   { href: "/incidents", label: "Incidents" },
   { href: "/maintenance", label: "Maintenance" },
+  { href: "/action-readiness", label: "Action Readiness" },
   { href: "/knowledge", label: "Knowledge" },
   { href: "/assistant", label: "Assistant" },
   { href: "/metrics", label: "Metrics" },

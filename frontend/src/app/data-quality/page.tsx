@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 
 import { DataState } from "@/components/data-state";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
+import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useQualityIssues, useQualitySummary } from "@/hooks/use-data-quality";
 import { humanize } from "@/lib/terminology";
 import type { IssueSeverity, QualityState } from "@/lib/api/data-quality-types";
@@ -43,6 +45,22 @@ export default function DataQualityPage() {
     status: status || undefined,
     limit: 100,
   });
+  const hierarchy = useHierarchy();
+  const machineNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const customer of hierarchy.data?.customers ?? []) {
+      for (const site of customer.sites) {
+        for (const plant of site.plants) {
+          for (const line of plant.production_lines) {
+            for (const machine of line.machines) {
+              map.set(machine.id, machine.name);
+            }
+          }
+        }
+      }
+    }
+    return map;
+  }, [hierarchy.data]);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-12">
@@ -128,6 +146,7 @@ export default function DataQualityPage() {
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                      <th className="py-2 pr-4 font-medium">Machine</th>
                       <th className="py-2 pr-4 font-medium">Sensor</th>
                       <th className="py-2 pr-4 font-medium">Dimension</th>
                       <th className="py-2 pr-4 font-medium">Issue</th>
@@ -143,6 +162,18 @@ export default function DataQualityPage() {
                         key={issue.id}
                         className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
                       >
+                        <td className="py-2 pr-4">
+                          {issue.machine_id && machineNames.has(issue.machine_id) ? (
+                            <Link
+                              href={`/machines/${issue.machine_id}`}
+                              className="text-sky-700 hover:underline dark:text-sky-400"
+                            >
+                              {machineNames.get(issue.machine_id)}
+                            </Link>
+                          ) : (
+                            <span className="text-zinc-400 dark:text-zinc-600">Unknown</span>
+                          )}
+                        </td>
                         <td className="py-2 pr-4 font-mono text-xs text-zinc-500">
                           {issue.sensor_id.slice(0, 8)}…
                         </td>

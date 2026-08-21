@@ -33,6 +33,9 @@ class DecisionQueryService:
         await self._require_machine(tenant_id, machine_id)
         return await self._decisions.get_latest(tenant_id, machine_id)
 
+    async def latest_for_tenant(self, tenant_id: uuid.UUID) -> list[DecisionAssessment]:
+        return await self._decisions.list_latest_for_tenant(tenant_id)
+
     async def history(
         self,
         tenant_id: uuid.UUID,

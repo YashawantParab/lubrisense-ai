@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models import ConditionAssessment
@@ -68,6 +68,30 @@ class ConditionAssessmentRepository:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def list_latest_for_tenant(self, tenant_id: uuid.UUID) -> list[ConditionAssessment]:
+        """One row per machine — its most recent persisted assessment. Powers the fleet
+        Attention Queue / condition distribution (Overview), never recomputes anything
+        itself (that stays `ConditionEngine.assess()`'s job)."""
+        latest_per_machine = (
+            select(
+                ConditionAssessment.machine_id,
+                func.max(ConditionAssessment.as_of_timestamp).label("max_ts"),
+            )
+            .where(ConditionAssessment.tenant_id == tenant_id)
+            .group_by(ConditionAssessment.machine_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(ConditionAssessment)
+            .join(
+                latest_per_machine,
+                (ConditionAssessment.machine_id == latest_per_machine.c.machine_id)
+                & (ConditionAssessment.as_of_timestamp == latest_per_machine.c.max_ts),
+            )
+            .where(ConditionAssessment.tenant_id == tenant_id)
+        )
+        return list(result.scalars().unique().all())
 
     async def list_for_machine(
         self,

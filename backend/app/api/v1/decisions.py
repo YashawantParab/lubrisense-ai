@@ -44,6 +44,18 @@ async def get_latest_decision(
     return DecisionAssessmentResponse.model_validate(bundle.decision)
 
 
+@router.get("/fleet-latest", response_model=list[DecisionAssessmentResponse])
+async def get_fleet_latest_decisions(
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[DecisionAssessmentResponse]:
+    """Read-only — one row per machine, its most recent already-persisted decision.
+    Mirrors `GET /conditions/fleet-latest`; never recomputes."""
+    service = DecisionQueryService(session)
+    results = await service.latest_for_tenant(tenant.id)
+    return [DecisionAssessmentResponse.model_validate(r) for r in results]
+
+
 @router.get("/machines/{machine_id}/history", response_model=list[DecisionAssessmentResponse])
 async def get_decision_history(
     machine_id: uuid.UUID,

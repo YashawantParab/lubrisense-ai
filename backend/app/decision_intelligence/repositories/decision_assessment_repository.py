@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.enums import DecisionLifecycle
@@ -65,6 +65,30 @@ class DecisionAssessmentRepository:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def list_latest_for_tenant(self, tenant_id: uuid.UUID) -> list[DecisionAssessment]:
+        """One row per machine — its most recent persisted decision. Read-only, mirrors
+        `ConditionAssessmentRepository.list_latest_for_tenant`; powers the fleet Attention
+        Queue's recommended-action column without recomputing anything."""
+        latest_per_machine = (
+            select(
+                DecisionAssessment.machine_id,
+                func.max(DecisionAssessment.as_of_timestamp).label("max_ts"),
+            )
+            .where(DecisionAssessment.tenant_id == tenant_id)
+            .group_by(DecisionAssessment.machine_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(DecisionAssessment)
+            .join(
+                latest_per_machine,
+                (DecisionAssessment.machine_id == latest_per_machine.c.machine_id)
+                & (DecisionAssessment.as_of_timestamp == latest_per_machine.c.max_ts),
+            )
+            .where(DecisionAssessment.tenant_id == tenant_id)
+        )
+        return list(result.scalars().unique().all())
 
     async def list_for_machine(
         self,

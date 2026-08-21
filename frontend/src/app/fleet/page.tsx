@@ -5,13 +5,15 @@ import { useMemo, useState } from "react";
 
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
-import { IncidentStateBadge, SeverityBadge } from "@/components/badges";
+import { ConfidenceBadge, IncidentStateBadge, SeverityBadge } from "@/components/badges";
 import { PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusPill } from "@/components/status-pill";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
+import { useFleetLatestConditions } from "@/hooks/use-intelligence";
 import { usePriorityIncident } from "@/hooks/use-priority-incident";
+import { FLEET_BUCKET_TONE, fleetBucket } from "@/lib/fleet-condition";
 import { humanize, toneForStatus } from "@/lib/terminology";
 import type { HierarchyMachine } from "@/lib/api/asset-hierarchy-types";
 
@@ -29,6 +31,7 @@ export default function FleetPage() {
   usePageTitle("Fleet");
   const hierarchy = useHierarchy();
   const { data: incidents, priorityIncident } = usePriorityIncident();
+  const conditions = useFleetLatestConditions();
   const [search, setSearch] = useState("");
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>("all");
 
@@ -54,6 +57,11 @@ export default function FleetPage() {
     }
     return out;
   }, [hierarchy.data]);
+
+  const conditionByMachine = useMemo(
+    () => new Map((conditions.data ?? []).map((c) => [c.machine_id, c])),
+    [conditions.data],
+  );
 
   const openIncidentsByMachine = useMemo(() => {
     const map = new Map<
@@ -213,12 +221,25 @@ export default function FleetPage() {
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
+                        {(() => {
+                          const condition = conditionByMachine.get(row.machine.id);
+                          return (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {condition ? (
+                                <>
+                                  <StatusPill tone={FLEET_BUCKET_TONE[fleetBucket(condition)]}>
+                                    {humanize(condition.condition_type)}
+                                  </StatusPill>
+                                  <ConfidenceBadge value={condition.confidence} />
+                                </>
+                              ) : (
+                                <StatusPill tone="neutral">Not yet assessed</StatusPill>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {incidentInfo ? (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <SeverityBadge value={incidentInfo.maxSeverity} />
-                            <span className="text-xs text-zinc-700 dark:text-zinc-300">
-                              {humanize(incidentInfo.conditionType)}
-                            </span>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <IncidentStateBadge value={incidentInfo.state} />
                             {incidentInfo.count > 1 && (
                               <span className="text-xs text-zinc-500">
@@ -227,24 +248,21 @@ export default function FleetPage() {
                             )}
                           </div>
                         ) : (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <StatusPill tone="ok">Normal operation</StatusPill>
-                            {recentResolvedByMachine.has(row.machine.id) && (
-                              <Link
-                                href={`/incidents/${recentResolvedByMachine.get(row.machine.id)!.incidentId}`}
-                                className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
-                              >
-                                Recently resolved
-                                <SeverityBadge
-                                  value={recentResolvedByMachine.get(row.machine.id)!.severity}
-                                />
-                                <RelativeTime
-                                  iso={recentResolvedByMachine.get(row.machine.id)!.resolvedAt}
-                                  className="text-zinc-400 dark:text-zinc-600"
-                                />
-                              </Link>
-                            )}
-                          </div>
+                          recentResolvedByMachine.has(row.machine.id) && (
+                            <Link
+                              href={`/incidents/${recentResolvedByMachine.get(row.machine.id)!.incidentId}`}
+                              className="mt-1 flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                            >
+                              Recently resolved
+                              <SeverityBadge
+                                value={recentResolvedByMachine.get(row.machine.id)!.severity}
+                              />
+                              <RelativeTime
+                                iso={recentResolvedByMachine.get(row.machine.id)!.resolvedAt}
+                                className="text-zinc-400 dark:text-zinc-600"
+                              />
+                            </Link>
+                          )
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-400">

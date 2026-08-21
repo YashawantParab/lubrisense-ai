@@ -133,6 +133,48 @@ export default function MLPage() {
         description="Model output is one evidence source among several (rules, state estimation, technician history) that feed Condition Intelligence — it never independently makes a maintenance decision. A model only scores live machines once promoted from EXPERIMENT to VALIDATED or later."
       />
 
+      <SectionCard title="How AI fits into this product" tier="band">
+        <div className="flex flex-col gap-1 text-sm text-zinc-700 sm:flex-row sm:items-stretch sm:gap-0 dark:text-zinc-300">
+          {[
+            {
+              label: "Condition intelligence",
+              detail: "Physics/deterministic rules + state estimation + ML evidence → a condition assessment",
+            },
+            {
+              label: "Decision intelligence",
+              detail: "Condition + asset context + criticality → a maintenance recommendation",
+            },
+            {
+              label: "Workflow intelligence",
+              detail: "Recommendation → incident, maintenance case, and a real outcome",
+            },
+            {
+              label: "GenAI / knowledge",
+              detail: "Approved documentation → explanation and workflow assistance, never a diagnosis",
+            },
+          ].map((step, index, arr) => (
+            <div key={step.label} className="flex flex-1 items-stretch">
+              <div className="flex-1 rounded-md bg-white/60 p-3 dark:bg-zinc-950/30">
+                <p className="text-xs font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+                  {step.label}
+                </p>
+                <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{step.detail}</p>
+              </div>
+              {index < arr.length - 1 && (
+                <div className="flex w-6 shrink-0 items-center justify-center text-zinc-300 dark:text-zinc-700">
+                  →
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+          ML models never become physical truth on their own — a model result is one input
+          the Condition Engine weighs alongside rule findings and state estimates, and every
+          resulting maintenance recommendation still requires human review.
+        </p>
+      </SectionCard>
+
       <DataState
         isPending={models.isPending}
         isError={models.isError}
