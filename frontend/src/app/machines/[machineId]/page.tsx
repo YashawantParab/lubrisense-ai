@@ -40,8 +40,8 @@ import { useMachineTelemetry } from "@/hooks/use-telemetry";
 import {
   READINESS_MODE_LABEL,
   READINESS_MODE_TONE,
+  readinessEvidenceFor,
   readinessModeFor,
-  readinessReasonsFor,
 } from "@/lib/action-readiness";
 import { interpretState, STATE_TYPE_LABELS } from "@/lib/state-interpretation";
 import { humanize, toneForStatus } from "@/lib/terminology";
@@ -229,7 +229,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
     );
     return {
       mode,
-      reasons: readinessReasonsFor(
+      evidence: readinessEvidenceFor(
         intelligence.data.condition,
         intelligence.data.decision,
         hierarchy.data.machine.status,
@@ -364,6 +364,14 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                   </p>
                 )}
               </div>
+              {intelligence.data && (
+                <div>
+                  <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">Data trust</p>
+                  <p className="mt-1 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                    {humanize(intelligence.data.condition.evidence_summary.data_trustworthiness)}
+                  </p>
+                </div>
+              )}
               {readiness && (
                 <div>
                   <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
@@ -395,6 +403,25 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                 )
               )}
             </div>
+
+            {/* An active incident's `incident_type` only updates when `IncidentService`
+                re-correlates it against a new condition — this platform's condition
+                re-assessment (above) and that correlation aren't wired to run in lockstep,
+                so the two can legitimately disagree for a period while the incident is
+                still open. Silently juxtaposing "Current condition: Normal Operation" next
+                to an open "Pump Performance Degradation" incident would misrepresent the
+                machine — this note is real, computed from the same two persisted fields
+                displayed above, not a guess. */}
+            {activeIncident &&
+              intelligence.data &&
+              activeIncident.incident_type !== intelligence.data.condition.condition_type && (
+                <p className="-mt-4 text-xs text-amber-600 dark:text-amber-400">
+                  This incident was opened for {humanize(activeIncident.incident_type)}; the
+                  machine&rsquo;s condition has since re-assessed as{" "}
+                  {humanize(intelligence.data.condition.condition_type)}. The incident stays open
+                  until a technician reviews and resolves it.
+                </p>
+              )}
 
             {relevantIncident && (
               <CaseContextHeader incidentId={relevantIncident.id} active="machine" />
@@ -564,11 +591,14 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                         <summary className="cursor-pointer font-medium text-sky-600 select-none dark:text-sky-400">
                           Why: {READINESS_MODE_LABEL[readiness.mode]}
                         </summary>
-                        <ul className="mt-1.5 list-inside list-disc space-y-0.5">
-                          {readiness.reasons.map((reason) => (
-                            <li key={reason}>{reason}</li>
+                        <dl className="mt-1.5 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+                          {readiness.evidence.map((item) => (
+                            <div key={item.label} className="contents">
+                              <dt className="text-zinc-400 dark:text-zinc-600">{item.label}:</dt>
+                              <dd className="text-zinc-700 dark:text-zinc-300">{item.value}</dd>
+                            </div>
                           ))}
-                        </ul>
+                        </dl>
                         <Link
                           href="/action-readiness"
                           className="mt-1.5 inline-block text-sky-600 hover:underline dark:text-sky-400"

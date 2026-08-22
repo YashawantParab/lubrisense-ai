@@ -16,8 +16,8 @@ import {
   READINESS_MODE_LABEL,
   READINESS_MODE_TONE,
   effectiveRecommendedAction,
+  readinessEvidenceFor,
   readinessModeFor,
-  readinessReasonsFor,
   type ReadinessMode,
 } from "@/lib/action-readiness";
 import { humanize } from "@/lib/terminology";
@@ -79,7 +79,7 @@ export default function ActionReadinessPage() {
             effective: effectiveRecommendedAction(condition, decision),
             machine,
             mode,
-            reasons: readinessReasonsFor(condition, decision, machine.status, mode),
+            evidence: readinessEvidenceFor(condition, decision, machine.status, mode),
           };
         })
         .sort((a, b) => a.machine.name.localeCompare(b.machine.name)),
@@ -106,7 +106,7 @@ export default function ActionReadinessPage() {
           />
         ) : (
           <ul className="flex flex-col divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
-            {rows.map(({ condition, effective, machine, mode, reasons }) => (
+            {rows.map(({ condition, effective, evidence, machine, mode }) => (
               <li key={machine.id} className="flex flex-col gap-2 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -145,11 +145,14 @@ export default function ActionReadinessPage() {
                   <summary className="cursor-pointer font-medium text-sky-600 select-none dark:text-sky-400">
                     Why this mode
                   </summary>
-                  <ul className="mt-1.5 list-inside list-disc space-y-0.5">
-                    {reasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
+                  <dl className="mt-1.5 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+                    {evidence.map((item) => (
+                      <div key={item.label} className="contents">
+                        <dt className="text-zinc-400 dark:text-zinc-600">{item.label}:</dt>
+                        <dd className="text-zinc-700 dark:text-zinc-300">{item.value}</dd>
+                      </div>
                     ))}
-                  </ul>
+                  </dl>
                 </details>
               </li>
             ))}
@@ -178,10 +181,38 @@ export default function ActionReadinessPage() {
           either. Every recommended action here is a human physical-presence inspection or
           verification step (never a control command), so nothing is structurally eligible for
           automation yet; every asset is in a normal <code>Monitored</code> state, so no interlock
-          is active. Real physical actuation would additionally require validated hardware
-          interfaces, actuator feedback, fail-safe logic, cybersecurity review, and customer
-          authorization — none of which exist in this reference implementation.
+          is active.
         </p>
+      </SectionCard>
+
+      <SectionCard title="What this platform controls today">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div>
+            <h3 className="text-xs font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-400">
+              Implemented
+            </h3>
+            <ul className="mt-2 space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+              <li>Condition monitoring from real telemetry, rules, state estimation, and ML</li>
+              <li>Decision support — a recommended action, priority, and rationale</li>
+              <li>Human-approved action workflow — incident and maintenance case tracking</li>
+              <li>Action-readiness simulation — which mode an action would fall into</li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+              Not implemented
+            </h3>
+            <ul className="mt-2 space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+              <li>Physical autonomous lubrication control</li>
+            </ul>
+            <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+              A real closed-loop control deployment would additionally require validated actuator
+              interfaces, interlocks, actuation feedback confirmation, machine commissioning,
+              safe-state logic, cybersecurity review, and customer authorization — none of which
+              exist in this reference implementation.
+            </p>
+          </div>
+        </div>
       </SectionCard>
     </div>
   );

@@ -156,7 +156,19 @@ export default function DataQualityPage() {
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
             This distinguishes a sensor/data problem from a machine-condition problem — the machine
             itself may be fine; the platform simply doesn&rsquo;t trust enough of its
-            instrumentation right now to say so with full confidence.
+            instrumentation right now to say so with full confidence. Reduced confidence carries
+            forward: it is why these machines currently show{" "}
+            <span className="font-medium text-zinc-700 dark:text-zinc-300">
+              Blocked — insufficient evidence
+            </span>{" "}
+            on{" "}
+            <Link
+              href="/action-readiness"
+              className="text-sky-600 hover:underline dark:text-sky-400"
+            >
+              Action Readiness
+            </Link>
+            , not a recommendation the platform isn&rsquo;t confident enough to make.
           </p>
         </SectionCard>
       )}

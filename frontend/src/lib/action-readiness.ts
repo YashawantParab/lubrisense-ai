@@ -114,30 +114,75 @@ export function effectiveRecommendedAction(
   return { action: decision.recommended_action, priority: decision.priority };
 }
 
-/** Real, already-persisted fields only — never an invented rationale. */
-export function readinessReasonsFor(
+export interface ReadinessEvidenceItem {
+  label: string;
+  value: string;
+}
+
+/**
+ * The prerequisite checklist behind one machine's readiness mode — every value traces to
+ * a real persisted field (condition/decision/machine status), never an invented
+ * rationale. `Physical actuation` is the one constant line: it states a true fact about
+ * this reference platform (no actuator interface exists anywhere in it) rather than a
+ * per-machine computed value, and is included on every row because it's the fact that
+ * most directly explains why nothing here ever reaches automated execution.
+ */
+export function readinessEvidenceFor(
   condition: ConditionAssessmentResponse,
   decision: DecisionAssessmentResponse | null,
   machineStatus: string,
   mode: ReadinessMode,
-): string[] {
+): ReadinessEvidenceItem[] {
+  const commissioned = !NON_OPERATIONAL_STATUSES.has(machineStatus);
+  const bucket = fleetBucket(condition);
+  const actionable = bucket === "attention";
+
+  const items: ReadinessEvidenceItem[] = [
+    {
+      label: "Machine commissioned",
+      value: commissioned ? "Yes" : `No — ${humanize(machineStatus)}`,
+    },
+  ];
+
   if (mode === "BLOCKED_SAFETY_INTERLOCK") {
-    return [
-      `Asset status is ${humanize(machineStatus)}, not Monitored — action readiness does not apply until commissioning/maintenance completes.`,
-    ];
+    items.push({
+      label: "Safety / interlock",
+      value: `Active — asset must reach Monitored status before readiness applies`,
+    });
+    return items;
   }
+
+  items.push(
+    { label: "Data trust", value: humanize(condition.evidence_summary.data_trustworthiness) },
+    { label: "Condition confidence", value: humanize(condition.confidence) },
+    { label: "Current condition", value: conditionInterpretation(condition.condition_type) },
+  );
+
   if (mode === "BLOCKED_INSUFFICIENT_EVIDENCE") {
-    return [
-      conditionInterpretation(condition.condition_type),
-      condition.recommended_next_evidence ??
+    items.push({
+      label: "Recommended next evidence",
+      value:
+        condition.recommended_next_evidence ??
         "Additional evidence is needed before any action recommendation is reliable.",
-    ];
+    });
+    return items;
   }
-  const reasons: string[] = [conditionInterpretation(condition.condition_type)];
-  reasons.push(`Confidence: ${humanize(condition.confidence)}.`);
-  reasons.push(`Data quality: ${humanize(condition.evidence_summary.data_trustworthiness)}.`);
-  if (mode !== "MONITORING_ONLY" && decision) {
-    reasons.push(`Priority: ${humanize(decision.priority)}.`);
-  }
-  return reasons;
+
+  items.push(
+    { label: "Condition actionable", value: actionable ? "Yes" : "No — normal or recovering" },
+    {
+      label: "Recommended action",
+      value: decision ? humanize(decision.recommended_action) : "Not yet available",
+    },
+    {
+      label: "Human approval required",
+      value: decision ? (decision.human_review_required ? "Yes" : "No") : "—",
+    },
+    { label: "Safety / interlock", value: "Clear — asset is Monitored" },
+    {
+      label: "Physical actuation",
+      value: "Not connected — no automated control exists in this platform",
+    },
+  );
+  return items;
 }

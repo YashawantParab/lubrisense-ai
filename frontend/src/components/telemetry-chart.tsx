@@ -26,6 +26,22 @@ const MARKER_COLOR: Record<TelemetryStoryMarker["tone"], string> = {
   ok: "#059669",
 };
 
+/** A one-line read of the latest point against this signal's own baseline range — real
+ * computed comparison, never a fabricated diagnosis. When no baseline exists yet, says so
+ * rather than guessing. */
+function interpretSignal(
+  latest: number,
+  baselineRange: [number, number] | null | undefined,
+): string {
+  if (!baselineRange) {
+    return "Not enough baseline history yet to characterize this signal's expected range.";
+  }
+  const [low, high] = baselineRange;
+  if (latest > high) return "Currently above this asset's expected operating range.";
+  if (latest < low) return "Currently below this asset's expected operating range.";
+  return "Currently within this asset's expected operating range.";
+}
+
 /** A restrained, single-series time chart for one measurement type on one machine
  * (Phase 28 brief §28.9). Deliberately not interactive/zoomable — this reference
  * platform's telemetry volumes don't need it, and CLAUDE.md's visual language calls for
@@ -144,6 +160,9 @@ export function TelemetryChart({
           </LineChart>
         </ResponsiveContainer>
       </div>
+      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+        {interpretSignal(points[points.length - 1].value, baselineRange)}
+      </p>
       {hasBadQuality && (
         <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
           Includes readings flagged with a data-quality limitation — see Evidence for detail.

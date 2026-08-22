@@ -6,12 +6,15 @@ import { useMemo, useState } from "react";
 import { AttentionQueue } from "@/components/attention-queue";
 import { DataState } from "@/components/data-state";
 import { ActionReadinessDistribution } from "@/components/action-readiness-distribution";
+import { CommissioningJourney } from "@/components/commissioning-journey";
 import { DataTrustSummary } from "@/components/data-trust-summary";
 import { FleetConditionDistribution } from "@/components/fleet-condition-distribution";
 import { PriorityAssetCard } from "@/components/priority-asset-card";
 import { ProvenanceBadge } from "@/components/badges";
 import { RecentOutcomes } from "@/components/recent-outcomes";
+import { ReviewerWalkthrough } from "@/components/reviewer-walkthrough";
 import { SectionCard } from "@/components/section-card";
+import { WhyConditionDriven } from "@/components/why-condition-driven";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useIncidents } from "@/hooks/use-incidents";
 import { useFleetLatestConditions } from "@/hooks/use-intelligence";
@@ -88,6 +91,8 @@ export default function OverviewPage() {
         </p>
       </header>
 
+      <ReviewerWalkthrough />
+
       <DataState
         isPending={conditions.isPending}
         isError={conditions.isError}
@@ -131,6 +136,10 @@ export default function OverviewPage() {
       )}
 
       <RecentOutcomes />
+
+      <CommissioningJourney />
+
+      <WhyConditionDriven />
 
       <DataState isPending={fleet.isPending} isError={fleet.isError} error={fleet.error}>
         {fleet.data && (
