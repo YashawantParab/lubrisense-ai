@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import { AttentionQueue } from "@/components/attention-queue";
 import { DataState } from "@/components/data-state";
+import { ActionReadinessDistribution } from "@/components/action-readiness-distribution";
 import { DataTrustSummary } from "@/components/data-trust-summary";
 import { FleetConditionDistribution } from "@/components/fleet-condition-distribution";
 import { PriorityAssetCard } from "@/components/priority-asset-card";
@@ -82,13 +83,16 @@ export default function OverviewPage() {
           Fleet overview
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-          See which assets need attention, why their lubrication condition is changing, and
-          what maintenance should do next — every claim below traces back to persisted
-          platform data.
+          See which assets need attention, why their lubrication condition is changing, and what
+          maintenance should do next — every claim below traces back to persisted platform data.
         </p>
       </header>
 
-      <DataState isPending={conditions.isPending} isError={conditions.isError} error={conditions.error}>
+      <DataState
+        isPending={conditions.isPending}
+        isError={conditions.isError}
+        error={conditions.error}
+      >
         {/* Compact fleet-status stat line — real, seeded counts, never hardcoded. */}
         <div className="flex flex-wrap items-baseline gap-x-10 gap-y-3 border-y border-zinc-100 py-4 dark:border-zinc-800/70">
           {[
@@ -112,8 +116,10 @@ export default function OverviewPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <FleetConditionDistribution />
-        <DataTrustSummary />
+        <ActionReadinessDistribution />
       </div>
+
+      <DataTrustSummary />
 
       {mostRecentResolved && (
         <section className="flex flex-col gap-3">
@@ -155,7 +161,10 @@ export default function OverviewPage() {
             <SectionCard
               title="North Star"
               actions={
-                <Link href="/metrics" className="text-xs text-sky-600 hover:underline dark:text-sky-400">
+                <Link
+                  href="/metrics"
+                  className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                >
                   View all metrics
                 </Link>
               }

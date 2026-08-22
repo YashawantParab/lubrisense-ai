@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useMemo } from "react";
 
-import { ConfidenceBadge, IncidentStateBadge, PriorityBadge, SeverityBadge } from "@/components/badges";
+import {
+  ConfidenceBadge,
+  IncidentStateBadge,
+  PriorityBadge,
+  SeverityBadge,
+} from "@/components/badges";
 import { evidenceBackingLine } from "@/components/condition-evidence";
 import { EmptyState } from "@/components/empty-state";
 import { SectionCard } from "@/components/section-card";
@@ -61,7 +66,10 @@ export function AttentionQueue({ limit = 5 }: { limit?: number }) {
     for (const incident of incidents.data ?? []) {
       if (!OPEN_INCIDENT_STATES.has(incident.state)) continue;
       const existing = map.get(incident.machine_id);
-      if (!existing || new Date(incident.first_detected_at) > new Date(existing.first_detected_at)) {
+      if (
+        !existing ||
+        new Date(incident.first_detected_at) > new Date(existing.first_detected_at)
+      ) {
         map.set(incident.machine_id, incident);
       }
     }

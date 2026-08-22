@@ -15,6 +15,7 @@ from app.agent.tools.context import ToolContext
 ToolFunc = Callable[[ToolContext, dict[str, Any]], Awaitable[ToolResult]]
 
 ALLOWED_TOOLS: dict[str, ToolFunc] = {
+    "list_fleet_attention": tool_functions.list_fleet_attention,
     "get_asset_context": tool_functions.get_asset_context,
     "get_current_condition": tool_functions.get_current_condition,
     "get_current_decision": tool_functions.get_current_decision,

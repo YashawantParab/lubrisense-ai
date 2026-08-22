@@ -41,10 +41,19 @@ function BackendConnectivityCard() {
         <ul className="mt-4 divide-y divide-zinc-100 dark:divide-zinc-800">
           {readiness.data.dependencies.map((dependency) => (
             <li key={dependency.name} className="flex items-center justify-between py-2 text-sm">
-              <span className="capitalize text-zinc-700 dark:text-zinc-300">{dependency.name}</span>
-              <StatusPill tone={dependency.healthy ? "ok" : "error"}>
-                {dependency.healthy ? "Healthy" : "Unhealthy"}
-              </StatusPill>
+              <span className="capitalize text-zinc-700 dark:text-zinc-300">
+                {dependency.name}
+                {!dependency.required && (
+                  <span className="ml-1.5 text-xs text-zinc-400 dark:text-zinc-600">
+                    (optional)
+                  </span>
+                )}
+              </span>
+              {dependency.status === "healthy" && <StatusPill tone="ok">Healthy</StatusPill>}
+              {dependency.status === "unhealthy" && <StatusPill tone="error">Unhealthy</StatusPill>}
+              {dependency.status === "unavailable_optional" && (
+                <StatusPill tone="neutral">Optional / not configured</StatusPill>
+              )}
             </li>
           ))}
         </ul>

@@ -138,7 +138,8 @@ export default function MLPage() {
           {[
             {
               label: "Condition intelligence",
-              detail: "Physics/deterministic rules + state estimation + ML evidence → a condition assessment",
+              detail:
+                "Physics/deterministic rules + state estimation + ML evidence → a condition assessment",
             },
             {
               label: "Decision intelligence",
@@ -150,7 +151,8 @@ export default function MLPage() {
             },
             {
               label: "GenAI / knowledge",
-              detail: "Approved documentation → explanation and workflow assistance, never a diagnosis",
+              detail:
+                "Approved documentation → explanation and workflow assistance, never a diagnosis",
             },
           ].map((step, index, arr) => (
             <div key={step.label} className="flex flex-1 items-stretch">
@@ -169,9 +171,9 @@ export default function MLPage() {
           ))}
         </div>
         <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-          ML models never become physical truth on their own — a model result is one input
-          the Condition Engine weighs alongside rule findings and state estimates, and every
-          resulting maintenance recommendation still requires human review.
+          ML models never become physical truth on their own — a model result is one input the
+          Condition Engine weighs alongside rule findings and state estimates, and every resulting
+          maintenance recommendation still requires human review.
         </p>
       </SectionCard>
 

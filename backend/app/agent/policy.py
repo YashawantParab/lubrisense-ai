@@ -62,9 +62,35 @@ _WORK_ORDER_PATTERNS = [
     re.compile(pattern, re.IGNORECASE) for pattern in (r"\bwork[\s-]?order\b", r"\bcmms\b")
 ]
 
+_FLEET_WIDE_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bwhich (machine|asset|equipment)s?\b",
+        r"\bwhat machines\b",
+        r"\bfleet\b",
+        r"\bacross (the|our|my) (fleet|machines|assets)\b",
+        r"\bneeds?\s+attention\b",
+        r"\bdata[\s-]?quality\b",
+        r"\bpending (maintenance|action)s?\b",
+        r"\beligible for\b",
+        r"\bautomation blocked\b",
+        r"\ball machines\b",
+    )
+]
+
 
 def is_physical_control_request(message: str) -> bool:
     return any(pattern.search(message) for pattern in _PHYSICAL_CONTROL_PATTERNS)
+
+
+def is_fleet_wide_query(message: str) -> bool:
+    """Gates `list_fleet_attention` (the one tool not scoped to a single machine/
+    incident/case) — only when the raw message plausibly asks about the fleet, never
+    just because no context was supplied. Without this gate, an unrelated no-context
+    question (e.g. small talk) would still get a fleet summary tacked onto its answer,
+    which both misrepresents what was asked and defeats the "insufficient documentation"
+    fallback for genuinely off-topic questions."""
+    return any(pattern.search(message) for pattern in _FLEET_WIDE_PATTERNS)
 
 
 def wants_checklist_draft(message: str) -> bool:

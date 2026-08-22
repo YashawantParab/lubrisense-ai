@@ -35,6 +35,12 @@ def test_no_mutating_lifecycle_tool_is_registered() -> None:
 
 def test_allowed_tools_match_the_brief() -> None:
     expected = {
+        # `list_fleet_attention` (release-pass addition): the one tool not scoped to a
+        # single machine/incident/case — a read-only, never-recomputing fleet-wide
+        # snapshot (mirrors `GET /conditions/fleet-latest`/`GET /decisions/fleet-latest`)
+        # gated by `app.agent.policy.is_fleet_wide_query` so it only runs for a message
+        # that plausibly asks about the fleet, never merely because context is absent.
+        "list_fleet_attention",
         "get_asset_context",
         "get_current_condition",
         "get_current_decision",

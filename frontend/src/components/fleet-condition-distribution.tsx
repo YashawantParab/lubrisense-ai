@@ -6,7 +6,13 @@ import { SectionCard } from "@/components/section-card";
 import { useFleetLatestConditions } from "@/hooks/use-intelligence";
 import { FLEET_BUCKET_LABELS, fleetBucket, type FleetBucket } from "@/lib/fleet-condition";
 
-const BUCKET_ORDER: FleetBucket[] = ["healthy", "attention", "recovering", "data_quality", "insufficient_evidence"];
+const BUCKET_ORDER: FleetBucket[] = [
+  "healthy",
+  "attention",
+  "recovering",
+  "data_quality",
+  "insufficient_evidence",
+];
 
 // Matches the product's existing severity/tone vocabulary (terminology.ts): teal/emerald
 // for confidently normal, amber for something to look at, sky for a positive trend in

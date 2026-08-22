@@ -44,6 +44,7 @@ from app.domain.enums import (
     QualityState,
     TechnicianFindingResult,
 )
+from app.domain.models import Sensor
 from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
 from app.maintenance.services.maintenance_service import MaintenanceService
@@ -120,7 +121,9 @@ async def main() -> None:
 
         rows: list[dict[str, object]] = []
 
-        def add(sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None) -> None:
+        def add(
+            sensor: Sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None
+        ) -> None:
             rows.append(
                 envelope(
                     tenant_id=tenant_id,
@@ -265,7 +268,7 @@ async def main() -> None:
     recovery_rows: list[dict[str, object]] = []
 
     def add_recovery(
-        sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None
+        sensor: Sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None
     ) -> None:
         recovery_rows.append(
             envelope(

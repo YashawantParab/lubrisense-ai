@@ -19,12 +19,18 @@ from typing import Any
 from app.agent.domain.models import DraftArtifact, ToolResult
 from app.agent.tools.context import ToolContext
 from app.cmms.services.cmms_service import CMMSService, CMMSUnavailableError
+from app.condition_intelligence.repositories.condition_assessment_repository import (
+    ConditionAssessmentRepository,
+)
 from app.condition_intelligence.services.condition_query_service import (
     ConditionQueryMachineNotFoundError,
     ConditionQueryService,
 )
 from app.data_quality.repositories.sensor_quality_state_repository import (
     SensorQualityStateRepository,
+)
+from app.decision_intelligence.repositories.decision_assessment_repository import (
+    DecisionAssessmentRepository,
 )
 from app.decision_intelligence.services.decision_query_service import (
     DecisionQueryMachineNotFoundError,
@@ -42,6 +48,7 @@ from app.prognostics.services.prognostic_query_service import (
     PrognosticQueryService,
 )
 from app.repositories.machine import MachineRepository
+from app.repositories.pagination import PageParams
 
 
 def _require(arguments: dict[str, Any], key: str) -> str:
@@ -64,6 +71,113 @@ async def get_asset_context(ctx: ToolContext, arguments: dict[str, Any]) -> Tool
         "criticality": machine.criticality.value,
     }
     return ToolResult("get_asset_context", "OK", f"{machine.name} ({machine.asset_code}).", data)
+
+
+_ATTENTION_STATE_QUALITY = "SENSOR_OR_DATA_QUALITY_LIMITATION"
+_ATTENTION_STATE_INSUFFICIENT = "INSUFFICIENT_EVIDENCE"
+_ATTENTION_STATE_NORMAL = "NORMAL_OPERATION"
+_PENDING_MAINTENANCE_STATES = {
+    "NOT_STARTED",
+    "REVIEW_REQUIRED",
+    "PLANNED",
+    "IN_PROGRESS",
+    "AWAITING_VERIFICATION",
+}
+
+
+def _fleet_bucket(condition_type: str, lifecycle_state: str) -> str:
+    """Mirrors `frontend/src/lib/fleet-condition.ts::fleetBucket` exactly — same
+    partition, same precedence — so the assistant's fleet-wide answers never disagree
+    with what the Overview/Fleet pages already show for the same persisted data."""
+    if condition_type == _ATTENTION_STATE_INSUFFICIENT:
+        return "insufficient_evidence"
+    if condition_type == _ATTENTION_STATE_QUALITY:
+        return "data_quality"
+    if condition_type == _ATTENTION_STATE_NORMAL:
+        return "healthy"
+    if lifecycle_state == "IMPROVING":
+        return "recovering"
+    return "attention"
+
+
+async def list_fleet_attention(ctx: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+    """Fleet-wide, read-only snapshot — reads each machine's most recent already-
+    persisted `ConditionAssessment`/`DecisionAssessment` (mirrors `GET /conditions/
+    fleet-latest`/`GET /decisions/fleet-latest`) plus pending maintenance cases; never
+    recomputes anything, so asking a fleet-wide question can never quietly change a
+    machine's condition history. Only tool that isn't scoped to one machine/incident/
+    case — used when a chat turn has no such context (Overview/Fleet-page questions like
+    "which machines need attention?")."""
+    del arguments
+    machines_page = await MachineRepository(ctx.session).list(
+        ctx.tenant_id, params=PageParams(limit=200)
+    )
+    machines_by_id = {m.id: m for m in machines_page.items}
+
+    conditions = await ConditionAssessmentRepository(ctx.session).list_latest_for_tenant(
+        ctx.tenant_id
+    )
+    decisions = await DecisionAssessmentRepository(ctx.session).list_latest_for_tenant(
+        ctx.tenant_id
+    )
+    decisions_by_machine = {d.machine_id: d for d in decisions}
+
+    rows: list[dict[str, Any]] = []
+    for condition in conditions:
+        machine = machines_by_id.get(condition.machine_id)
+        if machine is None:
+            continue
+        bucket = _fleet_bucket(condition.condition_type.value, condition.lifecycle_state.value)
+        decision = decisions_by_machine.get(condition.machine_id)
+        rows.append(
+            {
+                "machine_id": str(machine.id),
+                "machine_name": machine.name,
+                "asset_code": machine.asset_code,
+                "condition_type": condition.condition_type.value,
+                "severity": condition.severity.value,
+                "confidence": condition.confidence.value,
+                "bucket": bucket,
+                "recommended_action": decision.recommended_action.value if decision else None,
+                "priority": decision.priority.value if decision else None,
+                "human_review_required": decision.human_review_required if decision else None,
+            }
+        )
+
+    needs_attention = [r for r in rows if r["bucket"] == "attention"]
+    data_quality_limited = [r for r in rows if r["bucket"] == "data_quality"]
+    pending_human_approval = [
+        r for r in rows if r["bucket"] == "attention" and r["human_review_required"]
+    ]
+
+    cases = await MaintenanceService(ctx.session).list_cases(ctx.tenant_id, limit=200)
+    pending_maintenance = [
+        {
+            "case_id": str(c.id),
+            "machine_id": str(c.machine_id),
+            "machine_name": machines_by_id[c.machine_id].name
+            if c.machine_id in machines_by_id
+            else None,
+            "state": c.state.value,
+            "recommended_action": c.recommended_action.value,
+        }
+        for c in cases
+        if c.state.value in _PENDING_MAINTENANCE_STATES
+    ]
+
+    data = {
+        "total_assessed": len(rows),
+        "needs_attention": needs_attention,
+        "data_quality_limited": data_quality_limited,
+        "pending_human_approval": pending_human_approval,
+        "pending_maintenance": pending_maintenance,
+    }
+    return ToolResult(
+        "list_fleet_attention",
+        "OK",
+        f"{len(needs_attention)} machine(s) need attention across {len(rows)} assessed machine(s).",
+        data,
+    )
 
 
 async def get_current_condition(ctx: ToolContext, arguments: dict[str, Any]) -> ToolResult:

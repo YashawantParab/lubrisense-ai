@@ -23,7 +23,7 @@ from app.agent.domain.models import (
     DraftArtifact,
     ToolResult,
 )
-from app.agent.policy import PHYSICAL_CONTROL_REFUSAL, classify_intent
+from app.agent.policy import PHYSICAL_CONTROL_REFUSAL, classify_intent, is_fleet_wide_query
 from app.agent.providers.llm_provider import DemoLLMProvider, LLMProvider, narrative_sections
 from app.agent.repositories.message_repository import AgentMessageRepository
 from app.agent.repositories.session_repository import AgentSessionRepository
@@ -149,6 +149,20 @@ class AgentService:
             if result.status == "OK" and result.data:
                 evidence["maintenance_case"] = result.data
 
+        # No machine/incident/case context — a fleet-wide question ("which machines need
+        # attention?"). Gathering this before retrieval (same structural rule as the
+        # scoped tools above) so a fleet-wide answer is grounded in real, persisted data
+        # exactly like every other answer this assistant gives.
+        if (
+            request.machine_id is None
+            and request.incident_id is None
+            and request.maintenance_case_id is None
+            and is_fleet_wide_query(request.message)
+        ):
+            result = await run("list_fleet_attention", {})
+            if result.status == "OK" and result.data:
+                evidence["fleet_attention"] = result.data
+
         # Enrich the retrieval query with the real, already-fetched condition type (when
         # available) — the user's raw message alone (e.g. "what should I inspect?") is
         # often too generic to distinguish which procedure applies; the condition_type is
@@ -242,7 +256,8 @@ class AgentService:
             limitations.append(f"LLM provider unavailable: {exc}")
 
         has_persisted_context = any(
-            key in evidence for key in ("condition", "decision", "incident", "maintenance_case")
+            key in evidence
+            for key in ("condition", "decision", "incident", "maintenance_case", "fleet_attention")
         )
         if not has_persisted_context and rag_status == "INSUFFICIENT":
             # Nothing real to ground on at all — the exact required response, never a

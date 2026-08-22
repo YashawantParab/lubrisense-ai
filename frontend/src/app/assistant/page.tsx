@@ -27,6 +27,7 @@ interface ConversationTurn {
  * reviewer; it shows what kind of evidence that call actually grounded the answer in.
  */
 const TOOL_LABELS: Record<string, string> = {
+  list_fleet_attention: "Fleet-wide condition & decision snapshot",
   get_asset_context: "Machine identity",
   get_current_condition: "Condition assessment",
   get_current_decision: "Decision Intelligence",
@@ -55,7 +56,12 @@ function sourceCount(response: ChatResponse): number {
 type AssistantContext = "none" | "machine" | "incident" | "case";
 
 const STARTER_PROMPTS: Record<AssistantContext, string[]> = {
-  none: [],
+  none: [
+    "Which machines need attention?",
+    "Which machines have poor data quality?",
+    "What maintenance actions are currently pending?",
+    "Which machines are eligible for human-approved action?",
+  ],
   machine: [
     "What is this machine's current condition?",
     "What evidence supports that assessment?",
@@ -221,14 +227,25 @@ function AssistantPageInner() {
           (assistantContext === "none" ? (
             <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-zinc-300 py-10 text-center dark:border-zinc-700">
               <p className="text-base font-medium text-zinc-700 dark:text-zinc-300">
-                Select a machine to get started
+                Ask about the fleet, or pick one machine
               </p>
               <p className="max-w-md text-sm text-zinc-500 dark:text-zinc-400">
-                The assistant explains one machine&rsquo;s persisted condition, decision, and
-                maintenance history at a time — it doesn&rsquo;t reason across the fleet. Pick a
-                machine above, or jump in from a machine, incident, or maintenance page with
-                &ldquo;Ask Assistant&rdquo;.
+                Fleet-wide questions are grounded in every machine&rsquo;s persisted condition and
+                decision; picking a machine, incident, or maintenance case above (or via &ldquo;Ask
+                Assistant&rdquo; on that page) scopes the conversation to it instead.
               </p>
+              <div className="mt-1 flex flex-wrap justify-center gap-2">
+                {starterPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => sendMessage(prompt)}
+                    className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/60"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
               <div className="mt-1 flex gap-3 text-xs">
                 <Link href="/fleet" className="text-sky-600 hover:underline dark:text-sky-400">
                   Browse fleet →

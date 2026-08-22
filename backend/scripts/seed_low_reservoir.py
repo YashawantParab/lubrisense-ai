@@ -29,6 +29,7 @@ from datetime import UTC, datetime, timedelta
 from app.baselines.workers.backfill import backfill
 from app.core.config import get_settings
 from app.domain.enums import Eligibility, IncidentState, QualityState
+from app.domain.models import Sensor
 from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
 from app.repositories.telemetry import TelemetryRepository
@@ -37,7 +38,6 @@ from scripts._scenario_seed_common import (
     advance_incident_to,
     envelope,
     mark_sensor_quality,
-    replay_state_estimates,
     reset_machine_data,
     resolve_machine,
 )
@@ -72,30 +72,42 @@ async def main() -> None:
         def jitter(value: float, magnitude: float) -> float:
             return value + rng.uniform(-magnitude, magnitude)
 
-        # A single CONSTANT depletion rate across the whole window (healthy segment and
-        # "decline" segment alike) from a healthy ~48% down to ~14% by "now" — through the
-        # 20% warning threshold but well clear of the 8% critical threshold ("plan a
-        # refill", not "empty"). Deliberately not a *rate change*: `reprocess()`'s
-        # `window_override` makes the recent-window depletion-rate check compare only the
-        # decline-phase segment against the healthy-segment baseline, so a rate that
-        # actually accelerates between the two phases would also trip
-        # `RESERVOIR_DEPLETION_ABNORMAL` (`POSSIBLE_LEAKAGE_PATTERN`) alongside
-        # `RESERVOIR_LEVEL_LOW` — a real interaction found while iterating on this script.
-        # A steady, unchanged consumption rate that simply continues until it crosses the
-        # threshold is both the more realistic "low reservoir" story and the one that
-        # keeps this scenario a single, unambiguous condition.
+        # Two DISTINCT depletion rates, matching `seed_flagship_story.py`'s own proven
+        # reservoir technique — NOT a single constant rate. `reprocess(tenant_id,
+        # machine_id, decline_start, now)` scopes its "recent" window to exactly the
+        # decline phase, compared against the baseline built from exactly the healthy
+        # phase (`backfill(healthy_start, decline_start)`); `RESERVOIR_DEPLETION_ABNORMAL`
+        # only fires when the recent rate exceeds the baseline rate. An earlier version of
+        # this script used one constant rate across both phases, intending "no rate
+        # change, so no leakage signal" — but a baseline built from a perfectly consistent
+        # linear rate has a near-zero MAD, so even trivial noise-driven differences between
+        # the two windows' *measured* rates occasionally read as a huge standardized
+        # deviation and spuriously fire `RESERVOIR_DEPLETION_ABNORMAL` alongside
+        # `RESERVOIR_LEVEL_LOW`, producing `AMBIGUOUS_CONDITION` instead of the intended
+        # single-cause `LOW_LUBRICANT_AVAILABILITY` (found empirically re-running this
+        # script). A decline-phase rate that is DISTINCTLY (not marginally) slower than the
+        # healthy-phase rate keeps the recent/baseline ratio safely under the
+        # `depletion_rate_abnormal_multiplier: 1.75` threshold regardless of noise.
         HEALTHY_LEVEL = 48.0
-        FINAL_LEVEL = 14.0
-        TOTAL_MINUTES = (now - healthy_start).total_seconds() / 60.0
-        RATE_PCT_PER_MIN = (HEALTHY_LEVEL - FINAL_LEVEL) / TOTAL_MINUTES
+        MID_LEVEL = 22.0
+        FINAL_LEVEL = 15.0
+        _healthy_minutes = (decline_start - healthy_start).total_seconds() / 60.0
+        _decline_minutes = (now - decline_start).total_seconds() / 60.0
+        HEALTHY_RATE_PCT_PER_MIN = (HEALTHY_LEVEL - MID_LEVEL) / _healthy_minutes
+        DECLINE_RATE_PCT_PER_MIN = (MID_LEVEL - FINAL_LEVEL) / _decline_minutes
 
         def reservoir_value(t: datetime) -> float:
-            minutes = (t - healthy_start).total_seconds() / 60.0
-            return HEALTHY_LEVEL - RATE_PCT_PER_MIN * minutes
+            if t <= decline_start:
+                minutes = (t - healthy_start).total_seconds() / 60.0
+                return HEALTHY_LEVEL - HEALTHY_RATE_PCT_PER_MIN * minutes
+            minutes_after = (t - decline_start).total_seconds() / 60.0
+            return MID_LEVEL - DECLINE_RATE_PCT_PER_MIN * minutes_after
 
         rows: list[dict[str, object]] = []
 
-        def add(sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None) -> None:
+        def add(
+            sensor: Sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None
+        ) -> None:
             rows.append(
                 envelope(
                     tenant_id=tenant_id,
@@ -176,20 +188,13 @@ async def main() -> None:
         await reprocess(tenant_id, machine_id, decline_start, now)
     print("Reprocessed rules over the decline window")
 
-    try:
-        ticks = await replay_state_estimates(
-            database,
-            tenant_id,
-            machine_id,
-            "LUBRICATION_DELIVERY_STATE",
-            tuple(healthy_start + (now - healthy_start) * f for f in (0.0, 0.55, 0.8, 0.95, 1.0)),
-        )
-        print(f"Computed {ticks} LUBRICATION_DELIVERY_STATE ticks")
-    except Exception as exc:  # noqa: BLE001 - best-effort for this demo story
-        print(
-            f"State estimation skipped ({exc}) — condition/decision still work "
-            "from rule evidence alone"
-        )
+    # Deliberately no `LUBRICATION_DELIVERY_STATE` replay here (unlike the other scenario
+    # scripts) — found empirically that a state-estimate vote on this machine's reservoir
+    # trend reads as a second, competing hypothesis alongside the rule-based
+    # `RESERVOIR_LEVEL_LOW` -> `LOW_LUBRICANT_AVAILABILITY` evidence, producing
+    # `AMBIGUOUS_CONDITION` instead of this scenario's intended single-cause story. The
+    # condition/decision/incident chain works correctly from rule evidence alone, which is
+    # the only evidence this specific scenario needs.
 
     async with database.session() as session:
         incidents = IncidentService(session)

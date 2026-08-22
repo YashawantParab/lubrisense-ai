@@ -47,8 +47,20 @@ _FOCUS_KEYWORDS: dict[str, tuple[str, ...]] = {
     "condition": ("why", "happening", "cause", "diagnos", "evidence"),
     "maintenance_case": ("maintenance", "checklist", "technician", "work order", "confirm"),
     "incident": ("incident", "what happened"),
+    "fleet_attention": (
+        "which machine",
+        "which asset",
+        "fleet",
+        "need attention",
+        "needs attention",
+        "data quality",
+        "pending",
+        "eligible for",
+        "automation blocked",
+    ),
 }
 _DEFAULT_ORDER = (
+    "fleet_attention",
     "condition",
     "decision",
     "incident",
@@ -61,13 +73,14 @@ _FOCUS_ORDER_OVERRIDES: dict[str, tuple[str, ...]] = {
     focus: (focus, *(key for key in _DEFAULT_ORDER if key != focus)) for focus in _FOCUS_KEYWORDS
 }
 
-#: The four narrative sections a reviewer reads as "the story" — procedure/service_case
+#: The narrative sections a reviewer reads as "the story" — procedure/service_case
 #: excerpts are real evidence too, but belong in the frontend's collapsed Sources list
 #: (via `AgentResponse.citations`, already populated for both), not the primary answer,
 #: once there is real narrative to lead with (see `build_sections` docstring).
-NARRATIVE_KEYS = ("condition", "decision", "incident", "maintenance_case")
+NARRATIVE_KEYS = ("fleet_attention", "condition", "decision", "incident", "maintenance_case")
 
 SECTION_LABELS: dict[str, str] = {
+    "fleet_attention": "Fleet attention",
     "condition": "Current condition",
     "decision": "Recommendation",
     "incident": "Recent significant event",
@@ -99,6 +112,47 @@ def build_sections(evidence: dict[str, Any]) -> dict[str, str]:
     values stay available unmodified in `evidence`/`tool_calls` for anyone who needs
     them."""
     sections: dict[str, str] = {}
+
+    fleet = evidence.get("fleet_attention")
+    if fleet:
+        needs_attention = fleet.get("needs_attention") or []
+        if not needs_attention:
+            parts = ["No machines currently need attention across the monitored fleet."]
+        else:
+            listed = ", ".join(
+                f"{r['machine_name']} ({_human(r['condition_type'])}, "
+                f"{_human(r['severity'])} severity"
+                + (
+                    f", recommended: {_human(r['recommended_action'])}"
+                    if r["recommended_action"]
+                    else ""
+                )
+                + ")"
+                for r in needs_attention[:5]
+            )
+            parts = [f"{len(needs_attention)} machine(s) need attention: {listed}."]
+        data_quality_limited = fleet.get("data_quality_limited") or []
+        if data_quality_limited:
+            names = ", ".join(r["machine_name"] for r in data_quality_limited[:5])
+            parts.append(
+                f"{len(data_quality_limited)} machine(s) are data-quality limited: {names}."
+            )
+        pending_approval = fleet.get("pending_human_approval") or []
+        if pending_approval:
+            names = ", ".join(r["machine_name"] for r in pending_approval[:5])
+            parts.append(
+                f"{len(pending_approval)} machine(s) have a recommendation awaiting "
+                f"human approval: {names}."
+            )
+        pending_maintenance = fleet.get("pending_maintenance") or []
+        if pending_maintenance:
+            names = ", ".join(
+                f"{c['machine_name']} ({_human(c['recommended_action'])})"
+                for c in pending_maintenance[:5]
+                if c["machine_name"]
+            )
+            parts.append(f"{len(pending_maintenance)} maintenance case(s) pending: {names}.")
+        sections["fleet_attention"] = " ".join(parts)
 
     condition = evidence.get("condition")
     if condition:
@@ -155,9 +209,7 @@ def build_sections(evidence: dict[str, Any]) -> dict[str, str]:
 
     service_case_results = evidence.get("service_case_results") or []
     if service_case_results:
-        excerpts = "; ".join(
-            f"{r['document_title']}: {r['excerpt']}" for r in service_case_results
-        )
+        excerpts = "; ".join(f"{r['document_title']}: {r['excerpt']}" for r in service_case_results)
         sections["service_case"] = f"A similar synthetic service case recorded: {excerpts}"
 
     draft_artifacts = evidence.get("draft_artifacts") or []

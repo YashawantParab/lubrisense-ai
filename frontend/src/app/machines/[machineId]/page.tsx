@@ -37,6 +37,12 @@ import {
 import { useMachineFindings } from "@/hooks/use-rules";
 import { useLatestStateEstimates } from "@/hooks/use-state-estimation";
 import { useMachineTelemetry } from "@/hooks/use-telemetry";
+import {
+  READINESS_MODE_LABEL,
+  READINESS_MODE_TONE,
+  readinessModeFor,
+  readinessReasonsFor,
+} from "@/lib/action-readiness";
 import { interpretState, STATE_TYPE_LABELS } from "@/lib/state-interpretation";
 import { humanize, toneForStatus } from "@/lib/terminology";
 import type {
@@ -213,6 +219,24 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   }, [cases.data, machineId, activeIncident]);
   const caseFindings = useMaintenanceFindings(machineCase?.id ?? "");
   const caseActions = useMaintenanceActions(machineCase?.id ?? "");
+
+  const readiness = useMemo(() => {
+    if (!intelligence.data || !hierarchy.data) return null;
+    const mode = readinessModeFor(
+      intelligence.data.condition,
+      intelligence.data.decision,
+      hierarchy.data.machine.status,
+    );
+    return {
+      mode,
+      reasons: readinessReasonsFor(
+        intelligence.data.condition,
+        intelligence.data.decision,
+        hierarchy.data.machine.status,
+        mode,
+      ),
+    };
+  }, [intelligence.data, hierarchy.data]);
   const caseFeedback = useMaintenanceFeedback(machineCase?.id ?? "");
 
   const decisionHistory = useDecisionHistory(machineId);
@@ -340,6 +364,18 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                   </p>
                 )}
               </div>
+              {readiness && (
+                <div>
+                  <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                    Can the system take action?
+                  </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <StatusPill tone={READINESS_MODE_TONE[readiness.mode]}>
+                      {READINESS_MODE_LABEL[readiness.mode]}
+                    </StatusPill>
+                  </div>
+                </div>
+              )}
               {activeIncident ? (
                 <Link
                   href={`/incidents/${activeIncident.id}`}
@@ -523,6 +559,24 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                     <p className="text-sm text-zinc-700 dark:text-zinc-300">
                       Risk if deferred: {intelligence.data.decision.risk_if_deferred}
                     </p>
+                    {readiness && (
+                      <details className="border-t border-zinc-100 pt-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                        <summary className="cursor-pointer font-medium text-sky-600 select-none dark:text-sky-400">
+                          Why: {READINESS_MODE_LABEL[readiness.mode]}
+                        </summary>
+                        <ul className="mt-1.5 list-inside list-disc space-y-0.5">
+                          {readiness.reasons.map((reason) => (
+                            <li key={reason}>{reason}</li>
+                          ))}
+                        </ul>
+                        <Link
+                          href="/action-readiness"
+                          className="mt-1.5 inline-block text-sky-600 hover:underline dark:text-sky-400"
+                        >
+                          View fleet action readiness →
+                        </Link>
+                      </details>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">

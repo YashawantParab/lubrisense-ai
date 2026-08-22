@@ -8,6 +8,8 @@
 export interface DependencyStatus {
   name: string;
   healthy: boolean;
+  required: boolean;
+  status: "healthy" | "unhealthy" | "unavailable_optional";
 }
 
 export interface ReadinessResponse {

@@ -27,7 +27,10 @@ export function DataTrustSummary() {
     <SectionCard
       title="Data trust"
       actions={
-        <Link href="/data-quality" className="text-xs text-sky-600 hover:underline dark:text-sky-400">
+        <Link
+          href="/data-quality"
+          className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+        >
           View data quality
         </Link>
       }

@@ -32,6 +32,7 @@ from app.domain.enums import Eligibility, IncidentState, QualityState, Telemetry
 from app.domain.models import (
     Bearing,
     Circuit,
+    Incident,
     LubricationSystem,
     Machine,
     Pump,
@@ -43,6 +44,7 @@ from app.domain.models import (
 )
 from app.features.config.policy import load_feature_policy
 from app.features.services.feature_engine import FeatureEngine
+from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
 from app.state_estimation.config.policy import load_state_estimation_config
 from app.state_estimation.domain.models import PriorEstimate
@@ -231,7 +233,9 @@ async def mark_sensor_quality(
 _INCIDENT_ACK_CHAIN = (IncidentState.OPEN, IncidentState.ACKNOWLEDGED, IncidentState.INVESTIGATING)
 
 
-async def advance_incident_to(incidents, tenant_id: uuid.UUID, incident, target: IncidentState):
+async def advance_incident_to(
+    incidents: IncidentService, tenant_id: uuid.UUID, incident: Incident, target: IncidentState
+) -> Incident:
     """Idempotently walk a freshly-created/correlated incident forward to `target`
     (ACKNOWLEDGED or INVESTIGATING) via the real `IncidentService` transition calls,
     skipping any step the incident has already passed — a second run of the same seed

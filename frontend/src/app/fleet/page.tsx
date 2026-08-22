@@ -5,14 +5,25 @@ import { useMemo, useState } from "react";
 
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
-import { ConfidenceBadge, IncidentStateBadge, SeverityBadge } from "@/components/badges";
+import {
+  ConfidenceBadge,
+  IncidentStateBadge,
+  PriorityBadge,
+  SeverityBadge,
+} from "@/components/badges";
 import { PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
 import { StatusPill } from "@/components/status-pill";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
-import { useFleetLatestConditions } from "@/hooks/use-intelligence";
+import { useFleetLatestConditions, useFleetLatestDecisions } from "@/hooks/use-intelligence";
 import { usePriorityIncident } from "@/hooks/use-priority-incident";
+import {
+  READINESS_MODE_LABEL,
+  READINESS_MODE_TONE,
+  effectiveRecommendedAction,
+  readinessModeFor,
+} from "@/lib/action-readiness";
 import { FLEET_BUCKET_TONE, fleetBucket } from "@/lib/fleet-condition";
 import { humanize, toneForStatus } from "@/lib/terminology";
 import type { HierarchyMachine } from "@/lib/api/asset-hierarchy-types";
@@ -32,6 +43,7 @@ export default function FleetPage() {
   const hierarchy = useHierarchy();
   const { data: incidents, priorityIncident } = usePriorityIncident();
   const conditions = useFleetLatestConditions();
+  const decisions = useFleetLatestDecisions();
   const [search, setSearch] = useState("");
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>("all");
 
@@ -61,6 +73,11 @@ export default function FleetPage() {
   const conditionByMachine = useMemo(
     () => new Map((conditions.data ?? []).map((c) => [c.machine_id, c])),
     [conditions.data],
+  );
+
+  const decisionByMachine = useMemo(
+    () => new Map((decisions.data ?? []).map((d) => [d.machine_id, d])),
+    [decisions.data],
   );
 
   const openIncidentsByMachine = useMemo(() => {
@@ -181,9 +198,10 @@ export default function FleetPage() {
                 <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
                   <th className="px-4 py-2 font-medium">Machine</th>
                   <th className="px-4 py-2 font-medium">Condition</th>
-                  <th className="px-4 py-2 font-medium">Location</th>
+                  <th className="px-4 py-2 font-medium">Recommended action</th>
+                  <th className="px-4 py-2 font-medium">Action readiness</th>
                   <th className="px-4 py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 font-medium">Criticality</th>
+                  <th className="px-4 py-2 font-medium">Asset criticality</th>
                 </tr>
               </thead>
               <tbody>
@@ -218,6 +236,9 @@ export default function FleetPage() {
                         </div>
                         <div className="text-xs text-zinc-500 dark:text-zinc-400">
                           {row.machine.asset_code} · {row.machine.machine_type}
+                        </div>
+                        <div className="text-xs text-zinc-400 dark:text-zinc-600">
+                          {row.siteName} / {row.plantName} / {row.lineName}
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
@@ -265,8 +286,43 @@ export default function FleetPage() {
                           )
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-400">
-                        {row.customerName} / {row.siteName} / {row.plantName} / {row.lineName}
+                      <td className="px-4 py-2.5">
+                        {(() => {
+                          const condition = conditionByMachine.get(row.machine.id);
+                          const decision = decisionByMachine.get(row.machine.id) ?? null;
+                          const effective = condition
+                            ? effectiveRecommendedAction(condition, decision)
+                            : null;
+                          return effective ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-zinc-700 dark:text-zinc-300">
+                                {humanize(effective.action)}
+                              </span>
+                              <PriorityBadge value={effective.priority} />
+                            </div>
+                          ) : (
+                            <span className="text-xs text-zinc-400 dark:text-zinc-600">
+                              Not yet decided
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {(() => {
+                          const condition = conditionByMachine.get(row.machine.id);
+                          const decision = decisionByMachine.get(row.machine.id) ?? null;
+                          if (!condition) {
+                            return (
+                              <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>
+                            );
+                          }
+                          const mode = readinessModeFor(condition, decision, row.machine.status);
+                          return (
+                            <StatusPill tone={READINESS_MODE_TONE[mode]}>
+                              {READINESS_MODE_LABEL[mode]}
+                            </StatusPill>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-2.5">
                         <StatusPill tone={toneForStatus(row.machine.status)}>

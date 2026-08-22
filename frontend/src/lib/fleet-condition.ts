@@ -9,11 +9,7 @@ import type { Tone } from "@/lib/terminology";
  * because its condition_type happens to read NORMAL_OPERATION-adjacent.
  */
 export type FleetBucket =
-  | "insufficient_evidence"
-  | "data_quality"
-  | "recovering"
-  | "healthy"
-  | "attention";
+  "insufficient_evidence" | "data_quality" | "recovering" | "healthy" | "attention";
 
 export const FLEET_BUCKET_LABELS: Record<FleetBucket, string> = {
   healthy: "Healthy / stable",

@@ -308,8 +308,7 @@ export default function MaintenanceCaseDetailPage({
                   <SectionCard title="Complete case">
                     <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
                       Requires an explicit feedback classification; runs a real, fresh post-action
-                      condition re-check rather than closing solely because this button was
-                      clicked.
+                      condition re-check rather than closing solely because this button was clicked.
                     </p>
                     <select
                       value={classification}
@@ -352,8 +351,7 @@ export default function MaintenanceCaseDetailPage({
                     <div className="flex flex-col gap-1.5">
                       <FeedbackBadge value={feedback.data.classification} />
                       <span className="text-sm text-zinc-700 dark:text-zinc-300">
-                        Post-action condition:{" "}
-                        {humanize(feedback.data.post_action_condition_type)}
+                        Post-action condition: {humanize(feedback.data.post_action_condition_type)}
                       </span>
                     </div>
                   </SectionCard>

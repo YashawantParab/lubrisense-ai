@@ -57,6 +57,7 @@ from app.domain.enums import (
     QualityIssueType,
     QualityState,
 )
+from app.domain.models import Sensor
 from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
 from app.repositories.telemetry import TelemetryRepository
@@ -102,7 +103,9 @@ async def main() -> None:
 
         rows: list[dict[str, object]] = []
 
-        def add(sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None) -> None:
+        def add(
+            sensor: Sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None
+        ) -> None:
             rows.append(
                 envelope(
                     tenant_id=tenant_id,
