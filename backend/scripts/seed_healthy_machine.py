@@ -47,6 +47,7 @@ from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
 from app.repositories.telemetry import TelemetryRepository
 from app.rules_engine.workers.reprocess import reprocess
+from scripts._scenario_seed_common import reset_machine_workflow_history
 
 HEALTHY_MACHINE_ASSET_CODE = "L1-7B43-M001"
 DEMO_TENANT_SLUG = "lubrisense-demo"
@@ -159,9 +160,13 @@ def _envelope(
         "source_timestamp": t,
         "edge_received_timestamp": t,
         "edge_emitted_timestamp": None,
-        "mqtt_received_timestamp": now,
-        "kafka_published_timestamp": now,
-        "consumer_received_timestamp": now,
+        # A constant small latency after `t`, not the single seed-time `now` for every
+        # row — see the identical comment in `seed_flagship_story.py`'s own `_envelope()`
+        # for why: pinning every row's receipt timestamps to one `now` across a
+        # backfilled multi-hour series spuriously trips `CLOCK_DRIFT_SUSPECTED`.
+        "mqtt_received_timestamp": t + timedelta(seconds=1.5),
+        "kafka_published_timestamp": t + timedelta(seconds=1.5),
+        "consumer_received_timestamp": t + timedelta(seconds=1.5),
         "sequence_number": 1,
         "gateway_id": GATEWAY_CODE,
         "device_id": DEVICE_ID,
@@ -208,6 +213,11 @@ async def main() -> None:
                 StateEstimate.tenant_id == tenant_id, StateEstimate.machine_id == machine_id
             )
         )
+        # Also clears any prior incident/maintenance history for this machine — belt and
+        # braces alongside the flagship script's identical fix: this machine's own
+        # `evaluate_machine()` call below is expected to find nothing (healthy telemetry),
+        # but keeps a stray finding from an earlier run's jitter from accumulating.
+        await reset_machine_workflow_history(session, tenant_id, machine_id)
         await session.commit()
 
         # Fixed seed (not time-based) — deterministic across runs, same reasoning as the
@@ -264,6 +274,11 @@ async def main() -> None:
                 quality_state=QualityState.TRUSTED,
                 eligibility=Eligibility.ELIGIBLE,
                 policy_version="1",
+                # Merge-patch upsert (see `_scenario_seed_common.mark_sensor_quality`'s
+                # docstring): without this, a previous run's stale `last_observed_at`
+                # survives untouched and produces a phantom STALE_STREAM issue.
+                last_observed_at=now,
+                last_source_timestamp_seen=now,
             )
         await session.commit()
         print(f"Marked {len(all_sensor_ids)} sensors ELIGIBLE")

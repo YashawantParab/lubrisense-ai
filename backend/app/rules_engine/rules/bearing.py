@@ -41,7 +41,20 @@ def check_independent_bearing_pattern(
     for f in present:
         combined_evidence.update(f.evidence)
 
-    signal_names = " and ".join(f.finding_type.value.split("_")[0].lower() for f in present)
+    # `RuleFindingType.BEARING_TEMPERATURE_ABOVE_CONTEXTUAL_BASELINE`.split("_")[0] is
+    # "BEARING" — reusing that generic first-segment extraction here produced "Bearing
+    # bearing and vibration deviates..." once both findings were present (found live on
+    # the first real bearing-scenario demo machine to exercise this path with both
+    # signals active). A short explicit label per signal reads correctly in the
+    # "Bearing {signal_names} deviates..." template below.
+    signal_labels = {
+        RuleFindingType.BEARING_TEMPERATURE_ABOVE_CONTEXTUAL_BASELINE: "temperature",
+        RuleFindingType.VIBRATION_ABOVE_CONTEXTUAL_BASELINE: "vibration",
+    }
+    signal_names = " and ".join(
+        signal_labels.get(f.finding_type, f.finding_type.value.split("_")[0].lower())
+        for f in present
+    )
     return RuleFindingCandidate(
         finding_type=RuleFindingType.INDEPENDENT_BEARING_CONDITION_PATTERN,
         rule_id="independent_bearing_condition_pattern",

@@ -66,6 +66,7 @@ from app.state_estimation.config.policy import load_state_estimation_config
 from app.state_estimation.domain.models import PriorEstimate
 from app.state_estimation.models.estimator import FeatureTick, StateEstimator
 from app.state_estimation.repositories.state_estimate_repository import StateEstimateRepository
+from scripts._scenario_seed_common import reset_machine_workflow_history
 
 FLAGSHIP_ASSET_CODE = "L1-7B43-M000"
 DEMO_TENANT_SLUG = "lubrisense-demo"
@@ -196,9 +197,17 @@ def _envelope(
         "source_timestamp": t,
         "edge_received_timestamp": t,
         "edge_emitted_timestamp": None,
-        "mqtt_received_timestamp": now,
-        "kafka_published_timestamp": now,
-        "consumer_received_timestamp": now,
+        # A constant small latency after `t`, not the single seed-time `now` for every
+        # row — pinning every row's receipt timestamps to one `now` across a backfilled
+        # multi-hour series makes `mqtt_received_timestamp - source_timestamp` shrink
+        # linearly from hours down to ~0, which `app.data_quality.rules.timeliness.
+        # check_clock_status` reads as a *progressive* clock drift and spuriously flags
+        # `CLOCK_DRIFT_SUSPECTED` on nearly every sensor — pure backfill artifact, not a
+        # real timeliness problem (found empirically; the check explicitly distinguishes
+        # a flat offset like this from real drift).
+        "mqtt_received_timestamp": t + timedelta(seconds=1.5),
+        "kafka_published_timestamp": t + timedelta(seconds=1.5),
+        "consumer_received_timestamp": t + timedelta(seconds=1.5),
         "sequence_number": 1,
         "gateway_id": GATEWAY_CODE,
         "device_id": "flagship-story-seed",
@@ -267,6 +276,16 @@ async def main() -> None:
                 StateEstimate.machine_id == machine_id,
             )
         )
+        # Also clears prior incident/maintenance workflow history for this machine —
+        # `IncidentService`'s correlation-key dedup only ever looks at currently-OPEN
+        # incidents, so every re-run of this script that reaches RESOLVED previously
+        # created a brand-new incident/case rather than reusing the old one, silently
+        # accumulating dozens of duplicate "resolved" rows on the Incidents page over a
+        # demo's development life (found live: the large majority of a 54-incident list
+        # were duplicates of exactly this machine and one other). See
+        # `reset_machine_workflow_history`'s own docstring for the full FK-safe delete
+        # order.
+        await reset_machine_workflow_history(session, tenant_id, machine_id)
         await session.commit()
 
         rows: list[dict[str, object]] = []
@@ -291,18 +310,20 @@ async def main() -> None:
                 minutes = (t - healthy_start).total_seconds() / 60.0
                 return 60.0 - HEALTHY_RESERVOIR_RATE_PERCENT_PER_MIN * minutes
             minutes_after = (t - restriction_start).total_seconds() / 60.0
-            return (
-                _restriction_anchor
-                - POST_HEALTHY_RESERVOIR_RATE_PERCENT_PER_MIN * minutes_after
-            )
+            return _restriction_anchor - POST_HEALTHY_RESERVOIR_RATE_PERCENT_PER_MIN * minutes_after
 
         def add(
             sensor: Sensor, value: float, t: datetime, *, circuit: uuid.UUID | None = None
         ) -> None:
             rows.append(
                 _envelope(
-                    tenant_id=tenant_id, machine_id=machine_id, sensor=sensor,
-                    value=value, t=t, now=now, circuit_id=circuit,
+                    tenant_id=tenant_id,
+                    machine_id=machine_id,
+                    sensor=sensor,
+                    value=value,
+                    t=t,
+                    now=now,
+                    circuit_id=circuit,
                 )
             )
 
@@ -410,9 +431,18 @@ async def main() -> None:
             try:
                 async with database.session() as session:
                     await SensorQualityStateRepository(session).upsert(
-                        tenant_id, sid, machine_id=machine_id,
-                        quality_state=QualityState.TRUSTED, eligibility=Eligibility.ELIGIBLE,
+                        tenant_id,
+                        sid,
+                        machine_id=machine_id,
+                        quality_state=QualityState.TRUSTED,
+                        eligibility=Eligibility.ELIGIBLE,
                         policy_version="1",
+                        # See `_scenario_seed_common.mark_sensor_quality`'s docstring: this
+                        # is a merge-patch upsert, so omitting `last_observed_at` would leave
+                        # a previous run's now-stale timestamp in place and produce a
+                        # phantom STALE_STREAM issue against telemetry this run just wrote.
+                        last_observed_at=now,
+                        last_source_timestamp_seen=now,
                     )
                     await session.commit()
                 return
@@ -485,9 +515,7 @@ async def main() -> None:
                         as_of_timestamp=computed.as_of_timestamp,
                         feature_values=computed.feature_values,
                         missing_features=computed.missing_features,
-                        quality_state=str(
-                            computed.quality_summary.get("state", "NO_TRUSTED_DATA")
-                        ),
+                        quality_state=str(computed.quality_summary.get("state", "NO_TRUSTED_DATA")),
                     )
                     state_repo = StateEstimateRepository(session)
                     prior_row = await state_repo.get_latest(
@@ -532,9 +560,7 @@ async def main() -> None:
         lubrication_ticks = await _replay(
             "LUBRICATION_DELIVERY_STATE", _times((0.0, 0.6, 0.82, 0.84, 0.86))
         )
-        bearing_ticks = await _replay(
-            "BEARING_CONDITION_STATE", _times((0.0, 0.6, 0.9, 0.95, 1.0))
-        )
+        bearing_ticks = await _replay("BEARING_CONDITION_STATE", _times((0.0, 0.6, 0.9, 0.95, 1.0)))
         total_ticks = lubrication_ticks + bearing_ticks
         print(f"Computed {total_ticks} state estimate ticks across the story window")
     except Exception as exc:  # noqa: BLE001 - best-effort for this demo story
@@ -615,8 +641,13 @@ async def main() -> None:
     ) -> None:
         recovery_rows.append(
             _envelope(
-                tenant_id=tenant_id, machine_id=machine_id, sensor=sensor,
-                value=value, t=t, now=recovery_end, circuit_id=circuit,
+                tenant_id=tenant_id,
+                machine_id=machine_id,
+                sensor=sensor,
+                value=value,
+                t=t,
+                now=recovery_end,
+                circuit_id=circuit,
             )
         )
 

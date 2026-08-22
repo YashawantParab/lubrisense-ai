@@ -151,6 +151,7 @@ async def main() -> None:
             sid,
             quality_state=QualityState.TRUSTED,
             eligibility=Eligibility.ELIGIBLE,
+            last_observed_at=now,
         )
     print(f"Marked {len(trusted_sensor_ids)} lubrication-delivery sensors ELIGIBLE/TRUSTED")
 
@@ -170,6 +171,7 @@ async def main() -> None:
             sensor.id,
             quality_state=QualityState.UNUSABLE,
             eligibility=Eligibility.INELIGIBLE,
+            last_observed_at=now,
         )
         async with database.session() as session:
             assessment = await QualityAssessmentRepository(session).create_window_assessment(

@@ -140,6 +140,7 @@ async def main() -> None:
             sid,
             quality_state=QualityState.TRUSTED,
             eligibility=Eligibility.ELIGIBLE,
+            last_observed_at=now,
         )
     print(f"Marked {len(all_sensor_ids)} sensors ELIGIBLE")
 
@@ -156,6 +157,7 @@ async def main() -> None:
             sid,
             quality_state=QualityState.TRUSTED,
             eligibility=Eligibility.ELIGIBLE,
+            last_observed_at=now,
         )
 
     for _ in range(3):

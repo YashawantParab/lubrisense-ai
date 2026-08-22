@@ -156,6 +156,7 @@ async def main() -> None:
             sid,
             quality_state=QualityState.TRUSTED,
             eligibility=Eligibility.ELIGIBLE,
+            last_observed_at=now,
         )
     print(f"Marked {len(all_sensor_ids)} sensors ELIGIBLE")
 
@@ -172,6 +173,7 @@ async def main() -> None:
             sid,
             quality_state=QualityState.TRUSTED,
             eligibility=Eligibility.ELIGIBLE,
+            last_observed_at=now,
         )
 
     # RESERVOIR window is 6h (demo_rules_policy.yaml window_minutes.by_category.RESERVOIR)

@@ -9,12 +9,13 @@ import {
   PriorityBadge,
   SeverityBadge,
 } from "@/components/badges";
-import { evidenceBackingLine } from "@/components/condition-evidence";
+import { EvidenceWhyDetails, evidenceBackingLine } from "@/components/condition-evidence";
 import { EmptyState } from "@/components/empty-state";
 import { SectionCard } from "@/components/section-card";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useIncidents } from "@/hooks/use-incidents";
 import { useFleetLatestConditions, useFleetLatestDecisions } from "@/hooks/use-intelligence";
+import { conditionInterpretation } from "@/lib/condition-interpretation";
 import { fleetBucket, severityRank } from "@/lib/fleet-condition";
 import { humanize } from "@/lib/terminology";
 import type { HierarchyMachine } from "@/lib/api/asset-hierarchy-types";
@@ -138,11 +139,16 @@ export function AttentionQueue({ limit = 5 }: { limit?: number }) {
                 {humanize(condition.condition_type)}
               </p>
               <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
-                {condition.evidence_summary.what_is_happening}
+                {conditionInterpretation(condition.condition_type)}
               </p>
               <p className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-600">
                 {evidenceBackingLine(condition)}
               </p>
+              <EvidenceWhyDetails why={condition.evidence_summary.why}>
+                <p className="text-zinc-700 dark:text-zinc-300">
+                  {condition.evidence_summary.what_is_happening}
+                </p>
+              </EvidenceWhyDetails>
 
               <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <div>

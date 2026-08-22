@@ -1,3 +1,4 @@
+import { conditionInterpretation } from "@/lib/condition-interpretation";
 import { fleetBucket } from "@/lib/fleet-condition";
 import { humanize } from "@/lib/terminology";
 import type { Tone } from "@/lib/terminology";
@@ -127,12 +128,12 @@ export function readinessReasonsFor(
   }
   if (mode === "BLOCKED_INSUFFICIENT_EVIDENCE") {
     return [
-      condition.evidence_summary.what_is_happening,
+      conditionInterpretation(condition.condition_type),
       condition.recommended_next_evidence ??
         "Additional evidence is needed before any action recommendation is reliable.",
     ];
   }
-  const reasons: string[] = [condition.evidence_summary.what_is_happening];
+  const reasons: string[] = [conditionInterpretation(condition.condition_type)];
   reasons.push(`Confidence: ${humanize(condition.confidence)}.`);
   reasons.push(`Data quality: ${humanize(condition.evidence_summary.data_trustworthiness)}.`);
   if (mode !== "MONITORING_ONLY" && decision) {

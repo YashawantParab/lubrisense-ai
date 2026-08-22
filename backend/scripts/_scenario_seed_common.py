@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import Select, delete, select
 from sqlalchemy.exc import OperationalError
@@ -32,13 +32,21 @@ from app.domain.enums import Eligibility, IncidentState, QualityState, Telemetry
 from app.domain.models import (
     Bearing,
     Circuit,
+    DemoCMMSWorkOrder,
+    FeedbackRecord,
     Incident,
+    IncidentEvent,
     LubricationSystem,
     Machine,
+    MaintenanceAction,
+    MaintenanceCase,
     Pump,
+    QualityAssessment,
+    QualityIssue,
     Reservoir,
     Sensor,
     StateEstimate,
+    TechnicianFinding,
     Telemetry,
     Tenant,
 )
@@ -141,7 +149,21 @@ def envelope(
     device_id: str = "scenario-seed",
     quality: TelemetryQuality = TelemetryQuality.GOOD,
 ) -> dict[str, object]:
-    """Identical shape to `seed_flagship_story.py`'s own `_envelope()`."""
+    """Mostly identical shape to `seed_flagship_story.py`'s own `_envelope()` — the one
+    deliberate difference is that the pipeline-receipt timestamps below track `t` with a
+    small constant realistic latency rather than being pinned to the single seed-time
+    `now` for every row. Pinning them all to `now` makes `mqtt_received_timestamp -
+    source_timestamp` shrink linearly across a backfilled multi-hour series (from hours
+    at the start of the window down to ~0 at the end), which
+    `app.data_quality.rules.timeliness.check_clock_status` correctly reads as a
+    *progressive* clock drift (its whole point is telling that apart from a flat offset)
+    and flags `CLOCK_DRIFT_SUSPECTED` on nearly every sensor on every machine — pure
+    backfill-artifact noise, not a real timeliness problem, and not the deliberate single
+    data-quality story that belongs only to `seed_data_quality_issue.py` (found
+    empirically: every one of this module's callers was raising this warning). A small
+    *constant* latency keeps the offset flat, which the same rule explicitly treats as
+    fine."""
+    received_at = t + timedelta(seconds=1.5)
     return {
         "event_id": uuid.uuid4(),
         "schema_version": "1",
@@ -164,9 +186,9 @@ def envelope(
         "source_timestamp": t,
         "edge_received_timestamp": t,
         "edge_emitted_timestamp": None,
-        "mqtt_received_timestamp": now,
-        "kafka_published_timestamp": now,
-        "consumer_received_timestamp": now,
+        "mqtt_received_timestamp": received_at,
+        "kafka_published_timestamp": received_at,
+        "consumer_received_timestamp": received_at,
         "sequence_number": 1,
         "gateway_id": GATEWAY_CODE,
         "device_id": device_id,
@@ -182,20 +204,136 @@ def envelope(
 async def reset_machine_data(
     session: AsyncSession, tenant_id: uuid.UUID, machine_id: uuid.UUID
 ) -> None:
-    """Deterministic reset (ADR-173): delete *all* prior telemetry/state-estimates for
-    this one machine — this one machine_id only, never touching another machine or
-    tenant — before reseeding, so every re-run starts from the same clean slate."""
-    await session.execute(
-        delete(Telemetry).where(
-            Telemetry.tenant_id == tenant_id, Telemetry.machine_id == machine_id
+    """Deterministic reset (ADR-173): delete *all* prior telemetry/state-estimates/
+    quality-issue history for this one machine — this one machine_id only, never
+    touching another machine or tenant — before reseeding, so every re-run starts from
+    the same clean slate. Quality issues/assessments are included alongside telemetry
+    (not just left for the live data-quality-worker to eventually re-evaluate): without
+    this, a `CLOCK_DRIFT_SUSPECTED`/`STALE_STREAM` issue raised hours ago against
+    telemetry this reset is about to delete stays `ACTIVE` forever — the worker only
+    opens new issues, it never retroactively closes one whose underlying data no longer
+    exists — which would leave the Data Quality page showing stale noise unrelated to
+    the machine's just-reseeded, genuinely fresh state (found empirically re-running the
+    hosted orchestrator after several hours).
+
+    Also clears prior incident/maintenance workflow history for this machine (Incident,
+    IncidentEvent, MaintenanceCase and its children, and any CMMS draft) — without this,
+    `IncidentService`'s correlation-key dedup (which only ever looks at currently-OPEN
+    incidents) lets every re-run of a scenario script that reaches RESOLVED create a
+    brand-new incident/case rather than reusing the old one, so a handful of re-runs over
+    a demo's development life silently pile up dozens of duplicate "resolved" incidents
+    for the same one or two machines — found live on the Incidents page (54 total
+    incidents, the large majority duplicate rows for exactly the two machines whose
+    scripts reach RESOLVED). A machine reseeded by this helper always ends up with at
+    most the one incident/case its own scenario script goes on to (re)create this run.
+
+    Retries on deadlock (same convention as `mark_sensor_quality` below): the live
+    `data-quality-worker` container is concurrently upserting rows in the quality tables
+    on its own schedule, and this multi-row delete can lock-order-deadlock against its
+    own multi-row transaction (`psycopg.errors.DeadlockDetected`, observed adding the
+    quality-table deletes)."""
+    for attempt in range(3):
+        try:
+            await session.execute(
+                delete(Telemetry).where(
+                    Telemetry.tenant_id == tenant_id, Telemetry.machine_id == machine_id
+                )
+            )
+            await session.execute(
+                delete(StateEstimate).where(
+                    StateEstimate.tenant_id == tenant_id, StateEstimate.machine_id == machine_id
+                )
+            )
+            await session.execute(
+                delete(QualityIssue).where(
+                    QualityIssue.tenant_id == tenant_id, QualityIssue.machine_id == machine_id
+                )
+            )
+            await session.execute(
+                delete(QualityAssessment).where(
+                    QualityAssessment.tenant_id == tenant_id,
+                    QualityAssessment.machine_id == machine_id,
+                )
+            )
+            await reset_machine_workflow_history(session, tenant_id, machine_id)
+            await session.commit()
+            return
+        except OperationalError:
+            await session.rollback()
+            if attempt == 2:
+                raise
+            await asyncio.sleep(0.5 * (attempt + 1))
+
+
+async def reset_machine_workflow_history(
+    session: AsyncSession, tenant_id: uuid.UUID, machine_id: uuid.UUID
+) -> None:
+    """Deletes, in FK-safe child-before-parent order, every Incident/MaintenanceCase
+    (and their own children) for this one machine — see `reset_machine_data`'s docstring
+    for why. Runs inside the caller's existing transaction/retry loop, not its own."""
+    case_ids = (
+        (
+            await session.execute(
+                select(MaintenanceCase.id).where(
+                    MaintenanceCase.tenant_id == tenant_id,
+                    MaintenanceCase.machine_id == machine_id,
+                )
+            )
         )
+        .scalars()
+        .all()
     )
-    await session.execute(
-        delete(StateEstimate).where(
-            StateEstimate.tenant_id == tenant_id, StateEstimate.machine_id == machine_id
+    if case_ids:
+        await session.execute(
+            delete(FeedbackRecord).where(
+                FeedbackRecord.tenant_id == tenant_id,
+                FeedbackRecord.maintenance_case_id.in_(case_ids),
+            )
         )
+        await session.execute(
+            delete(MaintenanceAction).where(
+                MaintenanceAction.tenant_id == tenant_id,
+                MaintenanceAction.maintenance_case_id.in_(case_ids),
+            )
+        )
+        await session.execute(
+            delete(TechnicianFinding).where(
+                TechnicianFinding.tenant_id == tenant_id,
+                TechnicianFinding.maintenance_case_id.in_(case_ids),
+            )
+        )
+        await session.execute(
+            delete(DemoCMMSWorkOrder).where(
+                DemoCMMSWorkOrder.tenant_id == tenant_id,
+                DemoCMMSWorkOrder.maintenance_case_id.in_(case_ids),
+            )
+        )
+        await session.execute(
+            delete(MaintenanceCase).where(
+                MaintenanceCase.tenant_id == tenant_id, MaintenanceCase.id.in_(case_ids)
+            )
+        )
+
+    incident_ids = (
+        (
+            await session.execute(
+                select(Incident.id).where(
+                    Incident.tenant_id == tenant_id, Incident.machine_id == machine_id
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
-    await session.commit()
+    if incident_ids:
+        await session.execute(
+            delete(IncidentEvent).where(
+                IncidentEvent.tenant_id == tenant_id, IncidentEvent.incident_id.in_(incident_ids)
+            )
+        )
+        await session.execute(
+            delete(Incident).where(Incident.tenant_id == tenant_id, Incident.id.in_(incident_ids))
+        )
 
 
 async def mark_sensor_quality(
@@ -206,22 +344,34 @@ async def mark_sensor_quality(
     *,
     quality_state: QualityState = QualityState.TRUSTED,
     eligibility: Eligibility = Eligibility.ELIGIBLE,
+    last_observed_at: datetime | None = None,
 ) -> None:
     """One sensor, one commit, with retry-on-deadlock — same convention
     `seed_flagship_story.py`'s `_mark_eligible()` uses, generalized to accept any quality
     state/eligibility pair (not just TRUSTED/ELIGIBLE) so the data-quality scenario can
-    reuse it for UNUSABLE/INELIGIBLE too."""
+    reuse it for UNUSABLE/INELIGIBLE too.
+
+    `last_observed_at` is a merge-patch field (`SensorQualityStateRepository.upsert` only
+    sets keys it's given): omitting it leaves whatever `last_observed_at` a *previous* seed
+    run already wrote untouched. Since sensor UUIDs are deterministic and `reset_machine_data`
+    never deletes `SensorQualityState` rows, an old run's real (now days-stale) timestamp
+    otherwise survives a fresh reseed unchanged — `check_stale_stream` then compares "now"
+    against that stale value and raises a phantom `STALE_STREAM` issue for a sensor whose
+    telemetry the reseed just wrote seconds ago. Callers that just backfilled telemetry
+    ending at a known synthetic "now" should pass that same timestamp here."""
     for attempt in range(3):
         try:
             async with database.session() as session:
-                await SensorQualityStateRepository(session).upsert(
-                    tenant_id,
-                    sensor_id,
-                    machine_id=machine_id,
-                    quality_state=quality_state,
-                    eligibility=eligibility,
-                    policy_version="1",
-                )
+                fields: dict[str, object] = {
+                    "machine_id": machine_id,
+                    "quality_state": quality_state,
+                    "eligibility": eligibility,
+                    "policy_version": "1",
+                }
+                if last_observed_at is not None:
+                    fields["last_observed_at"] = last_observed_at
+                    fields["last_source_timestamp_seen"] = last_observed_at
+                await SensorQualityStateRepository(session).upsert(tenant_id, sensor_id, **fields)
                 await session.commit()
             return
         except OperationalError:
