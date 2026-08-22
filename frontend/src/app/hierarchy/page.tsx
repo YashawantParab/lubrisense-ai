@@ -28,7 +28,7 @@ function MachineRow({
         <span className="flex items-center gap-2 text-zinc-800 dark:text-zinc-200">
           <span className="font-mono text-xs text-zinc-400">{machine.asset_code}</span>
           {machine.name}
-          <span className="text-xs text-zinc-400">({machine.machine_type})</span>
+          <span className="text-xs text-zinc-400">({humanize(machine.machine_type)})</span>
         </span>
         <StatusPill tone={toneForStatus(machine.status)}>{humanize(machine.status)}</StatusPill>
       </Link>

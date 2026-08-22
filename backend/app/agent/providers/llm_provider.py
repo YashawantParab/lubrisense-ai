@@ -165,11 +165,20 @@ def build_sections(evidence: dict[str, Any]) -> dict[str, str]:
 
     decision = evidence.get("decision")
     if decision:
+        # Always-true platform fact (no actuator interface exists anywhere in this
+        # reference implementation), appended so a question like "can the system act
+        # automatically" is actually answered by whichever GENERAL-intent tool call
+        # surfaced this section, not just left implicit in `human_review_required`.
+        boundary = (
+            "Human approval is required before this action is taken; "
+            if decision.get("human_review_required")
+            else ""
+        ) + "the platform does not execute or automate physical machinery actions."
         sections["decision"] = (
             f"{_human(decision['recommended_action'])} "
             f"({_human(decision['priority'])} priority, "
             f"{_human(decision['recommended_window']).lower()} window). "
-            f"{decision['risk_if_deferred']}"
+            f"{decision['risk_if_deferred']} {boundary}"
         )
 
     incident = evidence.get("incident")

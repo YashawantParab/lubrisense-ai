@@ -235,7 +235,7 @@ export default function FleetPage() {
                           )}
                         </div>
                         <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {row.machine.asset_code} · {row.machine.machine_type}
+                          {row.machine.asset_code} · {humanize(row.machine.machine_type)}
                         </div>
                         <div className="text-xs text-zinc-400 dark:text-zinc-600">
                           {row.siteName} / {row.plantName} / {row.lineName}
