@@ -41,8 +41,113 @@ from app.cmms.services.cmms_service import CMMSService, CMMSUnavailableError
 from app.core.config import get_settings
 from app.device_management.service import DeviceConfigurationService
 from app.domain.enums import DeviceType, IncidentState
-from app.domain.models import Gateway, Incident, MaintenanceCase, Tenant
+from app.domain.models import Gateway, Incident, Machine, MaintenanceCase, Tenant
+from app.features.config.policy import load_feature_policy
 from app.infrastructure.database import Database
+from app.ml.services.ml_inference_service import (
+    MLInferenceOrchestrationService,
+    MLMachineNotFoundError,
+    MLModelNotAvailableError,
+)
+
+#: Every curated demo machine (Phase 37+ "10 representative scenarios") EXCEPT Crusher 017,
+#: keyed by the same `asset_code` each individual scenario script already resolves its
+#: machine by. Crusher 017 (`L1-7F84-M017`) is deliberately excluded: it is the one
+#: intentional INSUFFICIENT_EVIDENCE story (`seed_insufficient_evidence.py` — 3 telemetry
+#: samples/sensor, below `min_sample_count`), and scoring it anyway produces real but
+#: meaningless ML output (the minimum-required-features check only cares whether a value is
+#: present, not whether 3 samples is a statistically reasonable basis for a classification).
+#: Worse, an `MLInferenceResult` existing at all — even at EXPERIMENTAL, non-voting
+#: strength — is enough to make `synthesize()`'s "was anything checked" gate treat the
+#: machine as evaluated, flipping it from INSUFFICIENT_EVIDENCE to NORMAL_OPERATION and
+#: silently destroying the one curated example of "no reliable ML inference" this fleet is
+#: supposed to demonstrate (verified empirically). Adding an eleventh curated machine later
+#: means adding its asset_code here too, nothing else.
+_CURATED_ASSET_CODES = (
+    "L1-7B43-M000",  # Conveyor 000 — flagship, resolved restriction
+    "L1-7B43-M001",  # Motor 001 — healthy
+    "L2-07A8-M012",  # Conveyor 012 — active restriction
+    "L1-07A8-M009",  # Pump 009 — leakage
+    "L1-E915-M005",  # Crusher 005 — low reservoir
+    "L2-7B43-M004",  # Compressor 004 — pump degradation
+    "L2-E915-M008",  # Fan 008 — bearing condition
+    "L1-95FA-M013",  # Motor 013 — data-quality limited
+    "L1-7F84-M016",  # Compressor 016 — recovering
+)
+
+_ML_MODEL_IDS = (
+    "LUBRICATION_ANOMALY_V1",
+    "FAILURE_CLASSIFICATION_V1",
+    "FAILURE_CLASSIFICATION_BASELINE_V1",
+)
+
+
+async def _seed_ml_evidence() -> None:
+    """Real inference, run through the same `MLInferenceOrchestrationService` the live
+    `/ml/machines/{id}/latest` API endpoint uses — never a handwritten prediction. Every
+    curated machine gets scored against every registered model; a genuinely-insufficient
+    feature vector (e.g. Motor 013's data-quality-blocked bearing sensors, or Crusher 017's
+    handful of samples) legitimately produces an `INSUFFICIENT_FEATURES` result rather than
+    a forced one — that is the honest outcome for those machines, not a failure to seed.
+    `MLModelNotAvailableError` is only possible here if a model_id is unregistered
+    entirely, which would be a real configuration problem worth surfacing, not swallowing.
+
+    Deliberately does NOT re-run `ConditionEngine.assess()` after scoring — tried that
+    empirically and it actively breaks the curated portfolio: `FAILURE_CLASSIFICATION_V1`
+    generalizes poorly to this demo's synthetic telemetry (it predicts SENSOR_FAULT for
+    nearly every curated machine, contradicting each scenario's real rule-based diagnosis),
+    and feeding that conflicting evidence back into synthesis flips most machines to
+    AMBIGUOUS_CONDITION. Every earlier step's `ConditionAssessment` therefore predates the
+    `MLInferenceResult` rows this step persists — the Machine ML Analysis page's "Evidence
+    fusion" section already states this honestly ("the assessment ran before this
+    inference") rather than silently claiming ML influenced a decision it didn't."""
+    settings = get_settings()
+    database = Database(settings)
+    policy = load_feature_policy()
+    scored = 0
+    insufficient = 0
+    async with database.session() as session:
+        tenant = (
+            await session.execute(
+                select(Tenant).where(Tenant.slug == seed_flagship_story.DEMO_TENANT_SLUG)
+            )
+        ).scalar_one()
+        service = MLInferenceOrchestrationService(session, policy)
+        for asset_code in _CURATED_ASSET_CODES:
+            machine = (
+                await session.execute(
+                    select(Machine).where(
+                        Machine.tenant_id == tenant.id, Machine.asset_code == asset_code
+                    )
+                )
+            ).scalar_one_or_none()
+            if machine is None:
+                print(f"  {asset_code}: machine not found — skipping")
+                continue
+            for model_id in _ML_MODEL_IDS:
+                try:
+                    result = await service.compute_and_persist_latest(
+                        tenant.id, machine.id, model_id
+                    )
+                except MLMachineNotFoundError:
+                    print(f"  {asset_code} / {model_id}: machine not found — skipping")
+                    continue
+                except MLModelNotAvailableError as exc:
+                    print(f"  {asset_code} / {model_id}: unavailable ({exc})")
+                    continue
+                if result.status.value == "INSUFFICIENT_FEATURES":
+                    insufficient += 1
+                    print(f"  {machine.name} / {model_id}: insufficient features")
+                else:
+                    scored += 1
+                    headline = (
+                        f"anomaly_score={result.anomaly_score:.3f}"
+                        if result.result_kind.value == "ANOMALY"
+                        else f"predicted_class={result.predicted_class}"
+                    )
+                    print(f"  {machine.name} / {model_id}: {result.status.value} ({headline})")
+    await database.dispose()
+    print(f"ML evidence: {scored} scored, {insufficient} insufficient-features")
 
 
 async def _seed_flagship_extras() -> None:
@@ -145,44 +250,47 @@ async def _seed_flagship_extras() -> None:
 
 
 async def main() -> None:
-    print("=== 1/13 Base asset hierarchy ===")
+    print("=== 1/14 Base asset hierarchy ===")
     await seed_demo_data.main()
 
-    print("\n=== 2/13 Approved knowledge corpus ===")
+    print("\n=== 2/14 Approved knowledge corpus ===")
     await seed_knowledge_corpus.main()
 
-    print("\n=== 3/13 Flagship machine story (resolved) ===")
+    print("\n=== 3/14 Flagship machine story (resolved) ===")
     await seed_flagship_story.main()
 
-    print("\n=== 4/13 Healthy comparison machine ===")
+    print("\n=== 4/14 Healthy comparison machine ===")
     await seed_healthy_machine.main()
 
-    print("\n=== 5/13 Active developing-restriction incident ===")
+    print("\n=== 5/14 Active developing-restriction incident ===")
     await seed_active_restriction.main()
 
-    print("\n=== 6/13 Leakage incident ===")
+    print("\n=== 6/14 Leakage incident ===")
     await seed_leakage.main()
 
-    print("\n=== 7/13 Low-reservoir supply-risk incident ===")
+    print("\n=== 7/14 Low-reservoir supply-risk incident ===")
     await seed_low_reservoir.main()
 
-    print("\n=== 8/13 Pump-degradation incident ===")
+    print("\n=== 8/14 Pump-degradation incident ===")
     await seed_pump_degradation.main()
 
-    print("\n=== 9/13 Bearing-condition incident ===")
+    print("\n=== 9/14 Bearing-condition incident ===")
     await seed_bearing_degradation.main()
 
-    print("\n=== 10/13 Data-quality-limited machine ===")
+    print("\n=== 10/14 Data-quality-limited machine ===")
     await seed_data_quality_issue.main()
 
-    print("\n=== 11/13 Recently maintained / recovering machine ===")
+    print("\n=== 11/14 Recently maintained / recovering machine ===")
     await seed_recovering_asset.main()
 
-    print("\n=== 12/13 Insufficient-evidence machine ===")
+    print("\n=== 12/14 Insufficient-evidence machine ===")
     await seed_insufficient_evidence.main()
 
-    print("\n=== 13/13 CMMS draft + device/configuration context ===")
+    print("\n=== 13/14 CMMS draft + device/configuration context ===")
     await _seed_flagship_extras()
+
+    print("\n=== 14/14 ML evidence for the curated fleet ===")
+    await _seed_ml_evidence()
 
     print("\nHosted demo seed complete.")
 

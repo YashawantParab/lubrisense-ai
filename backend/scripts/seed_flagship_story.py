@@ -257,7 +257,7 @@ async def main() -> None:
         # stale, day-old, disconnected data snuck into the "recent" result and stretched
         # the visible chart axis across ~26 hours with a huge empty gap — found during
         # Phase 36's industrial visualization review (ADR-173 in TECHNICAL_DECISIONS.md).
-        from app.domain.models import Telemetry
+        from app.domain.models import MLInferenceResult, Telemetry
 
         await session.execute(
             delete(Telemetry).where(
@@ -274,6 +274,15 @@ async def main() -> None:
             delete(StateEstimate).where(
                 StateEstimate.tenant_id == tenant_id,
                 StateEstimate.machine_id == machine_id,
+            )
+        )
+        # A stale MLInferenceResult row is enough to change ConditionEngine/synthesize()'s
+        # "was any evidence source ever checked" gate (found empirically) — must not
+        # outlive the telemetry it was actually computed from.
+        await session.execute(
+            delete(MLInferenceResult).where(
+                MLInferenceResult.tenant_id == tenant_id,
+                MLInferenceResult.machine_id == machine_id,
             )
         )
         # Also clears prior incident/maintenance workflow history for this machine —

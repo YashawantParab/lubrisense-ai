@@ -34,6 +34,7 @@ import {
   useMaintenanceFeedback,
   useMaintenanceFindings,
 } from "@/hooks/use-maintenance";
+import { useFleetLatestML } from "@/hooks/use-ml";
 import { useMachineFindings } from "@/hooks/use-rules";
 import { useLatestStateEstimates } from "@/hooks/use-state-estimation";
 import { useMachineTelemetry } from "@/hooks/use-telemetry";
@@ -43,6 +44,7 @@ import {
   readinessEvidenceFor,
   readinessModeFor,
 } from "@/lib/action-readiness";
+import { failureLabelName, modelDisplayName } from "@/lib/ml-terminology";
 import { interpretState, STATE_TYPE_LABELS } from "@/lib/state-interpretation";
 import { humanize, toneForStatus } from "@/lib/terminology";
 import type {
@@ -179,6 +181,11 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   const findings = useMachineFindings(machineId);
   const stateEstimates = useLatestStateEstimates(machineId);
   const baselines = useMachineBaselines(machineId);
+  const fleetML = useFleetLatestML();
+  const machineMLResults = useMemo(
+    () => (fleetML.data ?? []).filter((r) => r.machine_id === machineId),
+    [fleetML.data, machineId],
+  );
   const devices = useMachineDevices(machineId);
   const configChanges = useMachineConfigurationChanges(machineId);
   const [assetDetailsOpen, setAssetDetailsOpen] = useState(false);
@@ -523,10 +530,6 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                     <dd>{findings.data?.findings.length ?? 0} active</dd>
                   </div>
                   <div className="flex items-center justify-between">
-                    <dt className="text-zinc-500 dark:text-zinc-400">ML evidence</dt>
-                    <dd>{intelligence.data?.condition.ml_result_ids.length ?? 0} result(s)</dd>
-                  </div>
-                  <div className="flex items-center justify-between">
                     <dt className="text-zinc-500 dark:text-zinc-400">Baseline readiness</dt>
                     <dd>{baselines.data?.readiness.label ?? "—"}</dd>
                   </div>
@@ -541,6 +544,44 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                     ))}
                   </ul>
                 )}
+
+                <div className="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                  <p className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                    ML Evidence
+                  </p>
+                  {machineMLResults.length === 0 ? (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      No ML inference recorded for this machine yet.
+                    </p>
+                  ) : machineMLResults.every((r) => r.status === "INSUFFICIENT_FEATURES") ? (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      ML evidence unavailable — required signal quality insufficient.
+                    </p>
+                  ) : (
+                    <ul className="flex flex-col gap-1 text-sm">
+                      {machineMLResults
+                        .filter((r) => r.status !== "INSUFFICIENT_FEATURES")
+                        .map((r) => (
+                          <li key={r.model_id} className="flex items-center justify-between gap-2">
+                            <span className="text-zinc-600 dark:text-zinc-400">
+                              {modelDisplayName(r.model_id)}
+                            </span>
+                            <span className="text-zinc-800 dark:text-zinc-200">
+                              {r.result_kind === "ANOMALY"
+                                ? `${r.anomaly_score?.toFixed(2)} ${r.anomalous ? "(elevated)" : "(normal)"}`
+                                : failureLabelName(r.predicted_class ?? "")}
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                  <Link
+                    href={`/ml?machineId=${machineId}`}
+                    className="mt-1.5 inline-block text-xs text-sky-600 hover:underline dark:text-sky-400"
+                  >
+                    Explore ML evidence →
+                  </Link>
+                </div>
               </SectionCard>
 
               <SectionCard title="Decision Intelligence" tier="band">

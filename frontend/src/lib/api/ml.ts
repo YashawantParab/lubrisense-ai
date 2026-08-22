@@ -13,6 +13,10 @@ export function getModel(modelId: string): Promise<ModelDetailResponse> {
   return tenantScopedFetch<ModelDetailResponse>(`/api/v1/ml/models/${modelId}`);
 }
 
+export function getFleetLatestInference(): Promise<MLInferenceResultResponse[]> {
+  return tenantScopedFetch<MLInferenceResultResponse[]>("/api/v1/ml/fleet-latest");
+}
+
 export function getLatestMachineInference(
   machineId: string,
   modelId: string,

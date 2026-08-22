@@ -32,6 +32,10 @@ export default function OverviewPage() {
   const conditions = useFleetLatestConditions();
   const { data: incidents } = useIncidents();
   const northStar = useNorthStar();
+  const mlSupportedCount = useMemo(
+    () => (conditions.data ?? []).filter((c) => c.ml_result_ids.length > 0).length,
+    [conditions.data],
+  );
 
   // The single most notable closed-loop story — real, persisted, most-recently-resolved
   // incident with a maintenance outcome, never a guessed/hardcoded machine.
@@ -125,6 +129,14 @@ export default function OverviewPage() {
       </div>
 
       <DataTrustSummary />
+
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        Condition assessments combine physical rules, state estimation, and governed ML evidence —{" "}
+        {mlSupportedCount} of {conditions.data?.length ?? 0} currently have ML support.{" "}
+        <Link href="/ml" className="text-sky-600 hover:underline dark:text-sky-400">
+          See ML Intelligence →
+        </Link>
+      </p>
 
       {mostRecentResolved && (
         <section className="flex flex-col gap-3">

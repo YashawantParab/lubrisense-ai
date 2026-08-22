@@ -201,7 +201,7 @@ async def main() -> None:
 
         # Deterministic reset: this machine is fully owned by this script within the
         # story's own window, same convention as the flagship (ADR-173).
-        from app.domain.models import StateEstimate, Telemetry
+        from app.domain.models import MLInferenceResult, StateEstimate, Telemetry
 
         await session.execute(
             delete(Telemetry).where(
@@ -211,6 +211,14 @@ async def main() -> None:
         await session.execute(
             delete(StateEstimate).where(
                 StateEstimate.tenant_id == tenant_id, StateEstimate.machine_id == machine_id
+            )
+        )
+        # A stale MLInferenceResult row is enough to change ConditionEngine/synthesize()'s
+        # "was any evidence source ever checked" gate (found empirically) — must not
+        # outlive the telemetry it was actually computed from.
+        await session.execute(
+            delete(MLInferenceResult).where(
+                MLInferenceResult.tenant_id == tenant_id, MLInferenceResult.machine_id == machine_id
             )
         )
         # Also clears any prior incident/maintenance history for this machine — belt and

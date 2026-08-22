@@ -33,6 +33,16 @@ export interface ModelSummaryResponse {
   feature_set_version: string;
 }
 
+export interface ModelPromotionResponse {
+  model_id: string;
+  model_version: string;
+  from_status: string;
+  to_status: string;
+  actor: string;
+  reason: string;
+  decided_at: string;
+}
+
 export interface ModelDetailResponse extends ModelSummaryResponse {
   features: string[];
   hyperparameters: Record<string, unknown>;
@@ -42,4 +52,21 @@ export interface ModelDetailResponse extends ModelSummaryResponse {
   code_version: string;
   limitations: string[];
   minimum_required_features: string[];
+  promotion_history: ModelPromotionResponse[];
+}
+
+export interface ClassificationReport {
+  labels: string[];
+  precision: Record<string, number>;
+  recall: Record<string, number>;
+  f1: Record<string, number>;
+  support: Record<string, number>;
+  macro_f1: number;
+  weighted_f1: number;
+  confusion_matrix: number[][];
+}
+
+export interface FeatureContribution {
+  feature: string;
+  magnitude: number;
 }

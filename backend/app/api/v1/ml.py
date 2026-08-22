@@ -13,7 +13,12 @@ from ml_service.registry.registry import ModelNotFoundError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_tenant, get_db_session
-from app.api.schemas.ml import MLInferenceResultResponse, ModelDetailResponse, ModelSummaryResponse
+from app.api.schemas.ml import (
+    MLInferenceResultResponse,
+    ModelDetailResponse,
+    ModelPromotionResponse,
+    ModelSummaryResponse,
+)
 from app.domain.models import Tenant
 from app.features.config.policy import load_feature_policy
 from app.ml.registry import get_model_registry
@@ -26,7 +31,11 @@ from app.ml.services.ml_query_service import MLQueryMachineNotFoundError, MLQuer
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 _POLICY = load_feature_policy()
-_KNOWN_MODEL_IDS = ("LUBRICATION_ANOMALY_V1", "FAILURE_CLASSIFICATION_V1")
+_KNOWN_MODEL_IDS = (
+    "LUBRICATION_ANOMALY_V1",
+    "FAILURE_CLASSIFICATION_V1",
+    "FAILURE_CLASSIFICATION_BASELINE_V1",
+)
 
 
 @router.get("/models", response_model=list[ModelSummaryResponse])
@@ -71,6 +80,7 @@ async def get_model(
         metadata = registry.get_metadata(model_id, latest.model_version)
     except ModelNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found.") from exc
+    promotions = sorted(registry.list_promotions(model_id), key=lambda r: r["decided_at"])
     return ModelDetailResponse(
         model_id=metadata.model_id,
         model_version=metadata.model_version,
@@ -89,7 +99,18 @@ async def get_model(
         code_version=metadata.code_version,
         limitations=list(metadata.limitations),
         minimum_required_features=list(metadata.minimum_required_features),
+        promotion_history=[ModelPromotionResponse.model_validate(r) for r in promotions],
     )
+
+
+@router.get("/fleet-latest", response_model=list[MLInferenceResultResponse])
+async def get_fleet_latest_inference(
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[MLInferenceResultResponse]:
+    service = MLQueryService(session)
+    results = await service.fleet_latest(tenant.id)
+    return [MLInferenceResultResponse.model_validate(r) for r in results]
 
 
 @router.get("/machines/{machine_id}/latest", response_model=MLInferenceResultResponse)

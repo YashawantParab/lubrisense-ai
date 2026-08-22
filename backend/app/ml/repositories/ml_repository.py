@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.domain.models import MLInferenceResult
 from app.repositories.base import TenantScopedRepository
@@ -19,6 +19,36 @@ class MLInferenceResultRepository(TenantScopedRepository[MLInferenceResult]):
         self.session.add(result)
         await self.session.flush()
         return result
+
+    async def list_latest_for_tenant(self, tenant_id: uuid.UUID) -> list[MLInferenceResult]:
+        """One row per (machine_id, model_id) — each model's most recent persisted result
+        for that machine, fleet-wide. Grain is per-model (not per-machine, unlike
+        `ConditionAssessmentRepository.list_latest_for_tenant`) because a machine can
+        legitimately have current evidence from more than one model at once (e.g. an
+        anomaly score and a classifier prediction) — collapsing to one row per machine
+        would silently drop one. Powers the Fleet ML view, never recomputes anything
+        itself (that stays `MLInferenceOrchestrationService`'s job)."""
+        latest_per_machine_model = (
+            select(
+                MLInferenceResult.machine_id,
+                MLInferenceResult.model_id,
+                func.max(MLInferenceResult.as_of_timestamp).label("max_ts"),
+            )
+            .where(MLInferenceResult.tenant_id == tenant_id)
+            .group_by(MLInferenceResult.machine_id, MLInferenceResult.model_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(MLInferenceResult)
+            .join(
+                latest_per_machine_model,
+                (MLInferenceResult.machine_id == latest_per_machine_model.c.machine_id)
+                & (MLInferenceResult.model_id == latest_per_machine_model.c.model_id)
+                & (MLInferenceResult.as_of_timestamp == latest_per_machine_model.c.max_ts),
+            )
+            .where(MLInferenceResult.tenant_id == tenant_id)
+        )
+        return list(result.scalars().unique().all())
 
     async def latest_for_machine(
         self, tenant_id: uuid.UUID, machine_id: uuid.UUID, model_id: str

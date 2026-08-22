@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import {
+  getFleetLatestInference,
   getLatestMachineInference,
   getModel,
   getModels,
@@ -11,6 +12,12 @@ import {
 
 export function useModels() {
   return useQuery({ queryKey: ["ml", "models"], queryFn: getModels });
+}
+
+/** Read-only — never triggers inference. Powers the Fleet ML view / "what ML is
+ * detecting now" summary from whatever has already been computed and persisted. */
+export function useFleetLatestML() {
+  return useQuery({ queryKey: ["ml", "fleet-latest"], queryFn: getFleetLatestInference });
 }
 
 export function useModel(modelId: string) {

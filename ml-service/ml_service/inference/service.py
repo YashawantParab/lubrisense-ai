@@ -32,6 +32,16 @@ _SERVABLE_STATUSES = (
     ModelLifecycleState.PRODUCTION,
 )
 
+#: Broader than `_SERVABLE_STATUSES` on purpose — "runnable" (can this artifact produce a
+#: score at all) is a distinct question from "servable" (should that score be allowed to
+#: influence an operational decision). EXPERIMENT models may run in shadow mode: real
+#: inference, really persisted, so a reviewer can see genuine evidence a model produces
+#: before it clears governance — `ConditionEngine._evidence_from_ml_result` (backend) is
+#: what actually enforces the narrower `_SERVABLE_STATUSES` boundary for decision-grade
+#: evidence, by re-checking live registry status at fusion time. RETIRED never runs either
+#: way — a retired model is not "not yet good enough", it's "known not to be used".
+_RUNNABLE_STATUSES = _SERVABLE_STATUSES + (ModelLifecycleState.EXPERIMENT,)
+
 
 class ModelNotServableError(RuntimeError):
     pass
@@ -55,7 +65,7 @@ class InferenceService:
         self, snapshot: FeatureSnapshot, model_id: str, model_version: str
     ) -> AnomalyInferenceResult:
         artifact, metadata = self._registry.load(model_id, model_version)
-        if metadata.status not in _SERVABLE_STATUSES:
+        if metadata.status not in _RUNNABLE_STATUSES:
             raise ModelNotServableError(
                 f"{model_id}@{model_version} is {metadata.status.value}, not servable"
             )
@@ -113,7 +123,7 @@ class InferenceService:
         self, snapshot: FeatureSnapshot, model_id: str, model_version: str
     ) -> ClassificationInferenceResult:
         artifact, metadata = self._registry.load(model_id, model_version)
-        if metadata.status not in _SERVABLE_STATUSES:
+        if metadata.status not in _RUNNABLE_STATUSES:
             raise ModelNotServableError(
                 f"{model_id}@{model_version} is {metadata.status.value}, not servable"
             )

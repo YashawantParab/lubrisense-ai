@@ -15,6 +15,7 @@ break the rest of the platform (Phase 11 brief §41; see also LOOP.md "Failure H
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from ml_service.domain.feature_snapshot import FeatureSnapshot
 from ml_service.domain.model_metadata import ModelLifecycleState
@@ -25,24 +26,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.enums import MLConfidenceCategory, MLInferenceStatus, MLResultKind
 from app.domain.models import MLInferenceResult
 from app.features.config.policy import FeaturePolicy
+from app.features.domain.models import FeatureComputationResult
 from app.features.services.feature_engine import FeatureEngine, FeatureMachineNotFoundError
 from app.ml.registry import get_model_registry
 from app.ml.repositories.ml_repository import MLInferenceResultRepository
 
+#: Kept only as the historical name for "the tiers a model must reach before its evidence
+#: counts operationally" — `ConditionEngine._evidence_from_ml_result` is what actually
+#: enforces this boundary (it re-checks live registry status at fusion time, per-result,
+#: independent of what status the model was at when this row was persisted). Resolution
+#: below uses the broader `_RUNNABLE_STATUSES` so an EXPERIMENT model can still produce
+#: real, persisted shadow-mode evidence instead of never running at all.
 _SERVABLE_STATUSES = (
     ModelLifecycleState.VALIDATED,
     ModelLifecycleState.STAGING,
     ModelLifecycleState.PRODUCTION,
 )
+_RUNNABLE_STATUSES = _SERVABLE_STATUSES + (ModelLifecycleState.EXPERIMENT,)
 
 _MODEL_FEATURE_SETS = {
     "LUBRICATION_ANOMALY_V1": "LUBRICATION_ANOMALY_V1",
     "FAILURE_CLASSIFICATION_V1": "FAILURE_CLASSIFICATION_V1",
+    # Same input feature set as the primary classifier (`feature_sets.py`
+    # CLASSIFIER_EXCLUDED_FEATURES is shared by both trained artifacts) — only the
+    # algorithm differs.
+    "FAILURE_CLASSIFICATION_BASELINE_V1": "FAILURE_CLASSIFICATION_V1",
 }
 
 _MODEL_RESULT_KIND = {
     "LUBRICATION_ANOMALY_V1": MLResultKind.ANOMALY,
     "FAILURE_CLASSIFICATION_V1": MLResultKind.CLASSIFICATION,
+    "FAILURE_CLASSIFICATION_BASELINE_V1": MLResultKind.CLASSIFICATION,
 }
 
 
@@ -54,15 +68,15 @@ class MLModelNotAvailableError(RuntimeError):
     pass
 
 
-def _feature_result_to_snapshot(computed: object) -> FeatureSnapshot:
+def _feature_result_to_snapshot(computed: FeatureComputationResult) -> FeatureSnapshot:
     return FeatureSnapshot(
-        feature_vector_id=computed.feature_vector_id,  # type: ignore[attr-defined]
-        as_of_timestamp=computed.as_of_timestamp,  # type: ignore[attr-defined]
-        feature_set=computed.feature_set,  # type: ignore[attr-defined]
-        feature_set_version=computed.feature_set_version,  # type: ignore[attr-defined]
-        feature_values=dict(computed.feature_values),  # type: ignore[attr-defined]
-        missing_features=tuple(computed.missing_features),  # type: ignore[attr-defined]
-        quality_summary=dict(computed.quality_summary),  # type: ignore[attr-defined]
+        feature_vector_id=computed.feature_vector_id,
+        as_of_timestamp=computed.as_of_timestamp,
+        feature_set=computed.feature_set,
+        feature_set_version=computed.feature_set_version,
+        feature_values=dict(computed.feature_values),
+        missing_features=tuple(computed.missing_features),
+        quality_summary=dict(computed.quality_summary),
     )
 
 
@@ -91,11 +105,40 @@ class MLInferenceOrchestrationService:
         except FeatureMachineNotFoundError as exc:
             raise MLMachineNotFoundError(str(machine_id)) from exc
 
-        entry = self._registry.latest_by_status(model_id, _SERVABLE_STATUSES)
+        return await self._score_and_persist(tenant_id, machine_id, model_id, computed)
+
+    async def compute_and_persist_at(
+        self,
+        tenant_id: uuid.UUID,
+        machine_id: uuid.UUID,
+        model_id: str,
+        as_of: datetime,
+    ) -> MLInferenceResult:
+        """Same as `compute_and_persist_latest`, but for an explicit historical `as_of`
+        timestamp instead of the machine's latest telemetry — real inference against a
+        real, earlier feature window (e.g. the healthy/event/recovery phases of an
+        already-seeded scenario), never a fabricated intermediate result."""
+        feature_set = _MODEL_FEATURE_SETS.get(model_id)
+        if feature_set is None:
+            raise MLModelNotAvailableError(f"unknown model_id {model_id!r}")
+
+        try:
+            computed = await self._feature_engine.compute(tenant_id, machine_id, feature_set, as_of)
+        except FeatureMachineNotFoundError as exc:
+            raise MLMachineNotFoundError(str(machine_id)) from exc
+
+        return await self._score_and_persist(tenant_id, machine_id, model_id, computed)
+
+    async def _score_and_persist(
+        self,
+        tenant_id: uuid.UUID,
+        machine_id: uuid.UUID,
+        model_id: str,
+        computed: FeatureComputationResult,
+    ) -> MLInferenceResult:
+        entry = self._registry.latest_by_status(model_id, _RUNNABLE_STATUSES)
         if entry is None:
-            raise MLModelNotAvailableError(
-                f"no VALIDATED (or later) version registered for {model_id}"
-            )
+            raise MLModelNotAvailableError(f"no runnable (non-retired) version for {model_id}")
 
         snapshot = _feature_result_to_snapshot(computed)
         try:

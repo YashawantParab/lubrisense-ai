@@ -144,3 +144,18 @@ class ModelRegistry:
 
     def list_model_ids(self) -> list[str]:
         return sorted(self._read_index().keys())
+
+    def list_promotions(self, model_id: str | None = None) -> list[dict[str, Any]]:
+        """Read-only view of `promotion_log.jsonl` (written only by
+        `scripts/promote_model.py`, never by this class) — every lifecycle-change decision
+        this registry has ever recorded, each carrying its own reason and a metrics
+        snapshot from the moment of the decision. `model_id=None` returns every model's
+        history; a missing log file (no promotion has ever happened) returns `[]`, not an
+        error."""
+        log_path = self.base_dir / "promotion_log.jsonl"
+        if not log_path.exists():
+            return []
+        records = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+        if model_id is not None:
+            records = [r for r in records if r.get("model_id") == model_id]
+        return records

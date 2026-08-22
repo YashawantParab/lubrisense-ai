@@ -32,6 +32,11 @@ class MLQueryService:
         await self._require_machine(tenant_id, machine_id)
         return await self._results.latest_for_machine(tenant_id, machine_id, model_id)
 
+    async def fleet_latest(self, tenant_id: uuid.UUID) -> list[MLInferenceResult]:
+        """Read-only, fleet-wide — never triggers inference (that only ever happens via
+        `MLInferenceOrchestrationService`, on-demand or from the seed pipeline)."""
+        return await self._results.list_latest_for_tenant(tenant_id)
+
     async def history(
         self,
         tenant_id: uuid.UUID,

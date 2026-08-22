@@ -40,6 +40,7 @@ from app.domain.models import (
     Machine,
     MaintenanceAction,
     MaintenanceCase,
+    MLInferenceResult,
     Pump,
     QualityAssessment,
     QualityIssue,
@@ -253,6 +254,16 @@ async def reset_machine_data(
                 delete(QualityAssessment).where(
                     QualityAssessment.tenant_id == tenant_id,
                     QualityAssessment.machine_id == machine_id,
+                )
+            )
+            # An `MLInferenceResult` row existing at all (regardless of confidence/status)
+            # is enough to change `ConditionEngine`/`synthesize()`'s "was any evidence
+            # source ever checked" gate — a stale row from an earlier run must not silently
+            # outlive the telemetry it was actually computed from.
+            await session.execute(
+                delete(MLInferenceResult).where(
+                    MLInferenceResult.tenant_id == tenant_id,
+                    MLInferenceResult.machine_id == machine_id,
                 )
             )
             await reset_machine_workflow_history(session, tenant_id, machine_id)

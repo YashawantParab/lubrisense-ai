@@ -46,6 +46,16 @@ class ModelSummaryResponse(BaseModel):
     feature_set_version: str
 
 
+class ModelPromotionResponse(BaseModel):
+    model_id: str
+    model_version: str
+    from_status: str
+    to_status: str
+    actor: str
+    reason: str
+    decided_at: datetime
+
+
 class ModelDetailResponse(ModelSummaryResponse):
     features: list[str]
     hyperparameters: dict[str, object]
@@ -55,3 +65,6 @@ class ModelDetailResponse(ModelSummaryResponse):
     code_version: str
     limitations: list[str]
     minimum_required_features: list[str]
+    #: Every recorded lifecycle-change decision for this model_id (any version), oldest
+    #: first — `[]` if it has never been promoted past its initial training status.
+    promotion_history: list[ModelPromotionResponse]

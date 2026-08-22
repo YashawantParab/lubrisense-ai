@@ -48,6 +48,22 @@ from app.rules_engine.repositories.rule_finding_repository import RuleFindingRep
 from app.state_estimation.config.policy import load_state_estimation_config
 from app.state_estimation.repositories.state_estimate_repository import StateEstimateRepository
 
+#: Deliberately NOT `FAILURE_CLASSIFICATION_BASELINE_V1`, even though it is the one
+#: classifier genuinely at STAGING (i.e. the one whose evidence `_evidence_from_ml_result`
+#: would tally as real "SUPPORTING" votes, not just record for transparency — see
+#: `synthesis.py`'s "EXPERIMENTAL... never counted in the tally at all"). Tried wiring it in
+#: and verified empirically it breaks the reference fleet: the model generalizes poorly to
+#: this backend's synthetic telemetry (a real train/inference distribution gap between
+#: ml-service's own training simulator and `backend/scripts/seed_*.py`'s independent
+#: generator), so it confidently votes NORMAL_OPERATION against several curated machines'
+#: real rule-based diagnosis, and a SUPPORTING-strength vote conflicting with a STRONG rule
+#: vote is exactly the "genuine conflict" `synthesize()` resolves to AMBIGUOUS_CONDITION.
+#: `LUBRICATION_ANOMALY_V1`/`FAILURE_CLASSIFICATION_V1` are both EXPERIMENT status, so their
+#: evidence is always EXPERIMENTAL strength and structurally cannot vote — safe to keep
+#: wired regardless of how well they generalize. The baseline classifier's real inference is
+#: still computed, persisted, and shown as first-class evidence on the ML Intelligence page
+#: (`app/ml/services/ml_inference_service.py` still scores it) — it just doesn't feed
+#: Condition Intelligence fusion until it's validated against this specific demo fleet.
 _ML_MODEL_IDS = ("LUBRICATION_ANOMALY_V1", "FAILURE_CLASSIFICATION_V1")
 _SERVABLE_ML_STATUSES = (
     ModelLifecycleState.VALIDATED,
