@@ -41,6 +41,7 @@ from sqlalchemy import Select, delete, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.baselines.config.policy import load_baseline_policy
 from app.baselines.workers.backfill import backfill
 from app.core.config import get_settings
 from app.data_quality.repositories.sensor_quality_state_repository import (
@@ -62,6 +63,8 @@ from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
 from app.maintenance.services.maintenance_service import MaintenanceService
 from app.repositories.telemetry import TelemetryRepository
+from app.rules_engine.config.policy import load_rules_policy
+from app.rules_engine.services.rule_engine import RuleEngine
 from app.rules_engine.workers.reprocess import reprocess
 from app.state_estimation.config.policy import load_state_estimation_config
 from app.state_estimation.domain.models import PriorEstimate
@@ -685,6 +688,28 @@ async def main() -> None:
     for _ in range(3):
         await reprocess(tenant_id, machine_id, now, recovery_end)
     print("Reprocessed rules over the recovery window")
+
+    # The live `rules-worker` container evaluates every machine on its own schedule using
+    # `RuleEngine.evaluate_machine(tenant_id, machine_id, started)` with NO window
+    # override — a *real-time* trailing window ending at whenever it happens to run
+    # (`app/rules_engine/workers/worker.py`), never the synthetic `(now, recovery_end)`
+    # window this story's own reprocess calls above use. Found live: without this, the
+    # live worker's first post-seed cycle re-evaluates this machine's just-written
+    # recovery telemetry through that different window/hysteresis state and can land on a
+    # fresh `ACTIVE` finding the story's own reprocess never saw — flipping a "recovered"
+    # machine to `AMBIGUOUS_CONDITION` a few minutes after seeding, unpredictably. Running
+    # the exact same real-time-windowed evaluation here, immediately, forces that
+    # convergence to happen now, deterministically, as part of this run — not
+    # asynchronously, later, in whatever state the live worker happens to catch it in.
+    # `reprocess()` itself always passes an explicit `window_override`, so this calls
+    # `RuleEngine.evaluate_machine` directly instead, the same way
+    # `app/rules_engine/workers/worker.py`'s live cycle does.
+    for _ in range(3):
+        async with database.session() as session:
+            live_window_engine = RuleEngine(session, load_baseline_policy(), load_rules_policy())
+            await live_window_engine.evaluate_machine(tenant_id, machine_id, datetime.now(UTC))
+            await session.commit()
+    print("Settled rules against the live worker's real-time evaluation window")
 
     # The main story's own replay leaves each filter confidently (LOW uncertainty)
     # committed to a strong uphill trend — reversing that through observations alone

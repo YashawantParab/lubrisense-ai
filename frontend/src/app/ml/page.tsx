@@ -612,7 +612,7 @@ function MLPageInner() {
                 actions={<ModelStatusBadge value={detail.data.status} />}
               >
                 <div className="flex flex-col gap-5">
-                  <LifecycleExplainer status={detail.data.status} />
+                  <LifecycleExplainer status={detail.data.status} modelId={detail.data.model_id} />
 
                   <p className="text-xs text-zinc-500 italic dark:text-zinc-400">
                     Current model evidence is evaluated on synthetic industrial scenarios. Field
@@ -864,6 +864,16 @@ function ClassificationCard({
           <>
             ML role in this assessment: <span className="font-medium">{ML_ROLE_LABEL[role]}</span>
           </>
+        ) : result.model_id === "FAILURE_CLASSIFICATION_BASELINE_V1" ? (
+          <>
+            <span className="font-medium">Governance blocker:</span> this Staging-lifecycle
+            classifier is technically eligible to contribute governed supporting evidence, but its
+            own held-out evaluation (see Model evaluation below) shows unreliable per-class
+            performance on several classes this fleet needs it to distinguish. Condition
+            Intelligence deliberately excludes it from fusion until that gap closes, rather than let
+            weak evidence outvote trusted rule/state evidence — shown here for engineering
+            visibility only.
+          </>
         ) : (
           "Not yet reflected in this machine's current condition assessment — see Evidence fusion below."
         )}
@@ -939,21 +949,34 @@ function AnomalyCard({
   );
 }
 
-function LifecycleExplainer({ status }: { status: string }) {
+function LifecycleExplainer({ status, modelId }: { status: string; modelId: string }) {
   const copy: Record<string, string> = {
     EXPERIMENT:
       "Model under technical evaluation — real inference runs and is recorded as shadow evidence, but it does not influence an operational decision.",
     VALIDATED: "Model passed defined validation gates for its documented scope.",
     STAGING:
-      "Candidate allowed to provide governed supporting evidence in the reference environment.",
+      "Eligible to provide governed supporting evidence in the reference environment, subject to Condition Intelligence's own fusion checks — eligibility does not by itself guarantee this model's evidence is actually used.",
     PRODUCTION: "Promoted for standing use in this reference environment.",
     RETIRED: "No longer used — kept for audit history only.",
   };
   return (
-    <div className="flex items-start gap-2 rounded-md bg-zinc-50/70 p-3 text-sm dark:bg-zinc-900/40">
-      <ModelStatusBadge value={status} />
-      <p className="text-zinc-600 dark:text-zinc-400">
-        {copy[status] ?? "Lifecycle stage not recognized."}
+    <div className="flex flex-col gap-2">
+      <div className="flex items-start gap-2 rounded-md bg-zinc-50/70 p-3 text-sm dark:bg-zinc-900/40">
+        <ModelStatusBadge value={status} />
+        <p className="text-zinc-600 dark:text-zinc-400">
+          {copy[status] ?? "Lifecycle stage not recognized."}
+        </p>
+      </div>
+      {status === "STAGING" && modelId === "FAILURE_CLASSIFICATION_BASELINE_V1" && (
+        <p className="text-xs text-zinc-500 italic dark:text-zinc-400">
+          In this environment, this model&rsquo;s real per-class evaluation results (below) do not
+          currently clear the bar for actual fusion inclusion — Condition Intelligence keeps its
+          evidence excluded from the vote until that gap closes. Eligible for governed supporting
+          evidence in principle; not currently used in practice.
+        </p>
+      )}
+      <p className="text-xs text-zinc-400 dark:text-zinc-600">
+        Model lifecycle controls how ML evidence is allowed to influence Condition Intelligence.
       </p>
     </div>
   );

@@ -21,7 +21,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import Select, delete, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,21 +30,33 @@ from app.data_quality.repositories.sensor_quality_state_repository import (
 )
 from app.domain.enums import Eligibility, IncidentState, QualityState, TelemetryQuality
 from app.domain.models import (
+    BaselineProfile,
     Bearing,
     Circuit,
+    CommissioningSession,
+    ConditionAssessment,
+    ConfigurationChange,
+    ConfigurationSnapshot,
+    Controller,
+    DecisionAssessment,
     DemoCMMSWorkOrder,
+    Distributor,
+    FeatureVector,
     FeedbackRecord,
     Incident,
     IncidentEvent,
+    LubricationPoint,
     LubricationSystem,
     Machine,
     MaintenanceAction,
     MaintenanceCase,
     MLInferenceResult,
+    PrognosticAssessment,
     Pump,
     QualityAssessment,
     QualityIssue,
     Reservoir,
+    RuleFinding,
     Sensor,
     StateEstimate,
     TechnicianFinding,
@@ -228,6 +240,19 @@ async def reset_machine_data(
     scripts reach RESOLVED). A machine reseeded by this helper always ends up with at
     most the one incident/case its own scenario script goes on to (re)create this run.
 
+    Also clears prior `RuleFinding` and `ConditionAssessment` history for this machine.
+    Without this, a non-terminal (`CANDIDATE`/`ACTIVE`/`RECOVERING`) `RuleFinding` row from
+    a previous run survives a reseed untouched — `RuleFindingRepository
+    .list_current_for_machine` has no age/run-window filter, so `ConditionEngine.assess()`
+    (triggered on-demand by any `GET /machines/{id}` view, not just by this script) can mix
+    that stale finding with the fresh evidence this run just wrote, landing on a genuine
+    rule/state conflict (`AMBIGUOUS_CONDITION`) instead of the scenario's intended final
+    state — found live on the flagship restriction machine, whose condition history
+    flip-flopped between `NORMAL_OPERATION` and `DEVELOPING_RESTRICTION_PATTERN` across
+    122 assessments spanning several days of repeated reseeds. Old `ConditionAssessment`
+    rows are cleared for the same reason: a prior run's stale rows must not influence this
+    run's fresh lifecycle classification (`services/lifecycle.py` reads recent history).
+
     Retries on deadlock (same convention as `mark_sensor_quality` below): the live
     `data-quality-worker` container is concurrently upserting rows in the quality tables
     on its own schedule, and this multi-row delete can lock-order-deadlock against its
@@ -264,6 +289,20 @@ async def reset_machine_data(
                 delete(MLInferenceResult).where(
                     MLInferenceResult.tenant_id == tenant_id,
                     MLInferenceResult.machine_id == machine_id,
+                )
+            )
+            # See this function's own docstring above: a stale non-terminal `RuleFinding`
+            # or an old `ConditionAssessment` row must not survive into this run's fresh
+            # evidence set.
+            await session.execute(
+                delete(RuleFinding).where(
+                    RuleFinding.tenant_id == tenant_id, RuleFinding.machine_id == machine_id
+                )
+            )
+            await session.execute(
+                delete(ConditionAssessment).where(
+                    ConditionAssessment.tenant_id == tenant_id,
+                    ConditionAssessment.machine_id == machine_id,
                 )
             )
             await reset_machine_workflow_history(session, tenant_id, machine_id)
@@ -478,3 +517,210 @@ async def replay_state_estimates(
             ticks_done += 1
             await session.commit()
     return ticks_done
+
+
+async def delete_machine_fully(
+    session: AsyncSession, tenant_id: uuid.UUID, machine_id: uuid.UUID
+) -> None:
+    """Permanently removes one machine and every row anywhere in the schema that
+    references it — used only by the hosted-demo debris cleanup
+    (`seed_hosted_demo.py`'s `_delete_debris_machines`) to remove machines created outside
+    any seed script (manual commissioning-wizard testing, stray pytest runs against a
+    shared dev database — see that function's docstring for how they're identified).
+    Never called by any scenario script — those call `reset_machine_data` instead, which
+    resets a machine's data but keeps the machine itself.
+
+    This schema has no `ON DELETE CASCADE` anywhere for machine-scoped children (verified:
+    every machine-scoped child table has a real composite `(tenant_id, machine_id)` (or
+    equivalent chained) foreign key, and all are `NO ACTION`) — an out-of-order delete
+    therefore fails loudly with a real constraint violation rather than silently orphaning
+    data, so the order below matters and is deliberate: evidence/workflow rows, then the
+    Phase 30/31 commissioning and configuration rows, then sensors (which can attach to
+    *any* of bearing/lubrication_system/reservoir/pump/circuit, so must go before all of
+    them), then the physical lubrication chain leaf-to-root (breaking
+    `LubricationSystem`'s cyclic `reservoir_id`/`pump_id`/`controller_id` "primary
+    equipment" pointers first — see its `composite_tenant_fk(..., use_alter=True)`
+    comment), then bearings, then the machine itself."""
+    await reset_machine_data(session, tenant_id, machine_id)
+
+    lubrication_system_ids = (
+        (
+            await session.execute(
+                select(LubricationSystem.id).where(
+                    LubricationSystem.tenant_id == tenant_id,
+                    LubricationSystem.machine_id == machine_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    circuit_ids = (
+        (
+            await session.execute(
+                select(Circuit.id).where(
+                    Circuit.tenant_id == tenant_id,
+                    Circuit.lubrication_system_id.in_(lubrication_system_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+        if lubrication_system_ids
+        else []
+    )
+    sensor_ids = (
+        (
+            await session.execute(
+                select(Sensor.id).where(
+                    Sensor.tenant_id == tenant_id,
+                    (Sensor.machine_id == machine_id)
+                    | Sensor.lubrication_system_id.in_(lubrication_system_ids)
+                    | Sensor.circuit_id.in_(circuit_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    await session.execute(
+        delete(DecisionAssessment).where(
+            DecisionAssessment.tenant_id == tenant_id, DecisionAssessment.machine_id == machine_id
+        )
+    )
+    await session.execute(
+        delete(PrognosticAssessment).where(
+            PrognosticAssessment.tenant_id == tenant_id,
+            PrognosticAssessment.machine_id == machine_id,
+        )
+    )
+    await session.execute(
+        delete(FeatureVector).where(
+            FeatureVector.tenant_id == tenant_id, FeatureVector.machine_id == machine_id
+        )
+    )
+    if sensor_ids:
+        await session.execute(
+            delete(BaselineProfile).where(
+                BaselineProfile.tenant_id == tenant_id,
+                (BaselineProfile.machine_id == machine_id)
+                | BaselineProfile.sensor_id.in_(sensor_ids),
+            )
+        )
+    else:
+        await session.execute(
+            delete(BaselineProfile).where(
+                BaselineProfile.tenant_id == tenant_id, BaselineProfile.machine_id == machine_id
+            )
+        )
+    snapshot_ids = (
+        (
+            await session.execute(
+                select(ConfigurationSnapshot.id).where(
+                    ConfigurationSnapshot.tenant_id == tenant_id,
+                    ConfigurationSnapshot.machine_id == machine_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # `ConfigurationChange.machine_id` alone isn't a reliable filter here: a device history
+    # chains snapshots by id (`previous_snapshot_id`/`new_snapshot_id`), and a device
+    # re-commissioned under a second `Machine` row (e.g. a "retest" of the same mock
+    # gateway) can leave a change row whose own `machine_id` differs from the machine that
+    # captured the snapshot it references — found live deleting demo commissioning-wizard
+    # debris. Delete by reference to this machine's own snapshot ids as well as by
+    # `machine_id`, so no dangling reference can survive.
+    change_condition = ConfigurationChange.machine_id == machine_id
+    if snapshot_ids:
+        change_condition = (
+            change_condition
+            | ConfigurationChange.new_snapshot_id.in_(snapshot_ids)
+            | ConfigurationChange.previous_snapshot_id.in_(snapshot_ids)
+        )
+    await session.execute(
+        delete(ConfigurationChange).where(
+            ConfigurationChange.tenant_id == tenant_id, change_condition
+        )
+    )
+    await session.execute(
+        delete(ConfigurationSnapshot).where(
+            ConfigurationSnapshot.tenant_id == tenant_id,
+            ConfigurationSnapshot.machine_id == machine_id,
+        )
+    )
+    await session.execute(
+        delete(CommissioningSession).where(
+            CommissioningSession.tenant_id == tenant_id,
+            CommissioningSession.machine_id == machine_id,
+        )
+    )
+
+    if sensor_ids:
+        await session.execute(
+            delete(Sensor).where(Sensor.tenant_id == tenant_id, Sensor.id.in_(sensor_ids))
+        )
+
+    if lubrication_system_ids:
+        # Break the cyclic "primary equipment" pointers before deleting the rows they
+        # point at.
+        await session.execute(
+            update(LubricationSystem)
+            .where(
+                LubricationSystem.tenant_id == tenant_id,
+                LubricationSystem.id.in_(lubrication_system_ids),
+            )
+            .values(reservoir_id=None, pump_id=None, controller_id=None)
+        )
+        if circuit_ids:
+            await session.execute(
+                delete(LubricationPoint).where(
+                    LubricationPoint.tenant_id == tenant_id,
+                    LubricationPoint.circuit_id.in_(circuit_ids),
+                )
+            )
+        await session.execute(
+            delete(Circuit).where(
+                Circuit.tenant_id == tenant_id,
+                Circuit.lubrication_system_id.in_(lubrication_system_ids),
+            )
+        )
+        await session.execute(
+            delete(Distributor).where(
+                Distributor.tenant_id == tenant_id,
+                Distributor.lubrication_system_id.in_(lubrication_system_ids),
+            )
+        )
+        await session.execute(
+            delete(Reservoir).where(
+                Reservoir.tenant_id == tenant_id,
+                Reservoir.lubrication_system_id.in_(lubrication_system_ids),
+            )
+        )
+        await session.execute(
+            delete(Pump).where(
+                Pump.tenant_id == tenant_id, Pump.lubrication_system_id.in_(lubrication_system_ids)
+            )
+        )
+        await session.execute(
+            delete(Controller).where(
+                Controller.tenant_id == tenant_id,
+                Controller.lubrication_system_id.in_(lubrication_system_ids),
+            )
+        )
+        await session.execute(
+            delete(LubricationSystem).where(
+                LubricationSystem.tenant_id == tenant_id,
+                LubricationSystem.id.in_(lubrication_system_ids),
+            )
+        )
+
+    await session.execute(
+        delete(Bearing).where(Bearing.tenant_id == tenant_id, Bearing.machine_id == machine_id)
+    )
+    await session.execute(
+        delete(Machine).where(Machine.tenant_id == tenant_id, Machine.id == machine_id)
+    )
+    await session.commit()

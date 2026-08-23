@@ -21,6 +21,7 @@ docs/HOSTED_DEPLOYMENT.md "No public reset endpoint").
 from __future__ import annotations
 
 import asyncio
+import re
 
 from sqlalchemy import select
 
@@ -49,6 +50,7 @@ from app.ml.services.ml_inference_service import (
     MLMachineNotFoundError,
     MLModelNotAvailableError,
 )
+from scripts._scenario_seed_common import delete_machine_fully
 
 #: Every curated demo machine (Phase 37+ "10 representative scenarios") EXCEPT Secondary
 #: Crusher CR-202, keyed by the same `asset_code` each individual scenario script already
@@ -81,6 +83,54 @@ _ML_MODEL_IDS = (
     "FAILURE_CLASSIFICATION_V1",
     "FAILURE_CLASSIFICATION_BASELINE_V1",
 )
+
+#: Every asset code `seed_demo_data.seed_machine()` ever mints — curated fleet and
+#: background hierarchy alike — follows this exact algorithmic shape:
+#: `f"{line_code}-{plant_id.hex[:4].upper()}-M{index:03d}"` where `line_code` is
+#: `f"L{line_offset + 1}"` (`seed_demo_data.py`). A machine whose asset_code does NOT match
+#: this pattern was never created by any seed script — it came from a human-typed
+#: commissioning-wizard session (`app/commissioning/service.py`'s `start_session` takes a
+#: caller-supplied `asset_code`) or a stray pytest run against this database
+#: (`tests/factories.py`'s `unique("ASSET")` produces `ASSET-<hex>`, never this shape).
+#: This is the safe, deterministic way to identify debris asked for in the hosted-scenario
+#: integrity pass — it never depends on a human-typed *name* like "Test Machine-..." or
+#: "Demo Wizard Motor", which a future stray session could easily not repeat.
+_SEED_GENERATED_ASSET_CODE = re.compile(r"^L\d+-[0-9A-F]{4}-M\d{3,}$")
+
+
+async def _delete_debris_machines() -> None:
+    """Removes every machine under the canonical demo tenant that no seed script created
+    (see `_SEED_GENERATED_ASSET_CODE` above) — manual commissioning-wizard test machines,
+    stray pytest fixtures, anything else. Runs immediately after the base hierarchy step
+    (so the canonical tenant and its full legitimate curated+background machine set are
+    guaranteed to already exist) and before every scenario script, so a clean reseed
+    always converges to exactly the seed-generated hierarchy with no accumulation across
+    repeated runs. Deliberately scoped to
+    ONE tenant (the canonical demo tenant) and to an asset_code *shape*, never a broad
+    delete — this must never touch another tenant's data (e.g. the thousands of isolated
+    per-test tenants a misconfigured pytest run can leave behind elsewhere in this
+    database are a separate, much larger CI-hygiene issue, out of scope here, and
+    untouched by this tenant-scoped query)."""
+    settings = get_settings()
+    database = Database(settings)
+    async with database.session() as session:
+        tenant = (
+            await session.execute(
+                select(Tenant).where(Tenant.slug == seed_flagship_story.DEMO_TENANT_SLUG)
+            )
+        ).scalar_one()
+        machines = (
+            (await session.execute(select(Machine).where(Machine.tenant_id == tenant.id)))
+            .scalars()
+            .all()
+        )
+        debris = [m for m in machines if not _SEED_GENERATED_ASSET_CODE.match(m.asset_code)]
+        if not debris:
+            print("  no debris machines found")
+        for machine in debris:
+            print(f"  deleting debris machine: {machine.name!r} ({machine.asset_code})")
+            await delete_machine_fully(session, tenant.id, machine.id)
+    await database.dispose()
 
 
 async def _seed_ml_evidence() -> None:
@@ -252,46 +302,49 @@ async def _seed_flagship_extras() -> None:
 
 
 async def main() -> None:
-    print("=== 1/14 Base asset hierarchy ===")
+    print("=== 1/15 Base asset hierarchy ===")
     await seed_demo_data.main()
 
-    print("\n=== 2/14 Approved knowledge corpus ===")
+    print("\n=== 2/15 Clean non-canonical debris machines ===")
+    await _delete_debris_machines()
+
+    print("\n=== 3/15 Approved knowledge corpus ===")
     await seed_knowledge_corpus.main()
 
-    print("\n=== 3/14 Flagship machine story (resolved) ===")
+    print("\n=== 4/15 Flagship machine story (resolved) ===")
     await seed_flagship_story.main()
 
-    print("\n=== 4/14 Healthy comparison machine ===")
+    print("\n=== 5/15 Healthy comparison machine ===")
     await seed_healthy_machine.main()
 
-    print("\n=== 5/14 Active developing-restriction incident ===")
+    print("\n=== 6/15 Active developing-restriction incident ===")
     await seed_active_restriction.main()
 
-    print("\n=== 6/14 Leakage incident ===")
+    print("\n=== 7/15 Leakage incident ===")
     await seed_leakage.main()
 
-    print("\n=== 7/14 Low-reservoir supply-risk incident ===")
+    print("\n=== 8/15 Low-reservoir supply-risk incident ===")
     await seed_low_reservoir.main()
 
-    print("\n=== 8/14 Pump-degradation incident ===")
+    print("\n=== 9/15 Pump-degradation incident ===")
     await seed_pump_degradation.main()
 
-    print("\n=== 9/14 Bearing-condition incident ===")
+    print("\n=== 10/15 Bearing-condition incident ===")
     await seed_bearing_degradation.main()
 
-    print("\n=== 10/14 Data-quality-limited machine ===")
+    print("\n=== 11/15 Data-quality-limited machine ===")
     await seed_data_quality_issue.main()
 
-    print("\n=== 11/14 Recently maintained / recovering machine ===")
+    print("\n=== 12/15 Recently maintained / recovering machine ===")
     await seed_recovering_asset.main()
 
-    print("\n=== 12/14 Insufficient-evidence machine ===")
+    print("\n=== 13/15 Insufficient-evidence machine ===")
     await seed_insufficient_evidence.main()
 
-    print("\n=== 13/14 CMMS draft + device/configuration context ===")
+    print("\n=== 14/15 CMMS draft + device/configuration context ===")
     await _seed_flagship_extras()
 
-    print("\n=== 14/14 ML evidence for the curated fleet ===")
+    print("\n=== 15/15 ML evidence for the curated fleet ===")
     await _seed_ml_evidence()
 
     print("\nHosted demo seed complete.")
