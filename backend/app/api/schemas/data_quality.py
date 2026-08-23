@@ -65,6 +65,29 @@ class QualityIssueResponse(BaseModel):
     policy_version: str
 
 
+class SensorQualityRecordResponse(BaseModel):
+    """One sensor's current trust state plus its own identifying metadata and active
+    issue(s) — the fleet-wide row `GET /data-quality/sensors` returns. Unlike
+    `QualityIssueResponse`, this exists for every evaluated sensor, including one with no
+    active issue at all (a trusted sensor), which is exactly what the raw issue list
+    structurally cannot represent."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    sensor_id: uuid.UUID
+    sensor_code: str
+    sensor_name: str
+    sensor_type: str
+    machine_id: uuid.UUID | None
+    state: SensorQualityStateResponse
+    active_issues: list[QualityIssueResponse]
+    expected_reporting_interval_seconds: float | None = Field(
+        description="Configured expected reporting cadence for this sensor's measurement "
+        "type, from the current data-quality policy — null if the policy defines no "
+        "expectation for this type."
+    )
+
+
 class SensorQualityDetailResponse(BaseModel):
     sensor_id: uuid.UUID
     state: SensorQualityStateResponse | None

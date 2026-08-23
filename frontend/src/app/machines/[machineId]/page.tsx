@@ -377,6 +377,12 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                   <p className="mt-1 text-sm font-medium text-zinc-800 dark:text-zinc-200">
                     {humanize(intelligence.data.condition.evidence_summary.data_trustworthiness)}
                   </p>
+                  <Link
+                    href={`/data-quality?machine=${machineId}`}
+                    className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                  >
+                    Review data quality
+                  </Link>
                 </div>
               )}
               {readiness && (

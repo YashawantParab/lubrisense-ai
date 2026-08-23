@@ -16,6 +16,7 @@ have created a new row every evaluation cycle instead of evolving one).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -199,6 +200,27 @@ class QualityIssueRepository:
 
     async def count_active(self, tenant_id: uuid.UUID, sensor_id: uuid.UUID) -> int:
         return len(await self.list_active_severities(tenant_id, sensor_id))
+
+    async def list_active_for_sensors(
+        self, tenant_id: uuid.UUID, sensor_ids: Iterable[uuid.UUID]
+    ) -> list[QualityIssue]:
+        """Bulk ACTIVE/RECOVERING lookup for a known set of sensors — the fleet-wide
+        sensor read model (`QualityQueryService.list_fleet_sensor_records`) needs every
+        tracked sensor's current issue(s) without one query per sensor."""
+        ids = list(sensor_ids)
+        if not ids:
+            return []
+        stmt = (
+            select(QualityIssue)
+            .where(
+                QualityIssue.tenant_id == tenant_id,
+                QualityIssue.sensor_id.in_(ids),
+                QualityIssue.status.in_(_ACTIVE_STATUSES),
+            )
+            .order_by(QualityIssue.last_seen.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def count_active_by_severity(self, tenant_id: uuid.UUID) -> dict[str, int]:
         stmt = (

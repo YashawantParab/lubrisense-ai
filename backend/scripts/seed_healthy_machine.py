@@ -24,7 +24,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.baselines.workers.backfill import backfill
@@ -47,7 +47,7 @@ from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
 from app.repositories.telemetry import TelemetryRepository
 from app.rules_engine.workers.reprocess import reprocess
-from scripts._scenario_seed_common import reset_machine_workflow_history
+from scripts._scenario_seed_common import reset_machine_data
 
 HEALTHY_MACHINE_ASSET_CODE = "L1-7B43-M001"
 DEMO_TENANT_SLUG = "lubrisense-demo"
@@ -200,33 +200,18 @@ async def main() -> None:
         vibrations = by_type["VIBRATION_RMS"]
 
         # Deterministic reset: this machine is fully owned by this script within the
-        # story's own window, same convention as the flagship (ADR-173).
-        from app.domain.models import MLInferenceResult, StateEstimate, Telemetry
-
-        await session.execute(
-            delete(Telemetry).where(
-                Telemetry.tenant_id == tenant_id, Telemetry.machine_id == machine_id
-            )
-        )
-        await session.execute(
-            delete(StateEstimate).where(
-                StateEstimate.tenant_id == tenant_id, StateEstimate.machine_id == machine_id
-            )
-        )
-        # A stale MLInferenceResult row is enough to change ConditionEngine/synthesize()'s
-        # "was any evidence source ever checked" gate (found empirically) — must not
-        # outlive the telemetry it was actually computed from.
-        await session.execute(
-            delete(MLInferenceResult).where(
-                MLInferenceResult.tenant_id == tenant_id, MLInferenceResult.machine_id == machine_id
-            )
-        )
-        # Also clears any prior incident/maintenance history for this machine — belt and
-        # braces alongside the flagship script's identical fix: this machine's own
-        # `evaluate_machine()` call below is expected to find nothing (healthy telemetry),
-        # but keeps a stray finding from an earlier run's jitter from accumulating.
-        await reset_machine_workflow_history(session, tenant_id, machine_id)
-        await session.commit()
+        # story's own window, same convention as the flagship (ADR-173). Uses the shared
+        # `reset_machine_data` helper (not a hand-rolled Telemetry/StateEstimate/
+        # MLInferenceResult-only delete) specifically so it also clears prior
+        # QualityIssue/QualityAssessment rows for this machine — a genuine bug found via
+        # the Data Quality product rebuild's fleet-wide sensor view: this machine's
+        # `sensor_quality_state` rows get freshly reset to TRUSTED below, but a leftover
+        # ACTIVE `STALE_STREAM` issue from an earlier live data-quality-worker run (raised
+        # against telemetry this reset is about to delete) has no other trigger to ever
+        # close — the worker only opens new issues, it never retroactively closes one whose
+        # underlying data no longer exists — which showed up as a "Trusted" healthy sensor
+        # still carrying a contradictory active staleness issue.
+        await reset_machine_data(session, tenant_id, machine_id)
 
         # Fixed seed (not time-based) — deterministic across runs, same reasoning as the
         # flagship script (ADR-170): real sensor noise, never a perfectly flat line.

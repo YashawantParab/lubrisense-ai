@@ -15,14 +15,51 @@ from app.api.schemas.data_quality import (
     MachineQualitySummaryResponse,
     QualityIssueResponse,
     SensorQualityDetailResponse,
+    SensorQualityRecordResponse,
     SensorQualityStateResponse,
     TenantQualitySummaryResponse,
 )
 from app.data_quality.services.quality_query_service import QualityQueryService
-from app.domain.enums import IssueSeverity, IssueStatus
+from app.domain.enums import Eligibility, IssueSeverity, IssueStatus, QualityState
 from app.domain.models import Tenant
 
 router = APIRouter(prefix="/data-quality", tags=["data-quality"])
+
+
+@router.get("/sensors", response_model=list[SensorQualityRecordResponse])
+async def list_fleet_sensor_quality(
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    machine_id: uuid.UUID | None = None,
+    quality_state: QualityState | None = None,
+    eligibility: Eligibility | None = None,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+) -> list[SensorQualityRecordResponse]:
+    """Every sensor this tenant has evaluated at least once — including sensors with no
+    active issue at all — so the Data Quality page can show trusted sensors, not only
+    active problems. `GET /issues` alone cannot answer this: a fully trusted sensor never
+    has an issue row."""
+    service = QualityQueryService(session)
+    records = await service.list_fleet_sensor_records(
+        tenant.id,
+        machine_id=machine_id,
+        quality_state=quality_state,
+        eligibility=eligibility,
+        limit=limit,
+    )
+    return [
+        SensorQualityRecordResponse(
+            sensor_id=record.sensor.id,
+            sensor_code=record.sensor.sensor_code,
+            sensor_name=record.sensor.name,
+            sensor_type=record.sensor.sensor_type.value,
+            machine_id=record.state.machine_id,
+            state=SensorQualityStateResponse.model_validate(record.state),
+            active_issues=[QualityIssueResponse.model_validate(i) for i in record.active_issues],
+            expected_reporting_interval_seconds=record.expected_reporting_interval_seconds,
+        )
+        for record in records
+    ]
 
 
 @router.get("/sensors/{sensor_id}", response_model=SensorQualityDetailResponse)

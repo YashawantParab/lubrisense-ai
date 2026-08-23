@@ -19,6 +19,19 @@ class SensorRepository(TenantScopedRepository[Sensor]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def list_by_ids(
+        self, tenant_id: uuid.UUID, sensor_ids: Iterable[uuid.UUID]
+    ) -> list[Sensor]:
+        """Bulk lookup for read models that already have a set of sensor IDs from another
+        source (e.g. `SensorQualityStateRepository.list_for_tenant`) and need the sensor's
+        own metadata (code/name/type) without one query per sensor."""
+        ids = list(sensor_ids)
+        if not ids:
+            return []
+        stmt = select(Sensor).where(Sensor.tenant_id == tenant_id, Sensor.id.in_(ids))
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def list_attached_to(
         self,
         tenant_id: uuid.UUID,

@@ -3,9 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 
 import {
+  getFleetSensorQuality,
+  getMachineQuality,
   getQualityIssues,
   getQualitySummary,
   getSensorQuality,
+  type FleetSensorQualityParams,
   type QualityIssuesParams,
 } from "@/lib/api/data-quality";
 
@@ -32,6 +35,25 @@ export function useSensorQuality(sensorId: string) {
     queryKey: ["data-quality", "sensor", sensorId],
     queryFn: () => getSensorQuality(sensorId),
     enabled: Boolean(sensorId),
+    refetchInterval: 15_000,
+  });
+}
+
+/** Every evaluated sensor fleet-wide, including trusted sensors with no active issue —
+ * the read model the Data Quality page's main table is built on. */
+export function useFleetSensorQuality(params: FleetSensorQualityParams = {}) {
+  return useQuery({
+    queryKey: ["data-quality", "sensors", params],
+    queryFn: () => getFleetSensorQuality(params),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useMachineQuality(machineId: string) {
+  return useQuery({
+    queryKey: ["data-quality", "machine", machineId],
+    queryFn: () => getMachineQuality(machineId),
+    enabled: Boolean(machineId),
     refetchInterval: 15_000,
   });
 }

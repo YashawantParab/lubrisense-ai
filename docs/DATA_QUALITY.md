@@ -281,17 +281,45 @@ Tenant-scoped via `get_current_tenant`, same convention as `app/api/v1/telemetry
   `status`, time range.
 - `GET /api/v1/data-quality/summary` — tenant-wide rollup: sensor counts by `quality_state`,
   active issue counts by `severity`.
+- `GET /api/v1/data-quality/sensors` — every sensor this tenant has evaluated at least once
+  (filterable by `machine_id`, `quality_state`, `eligibility`), joined with its own
+  metadata, active issue(s), and its measurement type's configured expected reporting
+  interval. The fleet-wide read model the Data Quality page's main table is built on —
+  added because `GET /issues` alone cannot represent a trusted sensor with no active issue.
 
 ---
 
 ## 13. Frontend
 
-`frontend/src/app/data-quality/page.tsx` — summary cards (sensors tracked, TRUSTED/USABLE
-WITH CAUTION/UNUSABLE counts) plus a filterable (status, severity) issues table. Badges show
-`TRUSTED`/`USABLE_WITH_CAUTION`/`UNUSABLE` — never `HEALTHY`/`FAILED`. No health score, no
-diagnosis, no recommendation — this is a data-quality signal only, matching LOOP.md's
-"never generate production-like health values inside React" and CLAUDE.md's product-story
-boundary (Phase 7 is DATA → DATA QUALITY, not yet DETECTION/DIAGNOSIS/DECISION).
+`frontend/src/app/data-quality/page.tsx` (rebuilt in the post-Phase-39 "Data Trust" product
+pass — see `docs/PRODUCT_EXPERIENCE.md`) is a fleet-wide sensor-quality read model, not just
+an issue list: `GET /api/v1/data-quality/sensors` (`QualityQueryService.
+list_fleet_sensor_records`) joins every sensor this tenant has ever evaluated
+(`sensor_quality_state`, one row per sensor — including a fully trusted sensor with no
+active issue at all) against its own metadata and active `quality_issue` row(s), because
+`GET /issues` alone structurally cannot represent a trusted sensor (it only ever has rows
+for a sensor with an actual problem).
+
+The page composes that fleet-wide list with the existing condition-intelligence
+(`useFleetLatestConditions`) and action-readiness (`lib/action-readiness.ts`) read models
+client-side — the same "each domain owns its own read model, the frontend composes the
+cross-domain narrative" pattern already used by `/ml`, `/action-readiness`, and the Machine
+Detail page — to answer, per sensor, whether its trust state is currently reducing condition
+confidence, blocking a condition assessment, or blocking action readiness
+(`frontend/src/lib/data-quality.ts`'s `decisionImpactFor`/`machineBlockLevel`, the one place
+that derivation happens).
+
+Trust badges show `Trusted` / `Use with caution` / `Not trustworthy` (never
+`HEALTHY`/`FAILED`) — the raw `TRUSTED`/`USABLE_WITH_CAUTION`/`UNUSABLE` enum only appears
+in each row's "Technical provenance" detail. Filtering is by trust category (Trusted / Needs
+attention / Untrusted), issue category (Stale / Dropout / Drift / Outlier / Communication
+loss — mapped from the real `QualityIssueType` values in `lib/data-quality.ts`, never an
+invented category), and decision impact (No impact / Confidence reduced / Assessment
+blocked / Action blocked), with filter state mirrored into the URL query string
+(`?state=&issue=&impact=&machine=`) for deep linking. No health score, no diagnosis, no
+recommendation beyond a generic inspect/verify next step — this is a data-quality signal
+only, matching LOOP.md's "never generate production-like health values inside React" and
+CLAUDE.md's product-story boundary.
 
 ---
 

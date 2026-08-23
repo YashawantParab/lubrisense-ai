@@ -55,6 +55,27 @@ export interface SensorQualityDetailResponse {
   active_issues: QualityIssueResponse[];
 }
 
+/** One sensor's current trust state plus its own identifying metadata and active
+ * issue(s) — `GET /api/v1/data-quality/sensors`. Exists for every evaluated sensor,
+ * including a fully trusted one with no active issue, which `QualityIssueResponse` alone
+ * cannot represent. */
+export interface SensorQualityRecordResponse {
+  sensor_id: string;
+  sensor_code: string;
+  sensor_name: string;
+  sensor_type: string;
+  machine_id: string | null;
+  state: SensorQualityStateResponse;
+  active_issues: QualityIssueResponse[];
+  expected_reporting_interval_seconds: number | null;
+}
+
+export interface MachineQualitySummaryResponse {
+  machine_id: string;
+  sensors: SensorQualityStateResponse[];
+  active_issues: QualityIssueResponse[];
+}
+
 export interface TenantQualitySummaryResponse {
   sensors_by_quality_state: Record<string, number>;
   active_issues_by_severity: Record<string, number>;
