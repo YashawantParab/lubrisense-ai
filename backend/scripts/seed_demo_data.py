@@ -22,7 +22,7 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import date, timedelta
-from typing import Any, TypeVar
+from typing import Any, NamedTuple, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -134,7 +134,6 @@ CRITICALITY_CYCLE = [Criticality.LOW, Criticality.MEDIUM, Criticality.HIGH, Crit
 # identity instead of a generic "{MachineType} {index:03d}" label. Every other machine in
 # the generated fleet keeps the generic formula unchanged.
 #
-# Two names per entry:
 #   - `display_name` is the full `Machine.name` shown everywhere a machine header appears
 #     (Overview/Fleet/Machine Detail/Incidents/.../Technical Provenance) — API-driven, so
 #     this one field is the only thing that needs to change for every page to agree.
@@ -142,55 +141,95 @@ CRITICALITY_CYCLE = [Criticality.LOW, Criticality.MEDIUM, Criticality.HIGH, Crit
 #     controller/distributor/circuit/sensor names (`seed_machine`/`seed_lubrication_
 #     system` below) — kept short specifically so e.g. a sensor name doesn't become
 #     "Ore Transfer Conveyor CV-101 – Head Pulley Bearings Reservoir Level Sensor".
+#   - `equipment_class` and `area` (industrial-context-consistency pass) are seeded into
+#     `Machine.metadata_`, not a mapped column — read back via `HierarchyMachine`'s
+#     `_extract_metadata_fields` validator (`app/api/schemas/hierarchy.py`) and
+#     `MachineResponse.metadata_` directly. `equipment_class` is the product-presentation
+#     equipment type primary UI should lead with (`frontend/src/lib/equipment.ts`'s
+#     `equipmentTypeFor`); `area` is a synthetic process-area label used in place of the
+#     literal Plant/Line name in primary UI specifically because two curated machines
+#     (indices 0 and 1) share a physical `ProductionLine` whose real name — "Ridgeline
+#     Crushing Plant" — reads as a non-sequitur next to a kiln drive. Neither field
+#     changes `production_line_id`/`asset_code`/`id`: the real structural Plant/Line
+#     assignment is untouched and still renders correctly in the Asset Hierarchy
+#     engineering tree.
 #
 # machine_type (fixed by `MACHINE_TYPE_CYCLE[index % 6]`, never changed here) is the
-# platform's only equipment-category field — six fixed values (CLAUDE.md's machine
-# hierarchy). Real industrial catalogs are far more specific than six categories, so a
-# handful of these names (a kiln/mill/feeder run by its drive MOTOR, a rolling mill's
-# lubrication skid classed as its COMPRESSOR-family machine) are a coarse-category fit
-# rather than a literal one — the same simplification real CMMS equipment-class fields
-# make constantly. Scenario (telemetry/incident/condition story) is unchanged for every
-# one of these; only identity/copy changed.
-CURATED_MACHINE_NAMES: dict[int, tuple[str, str]] = {
-    0: (  # L1-7B43-M000, CONVEYOR — flagship: resolved lubrication restriction
+# platform's only equipment-category *column* — six fixed values (CLAUDE.md's machine
+# hierarchy) kept for backend/simulator/historical-test compatibility. Real industrial
+# catalogs are far more specific than six categories, so a handful of these (a kiln/mill/
+# feeder run by its drive MOTOR, a rolling mill's lubrication skid classed as its
+# COMPRESSOR-family machine) are a coarse-category fit rather than a literal one — exactly
+# why `equipment_class` exists as the customer-facing override. Scenario (telemetry/
+# incident/condition story) is unchanged for every one of these; only identity/copy
+# changed.
+class _CuratedMachine(NamedTuple):
+    display_name: str
+    short_label: str
+    equipment_class: str
+    area: str
+
+
+CURATED_MACHINE_NAMES: dict[int, _CuratedMachine] = {
+    0: _CuratedMachine(  # L1-7B43-M000, CONVEYOR — flagship: resolved lubrication restriction
         "Ore Transfer Conveyor CV-101 – Head Pulley Bearings",
         "Ore Transfer Conveyor CV-101",
+        "Ore Transfer Conveyor",
+        "Bulk Material Handling",
     ),
-    1: (  # L1-7B43-M001, MOTOR — healthy, stable, high-confidence
+    1: _CuratedMachine(  # L1-7B43-M001, MOTOR — healthy, stable, high-confidence
         "Rotary Kiln Drive KILN-01 – Support Roller Station 2",
         "Rotary Kiln Drive KILN-01",
+        "Rotary Kiln Drive",
+        "Pyroprocessing",
     ),
-    4: (  # L2-7B43-M004, COMPRESSOR — lubrication pump performance degradation
+    4: _CuratedMachine(  # L2-7B43-M004, COMPRESSOR — lubrication pump performance degradation
         "Rolling Mill Stand RM-401 – Central Lubrication Pump Unit",
         "Rolling Mill Stand RM-401",
+        "Rolling Mill Stand",
+        "Metals / Rolling",
     ),
-    5: (  # L1-E915-M005, CRUSHER — low lubricant / reservoir availability
+    5: _CuratedMachine(  # L1-E915-M005, CRUSHER — low lubricant / reservoir availability
         "Primary Gyratory Crusher CR-101 – Lubrication System",
         "Primary Gyratory Crusher CR-101",
+        "Primary Gyratory Crusher",
+        "Crushing",
     ),
-    8: (  # L2-E915-M008, FAN — independent bearing-condition deterioration
+    8: _CuratedMachine(  # L2-E915-M008, FAN — independent bearing-condition deterioration
         "Kiln ID Fan IDF-01 – Drive-End Bearing",
         "Kiln ID Fan IDF-01",
+        "Kiln ID Fan",
+        "Pyroprocessing",
     ),
-    9: (  # L1-07A8-M009, PUMP — possible leakage / lubricant delivery loss
+    9: _CuratedMachine(  # L1-07A8-M009, PUMP — possible leakage / lubricant delivery loss
         "Ball Mill BM-301 – Pinion Bearing Lubrication Circuit",
         "Ball Mill BM-301",
+        "Ball Mill",
+        "Grinding",
     ),
-    12: (  # L2-07A8-M012, CONVEYOR — active developing restriction
+    12: _CuratedMachine(  # L2-07A8-M012, CONVEYOR — active developing restriction
         "Stacker-Reclaimer SR-201 – Slew Bearing Lubrication Circuit",
         "Stacker-Reclaimer SR-201",
+        "Stacker-Reclaimer",
+        "Bulk Material Handling",
     ),
-    13: (  # L1-95FA-M013, MOTOR — sensor / data-quality limitation
+    13: _CuratedMachine(  # L1-95FA-M013, MOTOR — sensor / data-quality limitation
         "Apron Feeder AF-101 – Head Shaft Lubrication Circuit",
         "Apron Feeder AF-101",
+        "Apron Feeder",
+        "Bulk Material Handling",
     ),
-    16: (  # L1-7F84-M016, COMPRESSOR — recently maintained / recovering
+    16: _CuratedMachine(  # L1-7F84-M016, COMPRESSOR — recently maintained / recovering
         "Bucket Elevator BE-201 – Head Shaft Bearings",
         "Bucket Elevator BE-201",
+        "Bucket Elevator",
+        "Bulk Material Handling",
     ),
-    17: (  # L1-7F84-M017, CRUSHER — commissioning / insufficient evidence
+    17: _CuratedMachine(  # L1-7F84-M017, CRUSHER — commissioning / insufficient evidence
         "Secondary Crusher CR-202 – Main Bearing Lubrication Circuit",
         "Secondary Crusher CR-202",
+        "Secondary Crusher",
+        "Crushing",
     ),
 }
 
@@ -387,7 +426,13 @@ async def seed_machine(
     asset_code = f"{line.code}-{line.plant_id.hex[:4].upper()}-M{index:03d}"
     equipment_tier = index % 4  # 0,1 = full chain; 2 = bearings only; 3 = bare
     generic_name = f"{machine_type.value.title()} {index:03d}"
-    display_name, short_label = CURATED_MACHINE_NAMES.get(index, (generic_name, generic_name))
+    curated = CURATED_MACHINE_NAMES.get(index)
+    display_name = curated.display_name if curated else generic_name
+    short_label = curated.short_label if curated else generic_name
+    machine_metadata: dict[str, Any] = {"demo": True}
+    if curated:
+        machine_metadata["equipment_class"] = curated.equipment_class
+        machine_metadata["area"] = curated.area
 
     machine = await get_or_create(
         session,
@@ -405,7 +450,7 @@ async def seed_machine(
         criticality=CRITICALITY_CYCLE[(index + 1) % len(CRITICALITY_CYCLE)],
         operating_profile={"duty_cycle": "continuous" if index % 2 == 0 else "intermittent"},
         status=MachineStatus.REGISTERED if equipment_tier == 3 else MachineStatus.MONITORED,
-        metadata_={"demo": True},
+        metadata_=machine_metadata,
     )
 
     if equipment_tier == 3:

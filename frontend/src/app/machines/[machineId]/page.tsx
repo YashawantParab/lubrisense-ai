@@ -44,6 +44,13 @@ import {
   readinessEvidenceFor,
   readinessModeFor,
 } from "@/lib/action-readiness";
+import { recommendedActionDisplay } from "@/lib/action-wording";
+import {
+  componentFromName,
+  equipmentNameFromName,
+  equipmentTypeFor,
+  stringMeta,
+} from "@/lib/equipment";
 import { failureLabelName, modelDisplayName } from "@/lib/ml-terminology";
 import { interpretState, STATE_TYPE_LABELS } from "@/lib/state-interpretation";
 import { humanize, toneForStatus } from "@/lib/terminology";
@@ -246,6 +253,24 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   }, [intelligence.data, hierarchy.data]);
   const caseFeedback = useMaintenanceFeedback(machineCase?.id ?? "");
 
+  // Product-presentation equipment identity (industrial-context-consistency pass) — see
+  // `frontend/src/lib/equipment.ts`. `component`/`equipmentName` are derived from the
+  // one canonical `machine.name` string; `equipmentClass`/`area` come from `metadata`
+  // (curated showcase fleet only — null, and so falling back to the internal values, for
+  // every other machine).
+  const equipmentIdentity = useMemo(() => {
+    if (!hierarchy.data) return null;
+    const machine = hierarchy.data.machine;
+    const equipmentClass = stringMeta(machine.metadata, "equipment_class");
+    const area = stringMeta(machine.metadata, "area");
+    return {
+      equipmentName: equipmentNameFromName(machine.name),
+      component: componentFromName(machine.name),
+      equipmentType: equipmentTypeFor(machine.machine_type, equipmentClass),
+      area,
+    };
+  }, [hierarchy.data]);
+
   const decisionHistory = useDecisionHistory(machineId);
   // The decision persisted closest to the incident's own detection time — i.e. "what was
   // recommended while this was actually happening", read from real history rather than
@@ -329,10 +354,18 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                 { label: "Fleet", href: "/fleet" },
                 { label: hierarchy.data.machine.name },
               ]}
-              title={hierarchy.data.machine.name}
-              description={`${hierarchy.data.machine.asset_code} · ${humanize(hierarchy.data.machine.machine_type)}`}
+              title={equipmentIdentity?.equipmentName ?? hierarchy.data.machine.name}
+              description={[
+                equipmentIdentity?.component,
+                `${hierarchy.data.machine.asset_code} · ${equipmentIdentity?.equipmentType ?? humanize(hierarchy.data.machine.machine_type)}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
               actions={
                 <>
+                  {equipmentIdentity?.area && (
+                    <StatusPill tone="neutral">{equipmentIdentity.area} Area</StatusPill>
+                  )}
                   <StatusPill tone={toneForStatus(hierarchy.data.machine.criticality)}>
                     {hierarchy.data.machine.criticality}
                   </StatusPill>
@@ -607,7 +640,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                         <span className="text-zinc-500 dark:text-zinc-400">
                           During incident:{" "}
                           <span className="text-zinc-700 dark:text-zinc-300">
-                            {humanize(duringIncidentDecision.recommended_action)}
+                            {recommendedActionDisplay(
+                              duringIncidentDecision.recommended_action,
+                              equipmentIdentity?.component,
+                            )}
                           </span>{" "}
                           — {humanize(duringIncidentDecision.priority)}
                         </span>
@@ -615,7 +651,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                     )}
                     <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
                       {showDecisionComparison ? "Current: " : ""}
-                      {humanize(intelligence.data.decision.recommended_action)}
+                      {recommendedActionDisplay(
+                        intelligence.data.decision.recommended_action,
+                        equipmentIdentity?.component,
+                      )}
                     </p>
                     {!activeIncident && relevantIncident && !showDecisionComparison && (
                       <p className="text-xs text-zinc-400 dark:text-zinc-600">
@@ -690,7 +729,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                             href={`/maintenance/${machineCase.id}`}
                             className="text-sky-700 hover:underline dark:text-sky-400"
                           >
-                            {humanize(machineCase.recommended_action)}
+                            {recommendedActionDisplay(
+                              machineCase.recommended_action,
+                              equipmentIdentity?.component,
+                            )}
                           </Link>
                           <MaintenanceStateBadge value={machineCase.state} />
                         </div>

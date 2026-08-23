@@ -6,6 +6,7 @@ import { DataState } from "@/components/data-state";
 import { StatusPill } from "@/components/status-pill";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useIntelligenceView } from "@/hooks/use-intelligence";
+import { humanize } from "@/lib/terminology";
 import type {
   DecisionAssessmentResponse,
   PrognosticAssessmentResponse,
@@ -265,9 +266,18 @@ export default function IntelligencePage() {
           </div>
         )}
 
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {selectedMachine ? `${selectedMachine.name} (${selectedMachine.asset_code})` : ""}
-        </p>
+        {selectedMachine && (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {selectedMachine.name} ({selectedMachine.asset_code})
+            {selectedMachine.equipment_class && (
+              <>
+                {" "}
+                — Equipment class: {selectedMachine.equipment_class} · Internal machine category:{" "}
+                {humanize(selectedMachine.machine_type)}
+              </>
+            )}
+          </p>
+        )}
       </DataState>
     </div>
   );

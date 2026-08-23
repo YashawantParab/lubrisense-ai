@@ -16,6 +16,8 @@ import { RelativeTime } from "@/components/relative-time";
 import { useMachine } from "@/hooks/use-asset-hierarchy";
 import { useIntelligenceView } from "@/hooks/use-intelligence";
 import { useMaintenanceCases } from "@/hooks/use-maintenance";
+import { recommendedActionDisplay } from "@/lib/action-wording";
+import { componentFromName, equipmentTypeFor, stringMeta } from "@/lib/equipment";
 import { humanize } from "@/lib/terminology";
 import type { IncidentResponse } from "@/lib/api/incidents-types";
 
@@ -65,7 +67,11 @@ export function PriorityAssetCard({ incident }: { incident: IncidentResponse }) 
           </h2>
           {machine.data && (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              {machine.data.asset_code} · {humanize(machine.data.machine_type)}
+              {machine.data.asset_code} ·{" "}
+              {equipmentTypeFor(
+                machine.data.machine_type,
+                stringMeta(machine.data.metadata, "equipment_class"),
+              )}
             </p>
           )}
         </div>
@@ -106,7 +112,10 @@ export function PriorityAssetCard({ incident }: { incident: IncidentResponse }) 
             {maintenanceCase ? (
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-                  {humanize(maintenanceCase.recommended_action)}
+                  {recommendedActionDisplay(
+                    maintenanceCase.recommended_action,
+                    machine.data ? componentFromName(machine.data.name) : null,
+                  )}
                 </span>
                 <PriorityBadge value={maintenanceCase.priority} />
               </div>

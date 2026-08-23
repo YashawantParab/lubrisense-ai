@@ -15,7 +15,9 @@ import { SectionCard } from "@/components/section-card";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useIncidents } from "@/hooks/use-incidents";
 import { useFleetLatestConditions, useFleetLatestDecisions } from "@/hooks/use-intelligence";
+import { recommendedActionDisplay } from "@/lib/action-wording";
 import { conditionInterpretation } from "@/lib/condition-interpretation";
+import { componentFromName, equipmentTypeFor } from "@/lib/equipment";
 import { fleetBucket, severityRank } from "@/lib/fleet-condition";
 import { humanize } from "@/lib/terminology";
 import type { HierarchyMachine } from "@/lib/api/asset-hierarchy-types";
@@ -126,7 +128,8 @@ export function AttentionQueue({ limit = 5 }: { limit?: number }) {
                     {machine.name}
                   </Link>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {machine.asset_code} · {humanize(machine.machine_type)}
+                    {machine.asset_code} ·{" "}
+                    {equipmentTypeFor(machine.machine_type, machine.equipment_class)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -155,7 +158,10 @@ export function AttentionQueue({ limit = 5 }: { limit?: number }) {
                   <span className="text-xs text-zinc-400 dark:text-zinc-600">Recommended: </span>
                   {decision ? (
                     <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                      {humanize(decision.recommended_action)}
+                      {recommendedActionDisplay(
+                        decision.recommended_action,
+                        componentFromName(machine.name),
+                      )}
                     </span>
                   ) : (
                     <span className="text-zinc-500 dark:text-zinc-400">Not yet decided</span>

@@ -25,6 +25,12 @@ export interface HierarchyMachine {
   machine_type: string;
   criticality: string;
   status: string;
+  /** Product-presentation equipment class for the curated showcase fleet (e.g. "Ball
+   * Mill") — null for every other machine, in which case prefer `humanize(machine_type)`. */
+  equipment_class: string | null;
+  /** Synthetic process-area label for the curated showcase fleet (e.g. "Grinding") —
+   * null for every other machine. */
+  area: string | null;
 }
 
 export interface HierarchyProductionLine {

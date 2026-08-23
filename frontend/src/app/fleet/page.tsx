@@ -24,6 +24,8 @@ import {
   effectiveRecommendedAction,
   readinessModeFor,
 } from "@/lib/action-readiness";
+import { recommendedActionDisplay } from "@/lib/action-wording";
+import { componentFromName, equipmentTypeFor } from "@/lib/equipment";
 import { FLEET_BUCKET_TONE, fleetBucket } from "@/lib/fleet-condition";
 import { humanize, toneForStatus } from "@/lib/terminology";
 import type { HierarchyMachine } from "@/lib/api/asset-hierarchy-types";
@@ -235,10 +237,13 @@ export default function FleetPage() {
                           )}
                         </div>
                         <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {row.machine.asset_code} · {humanize(row.machine.machine_type)}
+                          {row.machine.asset_code} ·{" "}
+                          {equipmentTypeFor(row.machine.machine_type, row.machine.equipment_class)}
                         </div>
                         <div className="text-xs text-zinc-400 dark:text-zinc-600">
-                          {row.siteName} / {row.plantName} / {row.lineName}
+                          {row.machine.area
+                            ? `${row.siteName} · ${row.machine.area} Area`
+                            : `${row.siteName} / ${row.plantName} / ${row.lineName}`}
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
@@ -296,7 +301,10 @@ export default function FleetPage() {
                           return effective ? (
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="text-zinc-700 dark:text-zinc-300">
-                                {humanize(effective.action)}
+                                {recommendedActionDisplay(
+                                  effective.action,
+                                  componentFromName(row.machine.name),
+                                )}
                               </span>
                               <PriorityBadge value={effective.priority} />
                             </div>

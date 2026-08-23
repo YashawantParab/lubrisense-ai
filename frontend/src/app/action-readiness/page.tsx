@@ -20,6 +20,8 @@ import {
   readinessModeFor,
   type ReadinessMode,
 } from "@/lib/action-readiness";
+import { recommendedActionDisplay } from "@/lib/action-wording";
+import { componentFromName } from "@/lib/equipment";
 import { humanize } from "@/lib/terminology";
 
 const MODE_ORDER: ReadinessMode[] = [
@@ -135,7 +137,12 @@ export default function ActionReadinessPage() {
                   <span>
                     <span className="text-xs text-zinc-400 dark:text-zinc-600">Recommended: </span>
                     <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                      {effective ? humanize(effective.action) : "Not yet decided"}
+                      {effective
+                        ? recommendedActionDisplay(
+                            effective.action,
+                            componentFromName(machine.name),
+                          )
+                        : "Not yet decided"}
                     </span>
                   </span>
                   {effective && <PriorityBadge value={effective.priority} />}
