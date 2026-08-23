@@ -275,8 +275,8 @@ export default function IncidentDetailPage({
                     </p>
                     {(state === "RESOLVED" || state === "CLOSED") && (
                       <p className="mb-2 text-xs text-zinc-400 italic dark:text-zinc-600">
-                        Reflects this machine&rsquo;s current state, gathered after this incident was
-                        resolved — not necessarily the evidence available at the time it was
+                        Reflects this machine&rsquo;s current state, gathered after this incident
+                        was resolved — not necessarily the evidence available at the time it was
                         diagnosed.
                       </p>
                     )}
