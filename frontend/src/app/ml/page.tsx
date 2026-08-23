@@ -8,6 +8,7 @@ import { ConfidenceBadge, ModelStatusBadge, SeverityBadge } from "@/components/b
 import { ConfusionMatrix, PerClassPerformance } from "@/components/ml/confusion-matrix";
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
+import { EvidenceFusionDiagram, type FusionSource } from "@/components/evidence-fusion-diagram";
 import { FeatureEvidence } from "@/components/ml/feature-evidence";
 import { PageHeader } from "@/components/page-header";
 import { ProbabilityBars } from "@/components/ml/probability-bars";
@@ -18,8 +19,15 @@ import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useFleetLatestConditions, useFleetLatestDecisions } from "@/hooks/use-intelligence";
 import { useFleetLatestML, useModel, useModels } from "@/hooks/use-ml";
 import {
+  dataTrustFusionStrength,
+  machineMlFusionStrength,
+  ruleEvidenceStrength,
+  stateEstimateStrength,
+} from "@/lib/evidence-fusion";
+import {
   classificationConditionHint,
   failureLabelName,
+  humanizeFeatureName,
   ML_ROLE_LABEL,
   mlRoleFor,
   modelDisplayName,
@@ -109,7 +117,10 @@ function MLPageInner() {
   const [machineId, setMachineId] = useState(searchParams.get("machineId") ?? "");
   const effectiveMachineId = machineId || machinesWithEvidence[0]?.id || machines[0]?.id || "";
   const selectedMachine = machineById.get(effectiveMachineId);
-  const selectedResults = resultsByMachine.get(effectiveMachineId) ?? [];
+  const selectedResults = useMemo(
+    () => resultsByMachine.get(effectiveMachineId) ?? [],
+    [resultsByMachine, effectiveMachineId],
+  );
   const selectedCondition = conditionByMachine.get(effectiveMachineId);
   const selectedDecision = decisionByMachine.get(effectiveMachineId);
 
@@ -127,6 +138,22 @@ function MLPageInner() {
     [models.data],
   );
 
+  const fusionSources: FusionSource[] | null = useMemo(() => {
+    if (!selectedCondition) return null;
+    return [
+      { label: "Physical / rule evidence", strength: ruleEvidenceStrength(selectedCondition) },
+      { label: "State estimation", strength: stateEstimateStrength(selectedCondition) },
+      {
+        label: "ML evidence",
+        strength: machineMlFusionStrength(selectedResults, selectedCondition, modelStatusById),
+      },
+      {
+        label: "Data trust",
+        strength: dataTrustFusionStrength(selectedCondition.evidence_summary.data_trustworthiness),
+      },
+    ];
+  }, [selectedCondition, selectedResults, modelStatusById]);
+
   const sortedModels = useMemo(
     () => [...(models.data ?? [])].sort((a, b) => a.model_id.localeCompare(b.model_id)),
     [models.data],
@@ -143,17 +170,36 @@ function MLPageInner() {
   // MLInferenceResult, never a frontend-invented number.
   const summary = useMemo(() => {
     const allResults = fleetML.data ?? [];
-    const machinesScored = new Set(allResults.map((r) => r.machine_id)).size;
+    // Raw record counts (not distinct machines) — the same grain as "24 scored, 3
+    // insufficient-features" reported from the persisted MLInferenceResult table.
+    const scored = allResults.filter((r) => r.status === "OK").length;
+    const insufficientFeatures = allResults.filter(
+      (r) => r.status === "INSUFFICIENT_FEATURES",
+    ).length;
+    const machinesScored = new Set(
+      allResults.filter((r) => r.status === "OK").map((r) => r.machine_id),
+    ).size;
+    const machinesBlocked = new Set(
+      allResults.filter((r) => r.status === "INSUFFICIENT_FEATURES").map((r) => r.machine_id),
+    ).size;
     const anomalous = allResults.filter((r) => r.result_kind === "ANOMALY" && r.anomalous).length;
     const classified = allResults.filter(
       (r) => r.result_kind === "CLASSIFICATION" && r.status === "OK",
     ).length;
     const highConfidence = allResults.filter((r) => r.confidence_category === "HIGH").length;
-    const blocked = allResults.filter((r) => r.status === "INSUFFICIENT_FEATURES").length;
     const supportingCondition = (conditions.data ?? []).filter(
       (c) => c.ml_result_ids.length > 0,
     ).length;
-    return { machinesScored, anomalous, classified, highConfidence, blocked, supportingCondition };
+    return {
+      scored,
+      insufficientFeatures,
+      machinesScored,
+      machinesBlocked,
+      anomalous,
+      classified,
+      highConfidence,
+      supportingCondition,
+    };
   }, [fleetML.data, conditions.data]);
 
   return (
@@ -197,12 +243,14 @@ function MLPageInner() {
       <DataState isPending={fleetML.isPending} isError={fleetML.isError} error={fleetML.error}>
         <div className="flex flex-wrap items-baseline gap-x-10 gap-y-3 border-y border-zinc-100 py-4 dark:border-zinc-800/70">
           {[
-            ["Machines with ML evidence", summary.machinesScored],
+            ["Scored ML assessments", summary.scored],
+            ["Insufficient-feature assessments", summary.insufficientFeatures],
+            ["Machines with active ML evidence", summary.machinesScored],
+            ["Machines where ML was blocked", summary.machinesBlocked],
             ["Elevated anomaly evidence", summary.anomalous],
             ["Classified with a pattern", summary.classified],
             ["High-confidence results", summary.highConfidence],
             ["Currently supporting a condition", summary.supportingCondition],
-            ["Blocked by data quality", summary.blocked],
           ].map(([label, value]) => (
             <div key={label as string} className="flex items-baseline gap-2">
               <span className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
@@ -313,6 +361,7 @@ function MLPageInner() {
                   ) : (
                     <ClassificationCard
                       result={effectiveClassifier}
+                      machineId={effectiveMachineId}
                       modelServable={
                         modelStatusById.has(effectiveClassifier.model_id)
                           ? SERVABLE_MODEL_STATUSES.has(
@@ -340,6 +389,7 @@ function MLPageInner() {
                   ) : (
                     <AnomalyCard
                       result={anomalyResult}
+                      machineId={effectiveMachineId}
                       modelServable={
                         modelStatusById.has(anomalyResult.model_id)
                           ? SERVABLE_MODEL_STATUSES.has(
@@ -359,9 +409,27 @@ function MLPageInner() {
             {/* C. Evidence fusion */}
             {selectedCondition && (
               <div className="border-t border-zinc-100 pt-5 dark:border-zinc-800">
-                <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                <h3 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                   Evidence fusion — how ML affects the condition
                 </h3>
+                {fusionSources && (
+                  <div className="mb-4">
+                    <EvidenceFusionDiagram
+                      sources={fusionSources}
+                      conditionLabel={humanize(selectedCondition.condition_type)}
+                      decisionLabel={
+                        selectedDecision ? humanize(selectedDecision.recommended_action) : null
+                      }
+                      actionReadinessLabel={
+                        selectedDecision
+                          ? selectedDecision.human_review_required
+                            ? "Human approval required"
+                            : "No human review flagged"
+                          : null
+                      }
+                    />
+                  </div>
+                )}
                 {mlWhyLines(selectedCondition.evidence_summary.why).length > 0 ? (
                   <ul className="flex flex-col gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
                     {mlWhyLines(selectedCondition.evidence_summary.why).map((line) => (
@@ -546,6 +614,12 @@ function MLPageInner() {
                 <div className="flex flex-col gap-5">
                   <LifecycleExplainer status={detail.data.status} />
 
+                  <p className="text-xs text-zinc-500 italic dark:text-zinc-400">
+                    Current model evidence is evaluated on synthetic industrial scenarios. Field
+                    validation against real machine histories and maintenance outcomes is required
+                    before production promotion.
+                  </p>
+
                   <div>
                     <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                       Training data
@@ -681,24 +755,70 @@ function MLPageInner() {
   );
 }
 
+/** The insufficient-features case is real product evidence, not an error to hide (ML
+ * productization pass, item 6): shows exactly which required features this model's
+ * minimum input set was missing for this machine, at this inference, and links straight
+ * to the Data Quality page for the sensor(s) behind that gap — never a generic "blocked"
+ * message with no way to act on it. */
+function InsufficientFeaturesCard({
+  result,
+  machineId,
+}: {
+  result: MLInferenceResultResponse;
+  machineId: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg bg-zinc-50/70 p-4 dark:bg-zinc-900/40">
+      <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        ML inference unavailable
+      </p>
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        Reason: required feature evidence was incomplete for {modelDisplayName(result.model_id)}.
+      </p>
+      {result.missing_features.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Missing features</p>
+          <ul className="mt-1 flex flex-wrap gap-1.5">
+            {result.missing_features.map((feature) => (
+              <li
+                key={feature}
+                className="rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+              >
+                {humanizeFeatureName(feature)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        Insufficient features means condition confidence for this machine is reduced, and any
+        recommended action stays gated on human review until trusted evidence is available.
+      </p>
+      <Link
+        href={`/data-quality?machine=${machineId}`}
+        className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+      >
+        Review data quality →
+      </Link>
+    </div>
+  );
+}
+
 function ClassificationCard({
   result,
+  machineId,
   modelServable,
   conditionType,
   includedInCondition,
 }: {
   result: MLInferenceResultResponse;
+  machineId: string;
   modelServable: boolean;
   conditionType: string | null;
   includedInCondition: boolean;
 }) {
   if (result.status === "INSUFFICIENT_FEATURES") {
-    return (
-      <EmptyState
-        title="ML inference blocked"
-        description="Required sensor evidence did not meet the data-quality gate for this model's minimum inputs."
-      />
-    );
+    return <InsufficientFeaturesCard result={result} machineId={machineId} />;
   }
   const agrees =
     conditionType != null &&
@@ -758,20 +878,17 @@ function ClassificationCard({
 
 function AnomalyCard({
   result,
+  machineId,
   modelServable,
   includedInCondition,
 }: {
   result: MLInferenceResultResponse;
+  machineId: string;
   modelServable: boolean;
   includedInCondition: boolean;
 }) {
   if (result.status === "INSUFFICIENT_FEATURES") {
-    return (
-      <EmptyState
-        title="ML inference blocked"
-        description="Required sensor evidence did not meet the data-quality gate for this model's minimum inputs."
-      />
-    );
+    return <InsufficientFeaturesCard result={result} machineId={machineId} />;
   }
   const role = mlRoleFor({
     status: result.status,

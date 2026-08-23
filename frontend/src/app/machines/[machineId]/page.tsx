@@ -593,9 +593,17 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                       No ML inference recorded for this machine yet.
                     </p>
                   ) : machineMLResults.every((r) => r.status === "INSUFFICIENT_FEATURES") ? (
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      ML evidence unavailable — required signal quality insufficient.
-                    </p>
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        ML evidence unavailable — required features incomplete.
+                      </p>
+                      <Link
+                        href={`/data-quality?machine=${machineId}`}
+                        className="inline-block text-xs text-sky-600 hover:underline dark:text-sky-400"
+                      >
+                        Review data quality →
+                      </Link>
+                    </div>
                   ) : (
                     <ul className="flex flex-col gap-1 text-sm">
                       {machineMLResults

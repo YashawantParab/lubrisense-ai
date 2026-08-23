@@ -1,8 +1,11 @@
 import { failureLabelName } from "@/lib/ml-terminology";
 
-/** Real calibrated class probabilities from `predict_proba` — sums to ~1 across the
- * model's own label schema, never a frontend-invented distribution. Sorted descending so
- * the leading class reads first. */
+/** Real class scores straight from `predict_proba` — sums to ~1 across the model's own
+ * label schema, never a frontend-invented distribution. Deliberately never called
+ * "probability" in copy: the training pipeline has no calibration step (no Platt/isotonic
+ * scaling against a held-out set), so these are the model's raw relative scores, not a
+ * validated probability of correctness. Sorted descending so the leading class reads
+ * first. */
 export function ProbabilityBars({
   probabilities,
   predictedClass,
@@ -39,8 +42,9 @@ export function ProbabilityBars({
         </div>
       ))}
       <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-600">
-        Calibrated class probabilities from the model&rsquo;s own <code>predict_proba</code> — real
-        model output, not an estimate.
+        Classification scores from the model&rsquo;s own <code>predict_proba</code> — real model
+        output, not an estimate, but not calibrated against a held-out set. Treat as a relative
+        ranking across classes, not a validated probability of correctness.
       </p>
     </div>
   );

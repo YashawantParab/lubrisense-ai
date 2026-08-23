@@ -18,7 +18,9 @@ import { FindingCard } from "@/components/finding-card";
 import { PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
 import { SectionCard } from "@/components/section-card";
+import { StatusPill } from "@/components/status-pill";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useFleetLatestConditions } from "@/hooks/use-intelligence";
 import {
   useAcknowledgeIncident,
   useCloseIncident,
@@ -28,8 +30,17 @@ import {
   useStartInvestigation,
 } from "@/hooks/use-incidents";
 import { useCreateCase, useMaintenanceCases } from "@/hooks/use-maintenance";
+import { useFleetLatestML, useModels } from "@/hooks/use-ml";
 import { useFindings } from "@/hooks/use-rules";
 import { useAuth } from "@/lib/auth/context";
+import {
+  dataTrustFusionStrength,
+  FUSION_STRENGTH_LABEL,
+  FUSION_STRENGTH_TONE,
+  machineMlFusionStrength,
+  ruleEvidenceStrength,
+  stateEstimateStrength,
+} from "@/lib/evidence-fusion";
 import { humanize } from "@/lib/terminology";
 
 const VALID_NEXT: Record<string, string> = {
@@ -90,6 +101,40 @@ export default function IncidentDetailPage({
     const ids = new Set(incident.data?.rule_finding_ids ?? []);
     return (machineFindings.data ?? []).filter((f) => ids.has(f.id));
   }, [machineFindings.data, incident.data?.rule_finding_ids]);
+
+  // Evidence Fusion sources for the sidebar (ML productization pass, item 17) — reuses the
+  // machine's *current* condition/ML state, the same real evidence the /ml page and
+  // machine detail page already read, never a value invented for this page.
+  const fleetML = useFleetLatestML();
+  const conditions = useFleetLatestConditions();
+  const models = useModels();
+  const modelStatusById = useMemo(
+    () => new Map((models.data ?? []).map((m) => [m.model_id, m.status])),
+    [models.data],
+  );
+  const machineCondition = useMemo(
+    () => (conditions.data ?? []).find((c) => c.machine_id === incident.data?.machine_id),
+    [conditions.data, incident.data?.machine_id],
+  );
+  const machineMLResults = useMemo(
+    () => (fleetML.data ?? []).filter((r) => r.machine_id === incident.data?.machine_id),
+    [fleetML.data, incident.data?.machine_id],
+  );
+  const evidenceSources = useMemo(() => {
+    if (!machineCondition) return null;
+    return [
+      { label: "Physical / rule evidence", strength: ruleEvidenceStrength(machineCondition) },
+      { label: "State estimation", strength: stateEstimateStrength(machineCondition) },
+      {
+        label: "ML evidence",
+        strength: machineMlFusionStrength(machineMLResults, machineCondition, modelStatusById),
+      },
+      {
+        label: "Data quality",
+        strength: dataTrustFusionStrength(machineCondition.evidence_summary.data_trustworthiness),
+      },
+    ];
+  }, [machineCondition, machineMLResults, modelStatusById]);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10 lg:px-10">
@@ -222,6 +267,40 @@ export default function IncidentDetailPage({
                     </dd>
                   </div>
                 </dl>
+
+                {evidenceSources && (
+                  <div className="border-t border-zinc-100 pt-4 dark:border-zinc-800/70">
+                    <p className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                      Evidence sources
+                    </p>
+                    {(state === "RESOLVED" || state === "CLOSED") && (
+                      <p className="mb-2 text-xs text-zinc-400 italic dark:text-zinc-600">
+                        Reflects this machine&rsquo;s current state, gathered after this incident was
+                        resolved — not necessarily the evidence available at the time it was
+                        diagnosed.
+                      </p>
+                    )}
+                    <ul className="flex flex-col gap-1.5">
+                      {evidenceSources.map((source) => (
+                        <li
+                          key={source.label}
+                          className="flex items-center justify-between gap-2 text-sm"
+                        >
+                          <span className="text-zinc-600 dark:text-zinc-400">{source.label}</span>
+                          <StatusPill tone={FUSION_STRENGTH_TONE[source.strength]}>
+                            {FUSION_STRENGTH_LABEL[source.strength]}
+                          </StatusPill>
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href={`/ml?machineId=${incident.data.machine_id}`}
+                      className="mt-2 inline-block text-xs text-sky-600 hover:underline dark:text-sky-400"
+                    >
+                      View full ML analysis →
+                    </Link>
+                  </div>
+                )}
 
                 {canManage ? (
                   <div className="flex flex-wrap gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-800/70">
