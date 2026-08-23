@@ -1,5 +1,5 @@
 """Demo scenario — an ACTIVE developing-restriction incident (docs/HOSTED_DEPLOYMENT.md
-"10 meaningful synthetic scenarios" pass). Seeds Conveyor 012 (`L2-07A8-M012`, the same
+"10 meaningful synthetic scenarios" pass). Seeds Stacker-Reclaimer SR-201 (`L2-07A8-M012`, the same
 `lubrisense-demo` tenant as the flagship/healthy machines) with a healthy period followed
 by a steadily rising main-line pressure trend, drives it through the real
 telemetry -> baseline -> rule-finding -> condition -> decision -> incident chain, and

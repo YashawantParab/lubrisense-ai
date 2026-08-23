@@ -1,5 +1,6 @@
 """Demo scenario — a possible-leakage incident (docs/HOSTED_DEPLOYMENT.md "10 meaningful
-synthetic scenarios" pass). Seeds Pump 009 (`L1-07A8-M009`, the `lubrisense-demo` tenant)
+synthetic scenarios" pass). Seeds Ball Mill BM-301 (`L1-07A8-M009`, the `lubrisense-demo`
+tenant)
 with a healthy period followed by reservoir depletion at a materially faster rate than its
 own healthy-window baseline rate, while pressure/flow-adjacent evidence stays normal — the
 `RESERVOIR_DEPLETION_ABNORMAL` single-signal finding (`POSSIBLE_LEAKAGE_PATTERN`), not the

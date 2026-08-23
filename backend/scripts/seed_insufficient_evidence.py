@@ -1,6 +1,7 @@
 """Demo scenario — a freshly commissioned, not-yet-enough-evidence asset
-(docs/HOSTED_DEPLOYMENT.md "10 meaningful synthetic scenarios" pass). Seeds Crusher 017
-(`L1-7F84-M017`, the `lubrisense-demo` tenant) with only a handful of telemetry readings per
+(docs/HOSTED_DEPLOYMENT.md "10 meaningful synthetic scenarios" pass). Seeds Secondary
+Crusher CR-202 (`L1-7F84-M017`, the `lubrisense-demo` tenant) with only a handful of
+telemetry readings per
 sensor — deliberately fewer than `demo_rules_policy.yaml`'s `min_sample_count: 5` — so no
 rule can fire and no baseline can be built. This is the ONE deliberate example in this demo
 fleet of a real `INSUFFICIENT_EVIDENCE` condition (`app.condition_intelligence.services.

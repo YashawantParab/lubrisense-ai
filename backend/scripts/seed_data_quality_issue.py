@@ -1,5 +1,5 @@
 """Demo scenario — a data-quality-limited machine (docs/HOSTED_DEPLOYMENT.md "10
-meaningful synthetic scenarios" pass). Seeds Motor 013 (`L1-95FA-M013`, the
+meaningful synthetic scenarios" pass). Seeds Apron Feeder AF-101 (`L1-95FA-M013`, the
 `lubrisense-demo` tenant) with otherwise-normal telemetry across the whole machine, but
 marks its bearing-condition instrumentation (both `BEARING_TEMPERATURE` sensors and both
 `VIBRATION_RMS` sensors — one coherent root cause: a shared junction box/signal

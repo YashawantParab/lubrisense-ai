@@ -1,5 +1,6 @@
 """Phase 36 flagship demo story — seeds a real, understandable evidence chain on the
-existing flagship machine (Conveyor 000, `L1-7B43-M000`, the Phase 2 demo tenant) and
+existing flagship machine (Ore Transfer Conveyor CV-101, `L1-7B43-M000`, the Phase 2 demo
+tenant) and
 drives it through the real backend services end to end:
 
     telemetry -> baseline -> rule finding -> state estimate -> condition -> decision

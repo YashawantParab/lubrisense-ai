@@ -1,5 +1,6 @@
 """Hosted-demo healthy comparison machine (docs/HOSTED_DEPLOYMENT.md) — seeds calm,
-in-range telemetry on a second real machine (Motor 001, `L1-7B43-M001`, the same demo
+in-range telemetry on a second real machine (Rotary Kiln Drive KILN-01, `L1-7B43-M001`,
+the same demo
 tenant as the flagship) so a reviewer has something to contrast the flagship's incident
 story against: "most of the fleet looks like this."
 

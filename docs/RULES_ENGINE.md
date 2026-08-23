@@ -280,7 +280,7 @@ just via the API). No AI diagnosis, no health score — a plain read of the API 
 
 ## 24. Verification scope
 
-The flagship (Conveyor 000)'s real registered sensor set — PRESSURE, PUMP_CURRENT,
+The flagship (Ore Transfer Conveyor CV-101)'s real registered sensor set — PRESSURE, PUMP_CURRENT,
 RESERVOIR_LEVEL, RPM, BEARING_TEMPERATURE (×2), VIBRATION_RMS (×2) — has **no FLOW,
 PUMP_RUNTIME, or CYCLE_COMPLETION sensor** in the Phase 2 demo seed topology.
 `FLOW_PRESSURE_RESTRICTION_PATTERN`/`FLOW_PRESSURE_LEAKAGE_PATTERN` (which require a `FLOW`

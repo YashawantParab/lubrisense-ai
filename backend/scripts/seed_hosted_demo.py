@@ -50,29 +50,30 @@ from app.ml.services.ml_inference_service import (
     MLModelNotAvailableError,
 )
 
-#: Every curated demo machine (Phase 37+ "10 representative scenarios") EXCEPT Crusher 017,
-#: keyed by the same `asset_code` each individual scenario script already resolves its
-#: machine by. Crusher 017 (`L1-7F84-M017`) is deliberately excluded: it is the one
-#: intentional INSUFFICIENT_EVIDENCE story (`seed_insufficient_evidence.py` — 3 telemetry
-#: samples/sensor, below `min_sample_count`), and scoring it anyway produces real but
-#: meaningless ML output (the minimum-required-features check only cares whether a value is
-#: present, not whether 3 samples is a statistically reasonable basis for a classification).
-#: Worse, an `MLInferenceResult` existing at all — even at EXPERIMENTAL, non-voting
-#: strength — is enough to make `synthesize()`'s "was anything checked" gate treat the
-#: machine as evaluated, flipping it from INSUFFICIENT_EVIDENCE to NORMAL_OPERATION and
-#: silently destroying the one curated example of "no reliable ML inference" this fleet is
-#: supposed to demonstrate (verified empirically). Adding an eleventh curated machine later
-#: means adding its asset_code here too, nothing else.
+#: Every curated demo machine (Phase 37+ "10 representative scenarios") EXCEPT Secondary
+#: Crusher CR-202, keyed by the same `asset_code` each individual scenario script already
+#: resolves its machine by. Secondary Crusher CR-202 (`L1-7F84-M017`) is deliberately
+#: excluded: it is the one intentional INSUFFICIENT_EVIDENCE story
+#: (`seed_insufficient_evidence.py` — 3 telemetry samples/sensor, below
+#: `min_sample_count`), and scoring it anyway produces real but meaningless ML output (the
+#: minimum-required-features check only cares whether a value is present, not whether 3
+#: samples is a statistically reasonable basis for a classification). Worse, an
+#: `MLInferenceResult` existing at all — even at EXPERIMENTAL, non-voting strength — is
+#: enough to make `synthesize()`'s "was anything checked" gate treat the machine as
+#: evaluated, flipping it from INSUFFICIENT_EVIDENCE to NORMAL_OPERATION and silently
+#: destroying the one curated example of "no reliable ML inference" this fleet is supposed
+#: to demonstrate (verified empirically). Adding an eleventh curated machine later means
+#: adding its asset_code here too, nothing else.
 _CURATED_ASSET_CODES = (
-    "L1-7B43-M000",  # Conveyor 000 — flagship, resolved restriction
-    "L1-7B43-M001",  # Motor 001 — healthy
-    "L2-07A8-M012",  # Conveyor 012 — active restriction
-    "L1-07A8-M009",  # Pump 009 — leakage
-    "L1-E915-M005",  # Crusher 005 — low reservoir
-    "L2-7B43-M004",  # Compressor 004 — pump degradation
-    "L2-E915-M008",  # Fan 008 — bearing condition
-    "L1-95FA-M013",  # Motor 013 — data-quality limited
-    "L1-7F84-M016",  # Compressor 016 — recovering
+    "L1-7B43-M000",  # Ore Transfer Conveyor CV-101 — flagship, resolved restriction
+    "L1-7B43-M001",  # Rotary Kiln Drive KILN-01 — healthy
+    "L2-07A8-M012",  # Stacker-Reclaimer SR-201 — active restriction
+    "L1-07A8-M009",  # Ball Mill BM-301 — leakage
+    "L1-E915-M005",  # Primary Gyratory Crusher CR-101 — low reservoir
+    "L2-7B43-M004",  # Rolling Mill Stand RM-401 — pump degradation
+    "L2-E915-M008",  # Kiln ID Fan IDF-01 — bearing condition
+    "L1-95FA-M013",  # Apron Feeder AF-101 — data-quality limited
+    "L1-7F84-M016",  # Bucket Elevator BE-201 — recovering
 )
 
 _ML_MODEL_IDS = (
@@ -86,8 +87,9 @@ async def _seed_ml_evidence() -> None:
     """Real inference, run through the same `MLInferenceOrchestrationService` the live
     `/ml/machines/{id}/latest` API endpoint uses — never a handwritten prediction. Every
     curated machine gets scored against every registered model; a genuinely-insufficient
-    feature vector (e.g. Motor 013's data-quality-blocked bearing sensors, or Crusher 017's
-    handful of samples) legitimately produces an `INSUFFICIENT_FEATURES` result rather than
+    feature vector (e.g. Apron Feeder AF-101's data-quality-blocked bearing sensors, or
+    Secondary Crusher CR-202's handful of samples) legitimately produces an
+    `INSUFFICIENT_FEATURES` result rather than
     a forced one — that is the honest outcome for those machines, not a failure to seed.
     `MLModelNotAvailableError` is only possible here if a model_id is unregistered
     entirely, which would be a real configuration problem worth surfacing, not swallowing.

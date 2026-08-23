@@ -35,7 +35,7 @@ seeds the approved knowledge corpus, and rebuilds the flagship machine's entire 
 scratch. It is safe to run as many times as you like — it only ever touches its own demo
 data (see "What is synthetic" below), never a real customer's data.
 
-**Expected flagship machine:** Conveyor 000 (`L1-7B43-M000`), under the `LubriSense Demo
+**Expected flagship machine:** Ore Transfer Conveyor CV-101 (`L1-7B43-M000`), under the `LubriSense Demo
 Tenant`.
 
 **Expected outcome after reset:** the flagship machine's incident is `RESOLVED`, its
@@ -59,7 +59,7 @@ someone acted on it, and it's provably fixed.
 
 1. Open **Fleet** — a real, multi-tenant asset hierarchy (customers → sites → plants →
    lines → machines), not a mock list.
-2. Click into **Conveyor 000**. Scroll to the **Telemetry** section and point at the
+2. Click into **Ore Transfer Conveyor CV-101**. Scroll to the **Telemetry** section and point at the
    Pressure, Bearing Temperature, and Vibration charts: each shows a calm flat baseline,
    a clear rise, and a clear recovery back to baseline — one coherent physical story, not
    random noise.
@@ -88,7 +88,7 @@ flat device list. Filter or search to show it's a real, queryable table.
 
 ### 3. The flagship machine
 
-Open **Conveyor 000** (`/machines/88551bef-3149-5a8d-9645-bcd9502f4795`). Walk the page
+Open **Ore Transfer Conveyor CV-101** (`/machines/88551bef-3149-5a8d-9645-bcd9502f4795`). Walk the page
 top to bottom:
 
 - **Status strip**: current condition (`Normal Operation`, high confidence — the story has

@@ -82,8 +82,21 @@ def det_id(*parts: str) -> uuid.UUID:
 async def get_or_create(
     session: AsyncSession, model_cls: type[ModelT], entity_id: uuid.UUID, **kwargs: Any
 ) -> ModelT:
+    """Upsert by deterministic id: creates the row if absent, otherwise patches any of
+    the given fields that have drifted from what this script currently defines (e.g. a
+    display name revised in a later edit of this file) — the same merge-patch-on-reseed
+    idiom `mark_sensor_quality` uses elsewhere, applied here to the base hierarchy so a
+    naming/copy change actually reaches an already-seeded database on the next run,
+    without ever touching `id` or any column this call doesn't pass."""
     existing = await session.get(model_cls, entity_id)
     if existing is not None:
+        changed = False
+        for key, value in kwargs.items():
+            if getattr(existing, key) != value:
+                setattr(existing, key, value)
+                changed = True
+        if changed:
+            await session.flush()
         return existing
     obj = model_cls(id=entity_id, **kwargs)  # type: ignore[call-arg]
     session.add(obj)
@@ -113,6 +126,73 @@ MACHINE_TYPE_CYCLE = [
 ]
 
 CRITICALITY_CYCLE = [Criticality.LOW, Criticality.MEDIUM, Criticality.HIGH, Criticality.CRITICAL]
+
+# Industrial-asset-realism pass: the ten curated, scenario-scripted machines (indices
+# fixed by `seed_hosted_demo.py` / the individual `scripts/seed_*.py` scenario scripts,
+# which resolve by `asset_code` — see those scripts' own `ASSET_CODE`/`FLAGSHIP_ASSET_CODE`
+# constants, none of which change here) get a real centralized-lubrication equipment
+# identity instead of a generic "{MachineType} {index:03d}" label. Every other machine in
+# the generated fleet keeps the generic formula unchanged.
+#
+# Two names per entry:
+#   - `display_name` is the full `Machine.name` shown everywhere a machine header appears
+#     (Overview/Fleet/Machine Detail/Incidents/.../Technical Provenance) — API-driven, so
+#     this one field is the only thing that needs to change for every page to agree.
+#   - `short_label` is what cascades into this machine's own bearing/reservoir/pump/
+#     controller/distributor/circuit/sensor names (`seed_machine`/`seed_lubrication_
+#     system` below) — kept short specifically so e.g. a sensor name doesn't become
+#     "Ore Transfer Conveyor CV-101 – Head Pulley Bearings Reservoir Level Sensor".
+#
+# machine_type (fixed by `MACHINE_TYPE_CYCLE[index % 6]`, never changed here) is the
+# platform's only equipment-category field — six fixed values (CLAUDE.md's machine
+# hierarchy). Real industrial catalogs are far more specific than six categories, so a
+# handful of these names (a kiln/mill/feeder run by its drive MOTOR, a rolling mill's
+# lubrication skid classed as its COMPRESSOR-family machine) are a coarse-category fit
+# rather than a literal one — the same simplification real CMMS equipment-class fields
+# make constantly. Scenario (telemetry/incident/condition story) is unchanged for every
+# one of these; only identity/copy changed.
+CURATED_MACHINE_NAMES: dict[int, tuple[str, str]] = {
+    0: (  # L1-7B43-M000, CONVEYOR — flagship: resolved lubrication restriction
+        "Ore Transfer Conveyor CV-101 – Head Pulley Bearings",
+        "Ore Transfer Conveyor CV-101",
+    ),
+    1: (  # L1-7B43-M001, MOTOR — healthy, stable, high-confidence
+        "Rotary Kiln Drive KILN-01 – Support Roller Station 2",
+        "Rotary Kiln Drive KILN-01",
+    ),
+    4: (  # L2-7B43-M004, COMPRESSOR — lubrication pump performance degradation
+        "Rolling Mill Stand RM-401 – Central Lubrication Pump Unit",
+        "Rolling Mill Stand RM-401",
+    ),
+    5: (  # L1-E915-M005, CRUSHER — low lubricant / reservoir availability
+        "Primary Gyratory Crusher CR-101 – Lubrication System",
+        "Primary Gyratory Crusher CR-101",
+    ),
+    8: (  # L2-E915-M008, FAN — independent bearing-condition deterioration
+        "Kiln ID Fan IDF-01 – Drive-End Bearing",
+        "Kiln ID Fan IDF-01",
+    ),
+    9: (  # L1-07A8-M009, PUMP — possible leakage / lubricant delivery loss
+        "Ball Mill BM-301 – Pinion Bearing Lubrication Circuit",
+        "Ball Mill BM-301",
+    ),
+    12: (  # L2-07A8-M012, CONVEYOR — active developing restriction
+        "Stacker-Reclaimer SR-201 – Slew Bearing Lubrication Circuit",
+        "Stacker-Reclaimer SR-201",
+    ),
+    13: (  # L1-95FA-M013, MOTOR — sensor / data-quality limitation
+        "Apron Feeder AF-101 – Head Shaft Lubrication Circuit",
+        "Apron Feeder AF-101",
+    ),
+    16: (  # L1-7F84-M016, COMPRESSOR — recently maintained / recovering
+        "Bucket Elevator BE-201 – Head Shaft Bearings",
+        "Bucket Elevator BE-201",
+    ),
+    17: (  # L1-7F84-M017, CRUSHER — commissioning / insufficient evidence
+        "Secondary Crusher CR-202 – Main Bearing Lubrication Circuit",
+        "Secondary Crusher CR-202",
+    ),
+}
 
 
 def manufacturer_for(index: int) -> str:
@@ -306,6 +386,8 @@ async def seed_machine(
     machine_type = MACHINE_TYPE_CYCLE[index % len(MACHINE_TYPE_CYCLE)]
     asset_code = f"{line.code}-{line.plant_id.hex[:4].upper()}-M{index:03d}"
     equipment_tier = index % 4  # 0,1 = full chain; 2 = bearings only; 3 = bare
+    generic_name = f"{machine_type.value.title()} {index:03d}"
+    display_name, short_label = CURATED_MACHINE_NAMES.get(index, (generic_name, generic_name))
 
     machine = await get_or_create(
         session,
@@ -313,7 +395,7 @@ async def seed_machine(
         det_id("machine", str(index)),
         tenant_id=tenant_id,
         production_line_id=line.id,
-        name=f"{machine_type.value.title()} {index:03d}",
+        name=display_name,
         asset_code=asset_code,
         machine_type=machine_type,
         manufacturer=manufacturer_for(index),
@@ -337,7 +419,7 @@ async def seed_machine(
             det_id("bearing", str(index), position),
             tenant_id=tenant_id,
             machine_id=machine.id,
-            name=f"{machine.name} — {position.replace('_', ' ').title()} Bearing",
+            name=f"{short_label} — {position.replace('_', ' ').title()} Bearing",
             position=position,
             bearing_type="Deep Groove Ball" if index % 2 == 0 else "Spherical Roller",
             manufacturer=manufacturer_for(index + 3),
@@ -369,7 +451,7 @@ async def seed_machine(
             )
         return  # bearings-only: no lubrication system yet
 
-    await seed_lubrication_system(session, tenant_id, machine, bearings, index)
+    await seed_lubrication_system(session, tenant_id, machine, bearings, index, short_label)
 
 
 async def seed_lubrication_system(
@@ -378,6 +460,7 @@ async def seed_lubrication_system(
     machine: Machine,
     bearings: list[Bearing],
     index: int,
+    short_label: str,
 ) -> None:
     system_type = list(LubricationSystemType)[index % len(list(LubricationSystemType))]
     system = await get_or_create(
@@ -386,7 +469,7 @@ async def seed_lubrication_system(
         det_id("lubsys", str(index)),
         tenant_id=tenant_id,
         machine_id=machine.id,
-        name=f"{machine.name} Lubrication System",
+        name=f"{short_label} Lubrication System",
         system_type=system_type,
         status=OperationalStatus.ACTIVE,
         commissioning_state=CommissioningState.COMMISSIONED,
@@ -400,7 +483,7 @@ async def seed_lubrication_system(
         det_id("reservoir", str(index)),
         tenant_id=tenant_id,
         lubrication_system_id=system.id,
-        name=f"{machine.name} Reservoir",
+        name=f"{short_label} Reservoir",
         capacity_demo=10 + (index % 5) * 5,
         capacity_unit="L",
         lubricant_type_demo="NLGI 2 grease (demo)" if index % 2 == 0 else "ISO VG 220 oil (demo)",
@@ -413,7 +496,7 @@ async def seed_lubrication_system(
         det_id("pump", str(index)),
         tenant_id=tenant_id,
         lubrication_system_id=system.id,
-        name=f"{machine.name} Pump",
+        name=f"{short_label} Pump",
         pump_type="Progressive" if index % 2 == 0 else "Gear",
         manufacturer=manufacturer_for(index + 1),
         model=f"PMP-{300 + index}",
@@ -427,7 +510,7 @@ async def seed_lubrication_system(
         det_id("controller", str(index)),
         tenant_id=tenant_id,
         lubrication_system_id=system.id,
-        name=f"{machine.name} Controller",
+        name=f"{short_label} Controller",
         controller_type="Timer-based" if index % 2 == 0 else "Cycle-based",
         manufacturer=manufacturer_for(index + 2),
         model=f"CTRL-{400 + index}",
@@ -442,7 +525,7 @@ async def seed_lubrication_system(
         det_id("distributor", str(index)),
         tenant_id=tenant_id,
         lubrication_system_id=system.id,
-        name=f"{machine.name} Distributor",
+        name=f"{short_label} Distributor",
         type="Modular piston",
         position="primary",
         status=OperationalStatus.ACTIVE,
@@ -462,7 +545,7 @@ async def seed_lubrication_system(
             tenant_id=tenant_id,
             lubrication_system_id=system.id,
             distributor_id=distributor.id,
-            name=f"{machine.name} Circuit {circuit_index + 1}",
+            name=f"{short_label} Circuit {circuit_index + 1}",
             code=f"C{circuit_index + 1}",
             status=OperationalStatus.ACTIVE,
             metadata_={"demo": True},
@@ -563,7 +646,7 @@ async def seed_lubrication_system(
         det_id("sensor", "rpm", str(index)),
         tenant_id=tenant_id,
         sensor_code=f"RPM-{machine.id.hex[:8]}",
-        name=f"{machine.name} RPM Sensor",
+        name=f"{short_label} RPM Sensor",
         sensor_type=SensorType.RPM,
         unit="rpm",
         installation_date=machine.installation_date,

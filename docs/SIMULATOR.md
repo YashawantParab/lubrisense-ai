@@ -70,13 +70,13 @@ produced for it, even though the physics layer computes a true flow value intern
 
 ### Flagship reference machine
 
-**Conveyor 000** (`asset_code = L1-7B43-M000`, seeded id
+**Ore Transfer Conveyor CV-101** (`asset_code = L1-7B43-M000`, seeded id
 `88551bef-3149-5a8d-9645-bcd9502f4795`) — the first equipped machine in the Phase 2 seed
 data (Ridgeline Crushing Plant, Line A, Northstar Industrial). Topology (all ids from the
 live database, not hardcoded separately):
 
 ```
-Conveyor 000
+Ore Transfer Conveyor CV-101
 ├── Drive End Bearing ───────┐
 ├── Non Drive End Bearing ───┼── each served by its own Lubrication Point
 └── Lubrication System (PROGRESSIVE)
@@ -366,7 +366,7 @@ ground-truth records. Visual validation
 - **RPM**: staircase pattern during RUNNING periods (new load target roughly every 15
   simulated minutes), exactly zero while STOPPED.
 - **Flow**: no data for this machine — Phase 2's seed data did not register a `FLOW` sensor
-  on Conveyor 000 (only `PRESSURE` on circuit 1); the simulator correctly emits nothing for
+  on Ore Transfer Conveyor CV-101 (only `PRESSURE` on circuit 1); the simulator correctly emits nothing for
   a measurement type with no corresponding sensor row rather than inventing one. `FLOW`'s
   physics and sensor model are exercised directly in `tests/test_circuit.py` and would
   produce readings automatically for any machine that does have a `FLOW` sensor registered.

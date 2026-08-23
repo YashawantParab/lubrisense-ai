@@ -8,7 +8,7 @@ import pytest
 from simulator.config.loader import EngineeringConfig, load_engineering_config
 from simulator.engine.repository import TopologyRepository
 
-FLAGSHIP_ASSET_CODE = "L1-7B43-M000"  # "Conveyor 000" — seeded Phase 2 demo tenant
+FLAGSHIP_ASSET_CODE = "L1-7B43-M000"  # "Ore Transfer Conveyor CV-101" — seeded Phase 2 demo tenant
 
 
 @pytest.fixture(scope="session")

@@ -8,7 +8,7 @@
 # image, then verifies the resulting rule_finding rows directly via psql and through the
 # live read API.
 #
-# NOTE on scope: the flagship (Conveyor 000) has 8 real registered sensors — PRESSURE,
+# NOTE on scope: the flagship (Ore Transfer Conveyor CV-101) has 8 real registered sensors — PRESSURE,
 # PUMP_CURRENT, RESERVOIR_LEVEL, RPM, BEARING_TEMPERATURE (x2), VIBRATION_RMS (x2) — no
 # FLOW, PUMP_RUNTIME, or CYCLE_COMPLETION sensor exists in the Phase 2 demo seed topology.
 # FLOW_PRESSURE_RESTRICTION_PATTERN/FLOW_PRESSURE_LEAKAGE_PATTERN (which require a FLOW

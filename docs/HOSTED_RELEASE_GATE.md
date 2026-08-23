@@ -64,7 +64,7 @@ re-verify it against the real deployment before checking it off for real.
 - [ ] Flagship machine page (`/machines/88551bef-3149-5a8d-9645-bcd9502f4795`) loads,
       shows a resolved incident and the full telemetry story (healthy → deviation →
       recovery) in the charts.
-- [ ] Healthy comparison machine page (Motor 001) loads and shows `NORMAL_OPERATION`
+- [ ] Healthy comparison machine page (Rotary Kiln Drive KILN-01) loads and shows `NORMAL_OPERATION`
       with no incident.
 - [ ] Incident detail page shows the full chronological timeline.
 - [ ] Maintenance case page shows checklist, findings, actions, feedback, and the seeded

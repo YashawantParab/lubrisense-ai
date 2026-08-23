@@ -97,7 +97,7 @@ This orchestrates, in order:
    rule findings → state estimates → condition/decision → incident → maintenance case →
    technician finding/action → recovery telemetry → resolved incident with
    `TRUE_POSITIVE` feedback.
-4. `seed_healthy_machine.py` — a second real machine (Motor 001) seeded with only calm,
+4. `seed_healthy_machine.py` — a second real machine (Rotary Kiln Drive KILN-01) seeded with only calm,
    in-range telemetry, landing on a genuine `NORMAL_OPERATION` read with no incident — a
    fleet-realistic comparison point ("most machines look like this").
 5. A CMMS draft (via the real, draft-only `CMMSService`) and a device/configuration

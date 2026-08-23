@@ -11,7 +11,7 @@ import pytest
 
 from edge.config.models import EdgeConfig
 
-FLAGSHIP_ASSET_CODE = "L1-7B43-M000"  # "Conveyor 000" — seeded Phase 2 demo tenant
+FLAGSHIP_ASSET_CODE = "L1-7B43-M000"  # "Ore Transfer Conveyor CV-101" — seeded Phase 2 demo tenant
 FLAGSHIP_TENANT_ID = "bbdd114e-b5a7-5890-a5bd-9e8c787a5fe0"
 FLAGSHIP_GATEWAY_CODE = "GW-RIDGE-CRUSH"
 

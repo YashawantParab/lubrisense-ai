@@ -1,5 +1,6 @@
 """Demo scenario — a low-reservoir supply-risk incident (docs/HOSTED_DEPLOYMENT.md "10
-meaningful synthetic scenarios" pass). Seeds Crusher 005 (`L1-E915-M005`, the
+meaningful synthetic scenarios" pass). Seeds Primary Gyratory Crusher CR-101
+(`L1-E915-M005`, the
 `lubrisense-demo` tenant) with a reservoir level declining steadily down through the
 `RESERVOIR_LEVEL_LOW` warning threshold (`demo_rules_policy.yaml`'s
 `reservoir.low_level_warning_percent: 20.0`) but deliberately stopping well above the

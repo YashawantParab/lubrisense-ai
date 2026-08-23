@@ -1,5 +1,6 @@
 """Demo scenario — a recently maintained, still-recovering asset (docs/HOSTED_DEPLOYMENT.md
-"10 meaningful synthetic scenarios" pass). Seeds Compressor 016 (`L1-7F84-M016`, the
+"10 meaningful synthetic scenarios" pass). Seeds Bucket Elevator BE-201 (`L1-7F84-M016`,
+the
 `lubrisense-demo` tenant) with a shorter/milder developing-restriction than the flagship
 story, a real maintenance action taken against it, and a PARTIAL recovery telemetry phase
 (pressure declining but deliberately not fully back to its healthy baseline) — a different

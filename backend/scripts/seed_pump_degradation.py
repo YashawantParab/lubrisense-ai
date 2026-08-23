@@ -1,5 +1,5 @@
 """Demo scenario — a pump-performance-degradation incident (docs/HOSTED_DEPLOYMENT.md "10
-meaningful synthetic scenarios" pass). Seeds Compressor 004 (`L2-7B43-M004`, the
+meaningful synthetic scenarios" pass). Seeds Rolling Mill Stand RM-401 (`L2-7B43-M004`, the
 `lubrisense-demo` tenant) with a healthy period followed by pump current climbing
 materially above its own baseline while pressure stays flat/normal — the single-signal
 `PUMP_CURRENT_ABOVE_BASELINE` finding (`PUMP_PERFORMANCE_DEGRADATION`), never the

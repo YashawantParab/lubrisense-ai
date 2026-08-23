@@ -1,5 +1,6 @@
 """Demo scenario — a bearing-condition incident (docs/HOSTED_DEPLOYMENT.md "10 meaningful
-synthetic scenarios" pass). Seeds Fan 008 (`L2-E915-M008`, the `lubrisense-demo` tenant)
+synthetic scenarios" pass). Seeds Kiln ID Fan IDF-01 (`L2-E915-M008`, the
+`lubrisense-demo` tenant)
 with a healthy period followed by bearing temperature and vibration climbing materially
 above their own baselines while every lubrication-system signal (pressure, reservoir, pump
 current) stays flat/normal.
