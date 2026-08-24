@@ -43,6 +43,7 @@ import random
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from app.baselines.config.policy import load_baseline_policy
 from app.baselines.workers.backfill import backfill
 from app.core.config import get_settings
 from app.data_quality.domain.results import RuleIssue
@@ -61,6 +62,8 @@ from app.domain.models import Sensor
 from app.incidents.services.incident_service import IncidentService
 from app.infrastructure.database import Database
 from app.repositories.telemetry import TelemetryRepository
+from app.rules_engine.config.policy import load_rules_policy
+from app.rules_engine.services.rule_engine import RuleEngine
 from app.rules_engine.workers.reprocess import reprocess
 from scripts._scenario_seed_common import (
     envelope,
@@ -228,6 +231,25 @@ async def main() -> None:
     for _ in range(3):
         await reprocess(tenant_id, machine_id, issue_start, now)
     print("Reprocessed rules over the issue window")
+
+    # The live `rules-worker` container evaluates every machine on its own schedule using
+    # a real-time trailing window (`RuleEngine.evaluate_machine(tenant_id, machine_id,
+    # started)`, no window override — `app/rules_engine/workers/worker.py`), never this
+    # script's own synthetic `(issue_start, now)` window above. Found live on this exact
+    # machine (ADR-173's own gap, same root cause already fixed for the flagship story):
+    # a near-flat, near-zero-MAD `RESERVOIR_LEVEL` depletion rate can read as spuriously
+    # ABOVE the baseline rate over whatever short recent slice the live worker's
+    # real-time window happens to see, firing a spurious `RESERVOIR_DEPLETION_ABNORMAL`
+    # finding minutes after seeding and silently replacing this scenario's intended
+    # "no incident, data-quality-limited" story with an unrelated leakage-pattern one.
+    # Settling against the exact same real-time-windowed evaluation here, immediately,
+    # forces that convergence to happen now, deterministically.
+    for _ in range(3):
+        async with database.session() as session:
+            live_window_engine = RuleEngine(session, load_baseline_policy(), load_rules_policy())
+            await live_window_engine.evaluate_machine(tenant_id, machine_id, datetime.now(UTC))
+            await session.commit()
+    print("Settled rules against the live worker's real-time evaluation window")
 
     async with database.session() as session:
         incidents = IncidentService(session)

@@ -1,29 +1,42 @@
 # Lubrication Efficiency Intelligence — Domain & Architecture Design
 
-**Status: Pass 1 implemented (Machine Power → Contextual Expected Power → Energy
-Residual → Data-Quality-Gated Energy Assessment).** This is a capability extension after
-the completed roadmap (Phases 1–37+) — not a new numbered phase, and not a commitment
-that every remaining section here ships exactly as designed.
+**Status: Pass 2 implemented (Energy Deviation + Independent Lubrication/Mechanical
+Evidence → Lubrication Attribution Assessment), building on Pass 1 (Machine Power →
+Contextual Expected Power → Energy Residual → Data-Quality-Gated Energy Assessment).**
+This is a capability extension after the completed roadmap (Phases 1–37+) — not a new
+numbered phase, and not a commitment that every remaining section here ships exactly as
+designed.
 
-**Implemented** (§3–§9, §14 slice): `SensorType.MACHINE_POWER`; real power telemetry for
-the curated hosted-demo fleet's representative machines (`backend/scripts/seed_*.py` —
-the curated demo fleet's actual telemetry source, confirmed independent of the
-`simulator` package at runtime) plus a machine-driveline power physics extension in
-`simulator/simulator/physics/` (design §12) for that package's own separate scenario
--runner use; expected-power resolution reusing `app.baselines`'
-`CONTEXTUAL_ASSET_BASELINE` unchanged (§4); `energy_residual_kw`/`energy_residual_pct`
-(§5, with the documented invalid-denominator guard); the persisted `EnergyAssessment`
-model/repository/service/API (§7, §14 minus `lubrication_attribution`); data-quality
-gating (§7); an observable-only `ENERGY_RESIDUAL` evidence function
+**Implemented — Pass 1** (§3–§5, §7, §14 slice): `SensorType.MACHINE_POWER`; real power
+telemetry for the curated hosted-demo fleet's representative machines
+(`backend/scripts/seed_*.py` — the curated demo fleet's actual telemetry source,
+confirmed independent of the `simulator` package at runtime) plus a machine-driveline
+power physics extension in `simulator/simulator/physics/` (design §12) for that
+package's own separate scenario-runner use; expected-power resolution reusing
+`app.baselines`' `CONTEXTUAL_ASSET_BASELINE` unchanged (§4); `energy_residual_kw`/
+`energy_residual_pct` (§5, with the documented invalid-denominator guard); the persisted
+`EnergyAssessment` model/repository/service/API (§7, §14 minus `lubrication_attribution`);
+data-quality gating (§7); an observable-only `ENERGY_RESIDUAL` evidence function
 (`app.energy.domain.evidence`, §8/§13) that is **not** wired into
-`ConditionEngine`/`synthesize()` yet. See ADR-176 and the implementation report for exact
-files, tests, and verification.
+`ConditionEngine`/`synthesize()` — confirmed by a static regression test that
+`app.condition_intelligence` imports nothing from `app.energy`.
 
-**Not yet implemented** (deliberately deferred, per this pass's own scope): lubrication
-attribution (§6), Condition/Decision Intelligence wiring (§8), maintenance verification
-(§9), carbon estimation (§10–§11), the ML regression opportunity (§13, still assessed as
-not justified for now), and all frontend UX (§16). The rest of this document describes
-the full intended design; only the slice above is real today.
+**Implemented — Pass 2** (§6 revised below, §7 extended, §14 slice): the deterministic
+`derive_attribution()` policy (`app.energy.domain.attribution`), the
+`LubricationEnergyAttribution` model/repository/service/query-service/API, and the
+evidence-family/deduplication/lineage design that §6 as originally drafted did not fully
+specify — §6 below is the as-implemented version of that section, superseding the
+`EvidenceItem.strength`-reuse sketch that preceded it. Condition Intelligence is an input
+to attribution only (§8 updated below); attribution still does not modify Condition or
+Decision Intelligence in this pass.
+
+**Not yet implemented** (deliberately deferred, per this pass's own scope): Condition/
+Decision Intelligence *writing back* from attribution (§8 — observable-only boundary is
+implemented, the write-back described in the original §8 worked example is not), a
+dedicated maintenance-verification comparison service (§9), carbon estimation (§10–§11),
+the ML regression opportunity (§13, still assessed as not justified for now), and all
+frontend UX (§16). The rest of this document describes the full intended design; only the
+slices above are real today.
 
 ## Product definition
 
@@ -204,34 +217,81 @@ lubrication-condition evidence plausibly explains it. Naming discipline matters 
 way it already matters in `docs/CONDITION_INTELLIGENCE.md` ("evidence is consistent with", per
 CLAUDE.md's "Failure Modes" wording rules) — never asserted causality from a residual alone.
 
-## 6. Lubrication attribution
+## 6. Lubrication attribution (as implemented, Pass 2)
 
 A distinct confidence vocabulary from `EvidenceItem.strength` (STRONG/SUPPORTING/WEAK/
 EXPERIMENTAL, which grades *condition* evidence), because attribution is a different
 question — "does the evidence I already trust support lubrication as a plausible contributor
 to *this specific energy deviation*", not "how strong is one evidence item toward a
-condition":
+condition". `AttributionLevel` (`app.domain.enums`):
 
 ```
-NO_EVIDENCE   — no energy deviation observed, or no corroborating lubrication evidence exists
-POSSIBLE      — energy deviation observed; at most weak/candidate corroborating evidence
-MODERATE      — energy deviation observed; at least one non-experimental, non-weak
-                lubrication-condition evidence item (rule finding, validated ML, or a
-                trustworthy state estimate) points the same direction
-STRONG        — energy deviation observed; multiple independent, non-experimental evidence
-                sources corroborate (e.g. a STRONG rule vote AND a trustworthy deteriorating
-                state estimate), same "independent corroboration" bar
-                `synthesis._TALLIED_STRENGTHS`/HIGH-confidence already requires
+NO_EVIDENCE   — no energy deviation observed, or no independent lubrication/mechanical
+                evidence family exists
+POSSIBLE      — energy deviation observed, and either exactly one independent evidence
+                family supports it, or Condition Intelligence explicitly contradicts a
+                lubrication cause (capped here regardless of family count)
+MODERATE      — energy deviation observed; two independent evidence families support it,
+                but the STRONG bar (below) is not met
+STRONG        — energy deviation observed; two independent evidence families support it,
+                AND Condition Intelligence itself corroborates (not just fails to
+                contradict), AND the expected-power baseline used the machine's own
+                exact operating-context baseline (not a coarser fallback tier), AND
+                data quality is not capping the result
 ```
 
-Attribution confidence is **derived**, never independently asserted:
-`lubrication_attribution = f(energy_residual_sign_and_magnitude, existing ConditionAssessment
-evidence_summary for this machine)` — it reads the *same* `EvidenceItem`s condition synthesis
-already gathered (rule findings, state estimates, non-experimental ML), it does not invent new
-ones. A machine with `NORMAL_OPERATION` and no active findings can never reach `MODERATE`/
-`STRONG` attribution regardless of how large the energy residual is — the residual alone
-proves nothing about cause (§17, "a lower energy reading is not automatically better" cuts
-both ways: a higher one is not automatically lubrication's fault either).
+**The core rule the policy enforces exactly:** energy deviation is necessary for an
+energy-related attribution, but energy deviation alone can never produce more than
+`NO_EVIDENCE`. Every level above `NO_EVIDENCE` requires at least one evidence family
+independent of the energy signal itself.
+
+### Evidence families and deduplication
+
+The central design problem this section resolves (not fully specified in the original
+draft above): `RuleFinding`, `StateEstimate`, and `ConditionAssessment` are not three
+independent evidence sources — a `ConditionAssessment` is itself *synthesized from* the
+same `RuleFinding`/`StateEstimate` rows already being counted. Counting all three
+additively would double- or triple-count one underlying physical signal. `derive_attribution`
+resolves this with named, non-overlapping families:
+
+| Family | Source | Counts toward independence? |
+|---|---|---|
+| A. ENERGY | The `EnergyAssessment` residual itself | Never — necessary, never sufficient (Gate 0) |
+| B. LUBRICATION_DELIVERY | Active `RuleFinding`s of a delivery-pattern type (flow, pressure, reservoir, cycle, pump-current/runtime, degradation patterns) | Yes — one vote regardless of how many delivery-type findings are active simultaneously |
+| C. BEARING_FRICTION_RESPONSE | Active `RuleFinding`s of a friction-response type (bearing temperature, vibration, above contextual baseline) | Yes — one vote regardless of finding count |
+| D. CONDITION_INTELLIGENCE | The latest `ConditionAssessment.condition_type` | **Not additive.** Used only as a gate/confirmation signal: it can *contradict* (capping the result at `POSSIBLE`), *confirm* (a precondition for `STRONG`), or be neutral — it never adds a third family to the count, since its own inputs are B/C |
+| E. DATA_TRUST | Per-sensor `QualityState` for the lubrication/bearing signals a family in B/C would need | Caps the result (never raises it) |
+| F. OPERATING_CONTEXT | Which baseline-resolution tier (`EXACT_CONTEXT` vs. a coarser fallback) produced `expected_power_kw` | A precondition for `STRONG` only — an unresolved alternative explanation, not evidence for or against lubrication |
+| G. ML | `MLInferenceResult` (excluding the governance-excluded STAGING baseline classifier) | Never additive — always surfaced as explicitly experimental/non-authoritative supporting or neutral context, whatever its lifecycle state |
+
+`n_families` is therefore `|{B, C} ∩ active|` — at most 2 by construction, which is what
+makes `STRONG` deliberately hard to reach: it requires both physically distinct evidence
+domains active at once, Condition Intelligence agreeing (not merely silent), the tightest
+available baseline context, and no data-quality cap.
+
+### Contradiction is first-class
+
+If the latest `ConditionAssessment.condition_type` is one that explicitly attributes the
+current deterioration to a non-lubrication cause (e.g. `INDEPENDENT_BEARING_CONDITION`),
+that is recorded in `contradicting_evidence` and the result is capped at `POSSIBLE`
+regardless of how many families in B/C are active — this is what lets the system say
+"elevated energy demand is present, but current evidence does not support attributing it
+to lubrication" instead of forcing a number onto ambiguous evidence.
+
+### Worked example — the real IDF-01 case
+
+This is the platform's live validation case, not a constructed one. IDF-01 shows
+`ELEVATED_ENERGY_DEMAND` (+13.7% residual), with an active bearing-temperature finding
+*and* an active vibration finding (both Family C — one vote, not two), plus an
+experimental `LUBRICATION_ANOMALY_V1` anomaly flag (Family G, always non-authoritative).
+Its `ConditionAssessment` is `INDEPENDENT_BEARING_CONDITION` — the platform's own
+condition synthesis has already concluded this bearing deterioration is *not*
+lubrication-related. `derive_attribution` therefore: counts one family (C), sees Family D
+contradict, and returns `POSSIBLE` with the contradiction recorded — never `MODERATE`/
+`STRONG`, and the result was not hardcoded for this asset; the same generic policy
+produces `NO_EVIDENCE` for every other curated machine and would produce `MODERATE`/
+`STRONG` for a machine whose evidence genuinely supported it (proven by
+`tests/energy/test_attribution_policy.py`).
 
 Exact percentages ("82% caused by lubrication") are never produced — no model in this
 architecture (§13) claims that level of causal resolution, and none should be implied.

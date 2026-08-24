@@ -374,6 +374,22 @@ class EnergyAssessmentStatus(StrEnum):
     DATA_QUALITY_LIMITED = "DATA_QUALITY_LIMITED"
 
 
+class AttributionLevel(StrEnum):
+    """How strongly independent evidence supports lubrication-related friction/
+    deterioration as a plausible contributor to an observed energy deviation
+    (Lubrication Efficiency Intelligence Pass 2 — docs/LUBRICATION_EFFICIENCY_
+    INTELLIGENCE.md, ADR-176). Deliberately never a numeric causal percentage — see
+    `app.energy.domain.attribution` for the real deterministic policy that derives this,
+    and why `STRONG` is designed to be hard to reach (requires multiple independent
+    evidence families, an affirmatively-consistent condition, trusted data, and no
+    contradiction)."""
+
+    NO_EVIDENCE = "NO_EVIDENCE"
+    POSSIBLE = "POSSIBLE"
+    MODERATE = "MODERATE"
+    STRONG = "STRONG"
+
+
 # ---------------------------------------------------------------------------
 # Phase 9 — Rules Engine
 # ---------------------------------------------------------------------------

@@ -9141,10 +9141,14 @@ on pre-seeded static data at all (its current design, see `docs/HOSTED_DEPLOYMEN
 ### Status
 
 ACCEPTED — Pass 1 implemented (machine power → contextual expected power → energy
-residual → data-quality-gated `EnergyAssessment`, observable-only evidence). See
+residual → data-quality-gated `EnergyAssessment`, observable-only evidence). Pass 2
+implemented (deterministic, evidence-family-based `LubricationEnergyAttribution` — energy
+deviation is necessary but never sufficient for attribution; independent
+lubrication/mechanical evidence is required). See
 `docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md`'s own status header for exactly what is and
 is not implemented yet; the reuse-vs-new-surface decisions below held up unchanged
-through implementation.
+through both passes — Pass 2 needed no new subsystem, only a new evidence-independence
+policy layered on existing `RuleFinding`/`StateEstimate`/`ConditionAssessment` reads.
 
 ### Context
 

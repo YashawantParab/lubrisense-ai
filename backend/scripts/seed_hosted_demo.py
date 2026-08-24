@@ -44,6 +44,11 @@ from app.core.config import get_settings
 from app.device_management.service import DeviceConfigurationService
 from app.domain.enums import DeviceType, IncidentState
 from app.domain.models import Gateway, Incident, Machine, MaintenanceCase, Tenant
+from app.energy.services.attribution_service import (
+    AttributionEnergyAssessmentNotFoundError,
+    AttributionMachineNotFoundError,
+    AttributionService,
+)
 from app.energy.services.energy_assessment_service import (
     EnergyAssessmentService,
     EnergyMachineNotFoundError,
@@ -270,6 +275,52 @@ async def _seed_energy_assessments() -> None:
     print(f"Energy assessments: {summary}")
 
 
+async def _seed_attribution_assessments() -> None:
+    """Real deterministic-policy assessment, run through the same `AttributionService`
+    the live `/energy/machines/{id}/attribution/latest` API endpoint uses (Lubrication
+    Efficiency Intelligence, Pass 2 — docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md,
+    ADR-176). Runs after `_seed_energy_assessments` in the same `main()` sequence, since
+    every attribution requires a real, already-persisted `EnergyAssessment` to attribute
+    against. Every curated machine (same set as energy assessments) is assessed; a
+    machine with no energy assessment yet is honestly skipped, not forced."""
+    settings = get_settings()
+    database = Database(settings)
+    by_level: dict[str, int] = {}
+    async with database.session() as session:
+        tenant = (
+            await session.execute(
+                select(Tenant).where(Tenant.slug == seed_flagship_story.DEMO_TENANT_SLUG)
+            )
+        ).scalar_one()
+        service = AttributionService(session)
+        for asset_code in _ENERGY_ASSET_CODES:
+            machine = (
+                await session.execute(
+                    select(Machine).where(
+                        Machine.tenant_id == tenant.id, Machine.asset_code == asset_code
+                    )
+                )
+            ).scalar_one_or_none()
+            if machine is None:
+                print(f"  {asset_code}: machine not found — skipping")
+                continue
+            try:
+                result = await service.assess_machine(tenant.id, machine.id)
+            except AttributionMachineNotFoundError:
+                print(f"  {asset_code}: machine not found — skipping")
+                continue
+            except AttributionEnergyAssessmentNotFoundError:
+                print(f"  {machine.name}: no energy assessment yet — skipping")
+                continue
+            by_level[result.attribution_level.value] = (
+                by_level.get(result.attribution_level.value, 0) + 1
+            )
+            print(f"  {machine.name}: {result.attribution_level.value}")
+    await database.dispose()
+    summary = ", ".join(f"{count} {level}" for level, count in sorted(by_level.items()))
+    print(f"Lubrication-energy attribution: {summary}")
+
+
 async def _seed_flagship_extras() -> None:
     """CMMS draft + device/configuration snapshot for the flagship's most recently
     completed maintenance case — real service calls, draft-only/visibility-only exactly
@@ -370,53 +421,56 @@ async def _seed_flagship_extras() -> None:
 
 
 async def main() -> None:
-    print("=== 1/16 Base asset hierarchy ===")
+    print("=== 1/17 Base asset hierarchy ===")
     await seed_demo_data.main()
 
-    print("\n=== 2/16 Clean non-canonical debris machines ===")
+    print("\n=== 2/17 Clean non-canonical debris machines ===")
     await _delete_debris_machines()
 
-    print("\n=== 3/16 Approved knowledge corpus ===")
+    print("\n=== 3/17 Approved knowledge corpus ===")
     await seed_knowledge_corpus.main()
 
-    print("\n=== 4/16 Flagship machine story (resolved) ===")
+    print("\n=== 4/17 Flagship machine story (resolved) ===")
     await seed_flagship_story.main()
 
-    print("\n=== 5/16 Healthy comparison machine ===")
+    print("\n=== 5/17 Healthy comparison machine ===")
     await seed_healthy_machine.main()
 
-    print("\n=== 6/16 Active developing-restriction incident ===")
+    print("\n=== 6/17 Active developing-restriction incident ===")
     await seed_active_restriction.main()
 
-    print("\n=== 7/16 Leakage incident ===")
+    print("\n=== 7/17 Leakage incident ===")
     await seed_leakage.main()
 
-    print("\n=== 8/16 Low-reservoir supply-risk incident ===")
+    print("\n=== 8/17 Low-reservoir supply-risk incident ===")
     await seed_low_reservoir.main()
 
-    print("\n=== 9/16 Pump-degradation incident ===")
+    print("\n=== 9/17 Pump-degradation incident ===")
     await seed_pump_degradation.main()
 
-    print("\n=== 10/16 Bearing-condition incident ===")
+    print("\n=== 10/17 Bearing-condition incident ===")
     await seed_bearing_degradation.main()
 
-    print("\n=== 11/16 Data-quality-limited machine ===")
+    print("\n=== 11/17 Data-quality-limited machine ===")
     await seed_data_quality_issue.main()
 
-    print("\n=== 12/16 Recently maintained / recovering machine ===")
+    print("\n=== 12/17 Recently maintained / recovering machine ===")
     await seed_recovering_asset.main()
 
-    print("\n=== 13/16 Insufficient-evidence machine ===")
+    print("\n=== 13/17 Insufficient-evidence machine ===")
     await seed_insufficient_evidence.main()
 
-    print("\n=== 14/16 CMMS draft + device/configuration context ===")
+    print("\n=== 14/17 CMMS draft + device/configuration context ===")
     await _seed_flagship_extras()
 
-    print("\n=== 15/16 ML evidence for the curated fleet ===")
+    print("\n=== 15/17 ML evidence for the curated fleet ===")
     await _seed_ml_evidence()
 
-    print("\n=== 16/16 Energy assessments for the curated fleet ===")
+    print("\n=== 16/17 Energy assessments for the curated fleet ===")
     await _seed_energy_assessments()
+
+    print("\n=== 17/17 Lubrication-energy attribution for the curated fleet ===")
+    await _seed_attribution_assessments()
 
     print("\nHosted demo seed complete.")
 

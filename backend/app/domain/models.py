@@ -54,6 +54,7 @@ from app.domain.enums import (
     AgentMessageRole,
     AgentToolCallStatus,
     AssessmentScope,
+    AttributionLevel,
     AuditActorType,
     BaselineMetricKind,
     BaselineSourceKind,
@@ -1416,6 +1417,79 @@ class EnergyAssessment(Base, TenantScopedMixin, TimestampMixin):
     operating_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     engine_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class LubricationEnergyAttribution(Base, TenantScopedMixin, TimestampMixin):
+    """Lubrication Efficiency Intelligence, Pass 2
+    (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176) — answers whether independent
+    (non-energy) evidence supports lubrication-related friction/deterioration as a
+    plausible contributor to one `EnergyAssessment`'s observed residual. Evidence only,
+    same "never a diagnosis or decision" framing as `EnergyAssessment`/
+    `MLInferenceResult`: `app.energy.domain.evidence.energy_residual_evidence` (Pass 1)
+    and any future evidence this row could back are NOT wired into
+    `ConditionEngine`/`DecisionEngine` — see `app.energy.domain.attribution`'s own
+    module docstring for the full non-circularity argument.
+
+    `condition_assessment_id` is a plain informational cross-reference (not a composite
+    FK), matching `DecisionAssessment.condition_assessment_id`'s own precedent — the
+    condition consulted may since have been superseded by a fresher assessment, and this
+    row's own `supporting_evidence`/`contradicting_evidence` text is what actually
+    explains the result, not a join.
+    """
+
+    __tablename__ = "lubrication_energy_attribution"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        composite_tenant_fk("energy_assessment_id", "energy_assessment"),
+        Index(
+            "ix_lubrication_energy_attribution_tenant_machine_time",
+            "tenant_id",
+            "machine_id",
+            text("as_of_timestamp DESC"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    energy_assessment_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    as_of_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+    attribution_level: Mapped[AttributionLevel] = mapped_column(
+        _enum_column(AttributionLevel), nullable=False
+    )
+
+    #: Denormalized from the referenced `EnergyAssessment` at the moment this row was
+    #: computed — a reader never needs a join just to see what deviation this
+    #: attribution is about, same convenience `ConditionAssessment.evidence_summary`
+    #: already provides over its own raw evidence rows.
+    energy_residual_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    energy_residual_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    supporting_evidence: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    contradicting_evidence: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    limiting_factors: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    alternative_explanations: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
+    #: Combined data-trust rollup (power sensor + relevant lubrication/bearing sensors),
+    #: reusing the same TRUSTED/CAUTION/NO_TRUSTED_DATA vocabulary
+    #: `ConditionEngine._overall_quality_state` already established — a plain string, not
+    #: a closed enum, matching `EvidenceItem.source_type`'s own precedent for a value
+    #: that already has a real, tested vocabulary elsewhere.
+    data_quality_state: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    condition_assessment_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
 
 
 class StateEstimate(Base, TenantScopedMixin, TimestampMixin):
