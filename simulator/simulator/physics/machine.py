@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Iterable
 
 from simulator.config.loader import MachineConfig, OperatingProfileConfig
 from simulator.domain.enums import OperatingState
-from simulator.domain.state import MachineState
+from simulator.domain.state import BearingState, MachineState
 from simulator.physics.util import clip, exp_relax
 
 
@@ -100,6 +101,38 @@ class OperatingProfile:
             state.rpm = 0.0
         else:
             state.rpm = self._nominal_rpm * clip(state.load_percent / 100.0, 0.0, 1.1)
+
+
+def step_power(
+    state: MachineState,
+    config: MachineConfig,
+    machine_type: str,
+    bearings: Iterable[BearingState],
+    dt_s: float,
+) -> None:
+    """Driveline power model (Lubrication Efficiency Intelligence,
+    docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md §12, ADR-176) — same target-plus-lag shape
+    `simulator.physics.bearing.step_temperature`/`step_vibration` already use: a baseline
+    plus a load-driven term plus a friction/degradation term, relaxed toward that target
+    through a first-order lag rather than jumping instantly.
+
+    The friction term is the mean `(1 - health)` across every bearing on this machine —
+    the exact same real state variable `step_temperature`/`step_vibration` already use for
+    their own `_degradation` terms, not a separately invented "friction" concept. A
+    machine with no bearings yet (still commissioning) contributes zero friction term,
+    same as a healthy fleet.
+    """
+    nominal = config.nominal_power_kw.get(machine_type, 30.0)
+    bearing_list = list(bearings)
+    friction_term = (
+        sum(1.0 - b.health for b in bearing_list) / len(bearing_list) if bearing_list else 0.0
+    )
+    target = (
+        nominal
+        + config.power_load_gain_kw_per_percent * state.load_percent
+        + config.power_friction_gain_kw * friction_term
+    )
+    state.power_kw = exp_relax(state.power_kw, target, dt_s, config.power_lag_time_constant_s)
 
 
 def step_ambient_temperature(

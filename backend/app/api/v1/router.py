@@ -17,6 +17,7 @@ from app.api.v1 import (
     data_quality,
     decisions,
     device_management,
+    energy,
     features,
     fleet,
     gateways,
@@ -59,6 +60,7 @@ api_v1_router.include_router(baselines.router)
 api_v1_router.include_router(rules.router)
 api_v1_router.include_router(features.router)
 api_v1_router.include_router(ml.router)
+api_v1_router.include_router(energy.router)
 api_v1_router.include_router(state_estimation.router)
 api_v1_router.include_router(conditions.router)
 api_v1_router.include_router(prognostics.router)

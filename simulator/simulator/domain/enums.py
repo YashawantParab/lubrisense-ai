@@ -104,3 +104,7 @@ class MeasurementType(StrEnum):
     BEARING_TEMPERATURE = "BEARING_TEMPERATURE"
     RPM = "RPM"
     LOAD = "LOAD"
+    #: Machine driveline power, kW — Lubrication Efficiency Intelligence
+    #: (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176). Deliberately distinct from
+    #: PUMP_CURRENT (the lubrication pump's own small motor current).
+    MACHINE_POWER = "MACHINE_POWER"

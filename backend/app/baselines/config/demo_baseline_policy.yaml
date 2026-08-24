@@ -34,6 +34,7 @@ engineering_reference:
     BEARING_TEMPERATURE: [-20.0, 150.0]
     RPM: [0.0, 10000.0]
     LOAD: [0.0, 120.0]
+    MACHINE_POWER: [0.0, 2000.0]
   expected_unit:
     PRESSURE: bar
     FLOW: cm3/min
@@ -48,13 +49,24 @@ engineering_reference:
     BEARING_TEMPERATURE: degC
     RPM: rpm
     LOAD: percent
+    MACHINE_POWER: kW
 
 # --- Sensor-type strategy (brief §7): every sensor always gets a STATIC_ENGINEERING_REFERENCE
 # and a ROLLING_ASSET_BASELINE profile; this table says which sensor types ALSO get a
 # CONTEXTUAL_ASSET_BASELINE (segmented) profile. RESERVOIR_LEVEL uses metric_kind
 # RESERVOIR_TREND instead of a plain numeric distribution (brief §24). ---
 contextual_measurement_types:
-  [PRESSURE, FLOW, PUMP_CURRENT, VIBRATION_RMS, VIBRATION_PEAK, BEARING_TEMPERATURE, RPM, LOAD]
+  [
+    PRESSURE,
+    FLOW,
+    PUMP_CURRENT,
+    VIBRATION_RMS,
+    VIBRATION_PEAK,
+    BEARING_TEMPERATURE,
+    RPM,
+    LOAD,
+    MACHINE_POWER,
+  ]
 
 reservoir_trend_measurement_types: [RESERVOIR_LEVEL]
 
@@ -71,6 +83,7 @@ context_dimensions:
   BEARING_TEMPERATURE: [operating_state]
   RPM: [operating_state]
   LOAD: [operating_state]
+  MACHINE_POWER: [operating_state]
 
 # Contextual profiles are only built for these "stable" operating states (brief §8) —
 # STARTING/SHUTTING_DOWN/MAINTENANCE are transitional and excluded from segmentation

@@ -34,6 +34,22 @@ machine:
     mean: 22.0
     daily_amplitude_c: 4.0
     noise_std_c: 0.25
+  # Illustrative nominal driveline power per machine type at near-zero load, kW — a demo
+  # assumption, not a real nameplate value (Lubrication Efficiency Intelligence,
+  # docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176).
+  nominal_power_kw:
+    CONVEYOR: 30.0
+    MOTOR: 45.0
+    FAN: 55.0
+    PUMP: 22.0
+    COMPRESSOR: 90.0
+    CRUSHER: 160.0
+  power_load_gain_kw_per_percent: 0.35
+  # Scales the same aggregate (1 - bearing.health) term bearing temperature/vibration
+  # targets already use — a machine's power target only rises when its own bearings'
+  # real condition state has degraded.
+  power_friction_gain_kw: 12.0
+  power_lag_time_constant_s: 300.0
 
 operating_profile:
   # Two demo shifts per simulated day, with a gap between them so STOPPED periods occur.
@@ -191,3 +207,9 @@ sensors:
     bias_std: 0.3
     resolution: 0.1
     valid_range: [0.0, 120.0]
+  MACHINE_POWER:
+    unit: kW
+    noise_std: 0.6
+    bias_std: 0.4
+    resolution: 0.1
+    valid_range: [0.0, 2000.0]

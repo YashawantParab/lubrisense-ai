@@ -61,7 +61,7 @@ from simulator.physics import circuit as circuit_physics
 from simulator.physics import pump as pump_physics
 from simulator.physics import reservoir as reservoir_physics
 from simulator.physics.cycle import LubricationCycleController
-from simulator.physics.machine import OperatingProfile, step_ambient_temperature
+from simulator.physics.machine import OperatingProfile, step_ambient_temperature, step_power
 from simulator.scenarios import HEALTHY
 from simulator.scenarios.effects import ScenarioEffects
 from simulator.scenarios.instance import ScenarioInstance
@@ -321,6 +321,14 @@ class SimulationEngine:
                     bearing_state, self._config.bearing, wear_target, dt
                 )
 
+        step_power(
+            state.machine,
+            self._config.machine,
+            self._topology.machine_type,
+            state.bearings.values(),
+            dt,
+        )
+
         self._validate_state()
 
         readings = self._collect_readings(cycle_completed_result, effects)
@@ -389,6 +397,8 @@ class SimulationEngine:
             return state.machine.rpm
         if mt == "LOAD":
             return state.machine.load_percent
+        if mt == "MACHINE_POWER":
+            return state.machine.power_kw
         if mt == "BEARING_TEMPERATURE":
             b = state.bearings.get(sensor.attached_entity_id)
             return b.temperature_c if b else None
@@ -567,6 +577,7 @@ class SimulationEngine:
             affected_component=affected_component,
             operating_state=state.machine.operating_state.value,
             load_percent=state.machine.load_percent,
+            power_kw=state.machine.power_kw,
             ambient_temperature_c=state.machine.ambient_temperature_c,
             pump_efficiency=ls_state.pump.efficiency if ls_state else None,
             reservoir_quantity_l=ls_state.reservoir.quantity_l if ls_state else None,
@@ -600,6 +611,7 @@ class SimulationEngine:
         checks: list[tuple[str, float]] = [
             ("machine.load_percent", state.machine.load_percent),
             ("machine.rpm", state.machine.rpm),
+            ("machine.power_kw", state.machine.power_kw),
             ("machine.ambient_temperature_c", state.machine.ambient_temperature_c),
         ]
         for b in state.bearings.values():

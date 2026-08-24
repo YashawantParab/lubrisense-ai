@@ -56,6 +56,7 @@ from app.domain.enums import (
     AssessmentScope,
     AuditActorType,
     BaselineMetricKind,
+    BaselineSourceKind,
     BaselineState,
     BaselineStrategyType,
     CapabilityLevel,
@@ -75,6 +76,7 @@ from app.domain.enums import (
     DocumentStatus,
     DocumentType,
     Eligibility,
+    EnergyAssessmentStatus,
     EvidenceStrength,
     FeedbackClassification,
     ForecastHorizon,
@@ -1348,6 +1350,72 @@ class MLInferenceResult(Base, TenantScopedMixin, TimestampMixin):
     explanation: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+
+
+class EnergyAssessment(Base, TenantScopedMixin, TimestampMixin):
+    """Lubrication Efficiency Intelligence, Pass 1 (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md,
+    ADR-176) — energy-deviation EVIDENCE only, mirroring `MLInferenceResult`'s own
+    "evidence, never a diagnosis" framing. `expected_power_kw`/`expected_lower_kw`/
+    `expected_upper_kw` are read directly from the existing `app.baselines`
+    `CONTEXTUAL_ASSET_BASELINE` machinery (`baseline_profile_id`/`baseline_source`
+    resolve back to exactly which profile/fallback rung answered) — this table computes
+    no statistics of its own.
+
+    Deliberately does NOT carry a `lubrication_attribution` field yet: attribution,
+    carbon estimation, and maintenance-verification are explicitly out of scope for this
+    pass (see the design doc's implementation sequence, step 3+) and are added to this
+    table (or a related one) only once that evidence chain is actually built and
+    reviewed — never speculatively reserved here.
+    """
+
+    __tablename__ = "energy_assessment"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        composite_tenant_fk("power_sensor_id", "sensor"),
+        Index(
+            "ix_energy_assessment_tenant_machine_time",
+            "tenant_id",
+            "machine_id",
+            text("as_of_timestamp DESC"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    power_sensor_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    as_of_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+    actual_power_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected_power_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected_lower_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected_upper_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    residual_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    residual_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    status: Mapped[EnergyAssessmentStatus] = mapped_column(
+        _enum_column(EnergyAssessmentStatus), nullable=False
+    )
+    #: Reuses `app.data_quality`'s own per-sensor vocabulary directly (TRUSTED/
+    #: USABLE_WITH_CAUTION/UNUSABLE) rather than inventing a parallel one — this
+    #: assessment concerns exactly one sensor's data quality, not a multi-source
+    #: aggregate rollup (contrast `ConditionAssessment.quality_context`, which spans many
+    #: sensors and does need its own coarser TRUSTED/CAUTION/NO_TRUSTED_DATA rollup).
+    data_quality_state: Mapped[QualityState] = mapped_column(
+        _enum_column(QualityState), nullable=False
+    )
+
+    #: Which `app.baselines` fallback rung actually answered (EXACT_CONTEXT/
+    #: OPERATING_STATE/SENSOR_LEVEL/ENGINEERING_REFERENCE/NONE) — same field shape as
+    #: `app/api/schemas/baselines.py`'s `CurrentBaselineResponse.source`.
+    baseline_source: Mapped[BaselineSourceKind] = mapped_column(
+        _enum_column(BaselineSourceKind), nullable=False
+    )
+    baseline_profile_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    operating_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    engine_version: Mapped[str] = mapped_column(String(20), nullable=False)
 
 
 class StateEstimate(Base, TenantScopedMixin, TimestampMixin):

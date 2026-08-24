@@ -127,6 +127,7 @@ MACHINE_TYPE_CYCLE = [
 
 CRITICALITY_CYCLE = [Criticality.LOW, Criticality.MEDIUM, Criticality.HIGH, Criticality.CRITICAL]
 
+
 # Industrial-asset-realism pass: the ten curated, scenario-scripted machines (indices
 # fixed by `seed_hosted_demo.py` / the individual `scripts/seed_*.py` scenario scripts,
 # which resolve by `asset_code` — see those scripts' own `ASSET_CODE`/`FLAGSHIP_ASSET_CODE`
@@ -694,6 +695,29 @@ async def seed_lubrication_system(
         name=f"{short_label} RPM Sensor",
         sensor_type=SensorType.RPM,
         unit="rpm",
+        installation_date=machine.installation_date,
+        status=SensorStatus.ACTIVE,
+        quality_state=SensorQualityState.UNKNOWN,
+        machine_id=machine.id,
+        metadata_={"demo": True},
+    )
+    # Machine driveline power (Lubrication Efficiency Intelligence, Pass 1 —
+    # docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176) — deliberately machine-direct
+    # like RPM above, and deliberately NOT the same sensor as PUMP_CURRENT (that measures
+    # the lubrication pump's own small motor, not this machine's driveline). Registered
+    # for every machine so the fleet's sensor inventory is structurally consistent; only
+    # a subset of scenario scripts actually write meaningful telemetry for it in this
+    # pass (see the design doc's representative-machine list) — an unwritten-to sensor is
+    # a real, honest INSUFFICIENT_DATA state, not a gap to hide.
+    await get_or_create(
+        session,
+        Sensor,
+        det_id("sensor", "power", str(index)),
+        tenant_id=tenant_id,
+        sensor_code=f"PWR-{machine.id.hex[:8]}",
+        name=f"{short_label} Power Sensor",
+        sensor_type=SensorType.MACHINE_POWER,
+        unit="kW",
         installation_date=machine.installation_date,
         status=SensorStatus.ACTIVE,
         quality_state=SensorQualityState.UNKNOWN,

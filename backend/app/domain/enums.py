@@ -107,6 +107,10 @@ class SensorType(StrEnum):
     BEARING_TEMPERATURE = "BEARING_TEMPERATURE"
     RPM = "RPM"
     LOAD = "LOAD"
+    #: Machine driveline electrical power, kW — deliberately distinct from PUMP_CURRENT
+    #: (the lubrication pump's own small motor current). See
+    #: docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md / ADR-176.
+    MACHINE_POWER = "MACHINE_POWER"
 
 
 class SensorStatus(StrEnum):
@@ -349,6 +353,25 @@ class BaselineSourceKind(StrEnum):
     SENSOR_LEVEL = "SENSOR_LEVEL"
     ENGINEERING_REFERENCE = "ENGINEERING_REFERENCE"
     NONE = "NONE"
+
+
+class EnergyAssessmentStatus(StrEnum):
+    """Human/product-facing state of one `EnergyAssessment` (Lubrication Efficiency
+    Intelligence, ADR-176) — deliberately non-diagnostic, the same discipline
+    `DeviationClassification` already establishes for baseline deviation generally.
+
+    `ELEVATED_ENERGY_DEMAND` does NOT mean a lubrication fault — it means observed power
+    is materially above its contextual expectation. Whether lubrication condition
+    plausibly contributes to that deviation is a separate question this status never
+    answers (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md §6 "lubrication attribution" — a
+    later, not-yet-implemented layer)."""
+
+    WITHIN_EXPECTED_RANGE = "WITHIN_EXPECTED_RANGE"
+    ELEVATED_ENERGY_DEMAND = "ELEVATED_ENERGY_DEMAND"
+    BELOW_EXPECTED_RANGE = "BELOW_EXPECTED_RANGE"
+    INSUFFICIENT_BASELINE = "INSUFFICIENT_BASELINE"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+    DATA_QUALITY_LIMITED = "DATA_QUALITY_LIMITED"
 
 
 # ---------------------------------------------------------------------------

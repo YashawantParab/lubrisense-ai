@@ -93,6 +93,16 @@ async def main() -> None:
         rpm = by_type["RPM"][0]
         bearing_temps = by_type["BEARING_TEMPERATURE"]
         vibrations = by_type["VIBRATION_RMS"]
+        # Lubrication Efficiency Intelligence, Pass 1
+        # (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176) — AF-101 is this
+        # capability's representative data-quality case: the power sensor is on the
+        # trusted lubrication-delivery instrumentation group below, entirely independent
+        # of the bearing-instrumentation junction this scenario marks UNUSABLE, so its own
+        # energy assessment should read as ordinary trusted evidence — the exact
+        # per-sensor (never machine-wide) quality-gating behavior this pass's own data
+        # -quality gating is meant to demonstrate (bearing-sensor drift must never
+        # invalidate an independent power measurement).
+        power = by_type["MACHINE_POWER"][0]
 
         await reset_machine_data(session, tenant_id, machine_id)
 
@@ -130,6 +140,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, jitter(58.0 - 0.01 * i, 0.05), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(22.0, 0.5), t)
             for b in bearing_temps:
                 add(b, jitter(42.0, 0.15), t)
             for v in vibrations:
@@ -140,7 +151,7 @@ async def main() -> None:
         await session.commit()
         print(f"Seeded {len(rows)} telemetry rows for machine={machine_id}")
 
-        trusted_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id]
+        trusted_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id, power.id]
         unusable_sensors = list(bearing_temps) + list(vibrations)
 
     for sid in trusted_sensor_ids:

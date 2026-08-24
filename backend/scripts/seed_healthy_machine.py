@@ -199,6 +199,12 @@ async def main() -> None:
         rpm = by_type["RPM"][0]
         bearing_temps = by_type["BEARING_TEMPERATURE"]
         vibrations = by_type["VIBRATION_RMS"]
+        # Lubrication Efficiency Intelligence, Pass 1
+        # (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176) — KILN-01 is this
+        # capability's "healthy" representative machine: driveline power tracks its own
+        # normal-load baseline with no friction/degradation term, so its expected-vs-actual
+        # residual should land within its own contextual expected range.
+        power = by_type["MACHINE_POWER"][0]
 
         # Deterministic reset: this machine is fully owned by this script within the
         # story's own window, same convention as the flagship (ADR-173). Uses the shared
@@ -245,6 +251,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, jitter(60.0 - 0.01 * i, 0.05), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(45.0, 0.8), t)
             for b in bearing_temps:
                 add(b, jitter(42.0, 0.15), t)
             for v in vibrations:
@@ -255,7 +262,7 @@ async def main() -> None:
         await session.commit()
         print(f"Seeded {len(rows)} healthy telemetry rows for machine={machine_id}")
 
-        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id]
+        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id, power.id]
         all_sensor_ids += [b.id for b in bearing_temps]
         all_sensor_ids += [v.id for v in vibrations]
 

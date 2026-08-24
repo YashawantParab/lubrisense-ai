@@ -34,6 +34,7 @@ EXPECTED_UNITS: dict[SensorType, frozenset[str]] = {
     SensorType.BEARING_TEMPERATURE: frozenset({"degc", "c", "°c"}),
     SensorType.RPM: frozenset({"rpm"}),
     SensorType.LOAD: frozenset({"%", "percent"}),
+    SensorType.MACHINE_POWER: frozenset({"kw"}),
 }
 
 

@@ -37,6 +37,7 @@ staleness:
     BEARING_TEMPERATURE: 30.0
     RPM: 10.0
     LOAD: 10.0
+    MACHINE_POWER: 10.0
   # A stream is STALE once (now - last_reading_age) exceeds expected_interval * this
   # multiplier — not the instant the next expected reading is merely due, which would
   # false-positive on ordinary jitter.
@@ -64,6 +65,7 @@ validity:
     BEARING_TEMPERATURE: [-20.0, 150.0]
     RPM: [0.0, 10000.0]
     LOAD: [0.0, 120.0]
+    MACHINE_POWER: [0.0, 2000.0]
   expected_unit:
     PRESSURE: bar
     FLOW: cm3/min
@@ -78,6 +80,7 @@ validity:
     BEARING_TEMPERATURE: degC
     RPM: rpm
     LOAD: percent
+    MACHINE_POWER: kW
 
 # --- Sensor-drift-suspected (brief §19) ---
 sensor_drift:
@@ -109,6 +112,7 @@ spike:
     BEARING_TEMPERATURE: 0.05
     RPM: 0.3
     LOAD: 0.3
+    MACHINE_POWER: 0.3
 
 # --- Duplicate-pattern (brief §10) ---
 duplicate_pattern:

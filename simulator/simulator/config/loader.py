@@ -35,6 +35,16 @@ class MachineConfig(_Frozen):
     nominal_rpm: dict[str, float]
     load_lag_time_constant_s: float
     ambient_temperature_c: AmbientTemperatureConfig
+    #: Driveline power model (Lubrication Efficiency Intelligence,
+    #: docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176) — mirrors `nominal_rpm`'s own
+    #: per-machine-type dict shape. `power_friction_gain_kw` scales the same aggregate
+    #: `(1 - bearing.health)` term `simulator.physics.bearing`'s temperature/vibration
+    #: targets already use, so a machine's power target only rises when its own bearings'
+    #: real condition state has actually degraded — never an independently invented effect.
+    nominal_power_kw: dict[str, float]
+    power_load_gain_kw_per_percent: float
+    power_friction_gain_kw: float
+    power_lag_time_constant_s: float
 
 
 class OperatingProfileConfig(_Frozen):

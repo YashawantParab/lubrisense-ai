@@ -1,11 +1,29 @@
 # Lubrication Efficiency Intelligence — Domain & Architecture Design
 
-**Status: design only. Nothing in this document is implemented.** No new tables, services,
-API routes, ML models, simulator physics, or frontend surfaces exist yet. This is a capability
-extension proposed after the completed roadmap (Phases 1–37+) — not a new numbered phase, and
-not a commitment that every section here ships as designed. It exists so the next
-implementation pass has a single, precise, already-reviewed plan to build against instead of
-inventing the shape of this capability mid-implementation.
+**Status: Pass 1 implemented (Machine Power → Contextual Expected Power → Energy
+Residual → Data-Quality-Gated Energy Assessment).** This is a capability extension after
+the completed roadmap (Phases 1–37+) — not a new numbered phase, and not a commitment
+that every remaining section here ships exactly as designed.
+
+**Implemented** (§3–§9, §14 slice): `SensorType.MACHINE_POWER`; real power telemetry for
+the curated hosted-demo fleet's representative machines (`backend/scripts/seed_*.py` —
+the curated demo fleet's actual telemetry source, confirmed independent of the
+`simulator` package at runtime) plus a machine-driveline power physics extension in
+`simulator/simulator/physics/` (design §12) for that package's own separate scenario
+-runner use; expected-power resolution reusing `app.baselines`'
+`CONTEXTUAL_ASSET_BASELINE` unchanged (§4); `energy_residual_kw`/`energy_residual_pct`
+(§5, with the documented invalid-denominator guard); the persisted `EnergyAssessment`
+model/repository/service/API (§7, §14 minus `lubrication_attribution`); data-quality
+gating (§7); an observable-only `ENERGY_RESIDUAL` evidence function
+(`app.energy.domain.evidence`, §8/§13) that is **not** wired into
+`ConditionEngine`/`synthesize()` yet. See ADR-176 and the implementation report for exact
+files, tests, and verification.
+
+**Not yet implemented** (deliberately deferred, per this pass's own scope): lubrication
+attribution (§6), Condition/Decision Intelligence wiring (§8), maintenance verification
+(§9), carbon estimation (§10–§11), the ML regression opportunity (§13, still assessed as
+not justified for now), and all frontend UX (§16). The rest of this document describes
+the full intended design; only the slice above is real today.
 
 ## Product definition
 

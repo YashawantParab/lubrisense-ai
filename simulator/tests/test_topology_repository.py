@@ -15,7 +15,10 @@ def test_flagship_topology_resolves_from_live_database(flagship_topology) -> Non
     assert len(flagship_topology.bearings) == 2
     assert flagship_topology.lubrication_system is not None
     assert len(flagship_topology.lubrication_system.circuits) == 2
-    assert len(flagship_topology.sensors) == 8
+    # 8 original sensors + 1 MACHINE_POWER (Lubrication Efficiency Intelligence,
+    # docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176 — backend/scripts/
+    # seed_demo_data.py now creates one for every machine).
+    assert len(flagship_topology.sensors) == 9
 
 
 def test_flagship_lubrication_points_map_circuits_to_bearings(flagship_topology) -> None:  # type: ignore[no-untyped-def]

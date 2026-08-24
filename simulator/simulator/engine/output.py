@@ -115,6 +115,7 @@ class GroundTruthRecord:
     affected_component: str | None
     operating_state: str
     load_percent: float
+    power_kw: float
     ambient_temperature_c: float
     pump_efficiency: float | None
     reservoir_quantity_l: float | None

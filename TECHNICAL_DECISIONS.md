@@ -9140,8 +9140,11 @@ on pre-seeded static data at all (its current design, see `docs/HOSTED_DEPLOYMEN
 
 ### Status
 
-PROPOSED (design only — no code from this decision has been implemented; see
-`docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md` for the full design this ADR summarizes)
+ACCEPTED — Pass 1 implemented (machine power → contextual expected power → energy
+residual → data-quality-gated `EnergyAssessment`, observable-only evidence). See
+`docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md`'s own status header for exactly what is and
+is not implemented yet; the reuse-vs-new-surface decisions below held up unchanged
+through implementation.
 
 ### Context
 

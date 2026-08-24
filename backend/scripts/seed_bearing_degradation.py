@@ -79,6 +79,15 @@ async def main() -> None:
         rpm = by_type["RPM"][0]
         bearing_temps = by_type["BEARING_TEMPERATURE"]
         vibrations = by_type["VIBRATION_RMS"]
+        # Lubrication Efficiency Intelligence, Pass 1
+        # (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176) — IDF-01 is this
+        # capability's representative "elevated energy demand" machine: of the four
+        # candidate scenarios considered (active restriction, leakage, pump degradation,
+        # bearing condition), this is the only one whose ground truth genuinely degrades a
+        # bearing-side state variable (rising temperature/vibration below), giving a real
+        # physical basis for added driveline friction — the same load-bearing story
+        # `bearing_temps`/`vibrations` already tell, not a separately invented one.
+        power = by_type["MACHINE_POWER"][0]
 
         await reset_machine_data(session, tenant_id, machine_id)
 
@@ -113,6 +122,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, jitter(57.0 - 0.01 * i, 0.05), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(38.0, 0.6), t)
             for b in bearing_temps:
                 add(b, jitter(42.0, 0.15), t)
             for v in vibrations:
@@ -129,6 +139,11 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, jitter(55.6 - 0.01 * i, 0.05), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            # A modest, real friction-consistent rise (~13% at frac=1.0) — same
+            # proportionally-modest-but-clear-in-context framing CLAUDE.md's failure-mode
+            # wording rules ask for; deliberately smaller than the bearing signals' own
+            # rise, since power is a driveline-wide aggregate, not a bearing-local reading.
+            add(power, jitter(38.0 + 5.0 * frac, 0.6), t)
             for b in bearing_temps:
                 add(b, jitter(42.0 + 14.0 * frac, 0.15), t)
             for v in vibrations:
@@ -139,7 +154,7 @@ async def main() -> None:
         await session.commit()
         print(f"Seeded {len(rows)} telemetry rows for machine={machine_id}")
 
-        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id]
+        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id, power.id]
         all_sensor_ids += [b.id for b in bearing_temps]
         all_sensor_ids += [v.id for v in vibrations]
 

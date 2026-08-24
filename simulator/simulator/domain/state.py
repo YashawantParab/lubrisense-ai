@@ -29,6 +29,11 @@ class MachineState:
     rpm: float = 0.0
     ambient_temperature_c: float = 22.0
     state_seconds: float = 0.0  # time spent in current operating_state, seconds
+    #: Driveline electrical power, kW — Lubrication Efficiency Intelligence
+    #: (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176). Lagged like
+    #: temperature/vibration (`simulator.physics.power.step_power`), not an instantaneous
+    #: function of load — real driveline power doesn't jump discontinuously either.
+    power_kw: float = 0.0
 
 
 @dataclass(slots=True)

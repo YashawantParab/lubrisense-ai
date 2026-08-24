@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 from sqlalchemy import or_, select
 
+from app.domain.enums import SensorType
 from app.domain.models import Sensor
 from app.repositories.base import TenantScopedRepository
 
@@ -15,6 +16,27 @@ class SensorRepository(TenantScopedRepository[Sensor]):
     async def get_by_sensor_code(self, tenant_id: uuid.UUID, sensor_code: str) -> Sensor | None:
         stmt = select(Sensor).where(
             Sensor.tenant_id == tenant_id, Sensor.sensor_code == sensor_code
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_machine_and_type(
+        self, tenant_id: uuid.UUID, machine_id: uuid.UUID, sensor_type: SensorType
+    ) -> Sensor | None:
+        """The one machine-direct sensor of this type, if any (e.g. `MACHINE_POWER`,
+        `RPM` — attached via `Sensor.machine_id`, not through a bearing/lubrication-system
+        component). Returns the lowest `id` if more than one somehow exists, the same
+        deterministic-tiebreak convention `BaselineEngine.refresh_machine_cycle` already
+        uses for its own representative-sensor choice."""
+        stmt = (
+            select(Sensor)
+            .where(
+                Sensor.tenant_id == tenant_id,
+                Sensor.machine_id == machine_id,
+                Sensor.sensor_type == sensor_type,
+            )
+            .order_by(Sensor.id)
+            .limit(1)
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()

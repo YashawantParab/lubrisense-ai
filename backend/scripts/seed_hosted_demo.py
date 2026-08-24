@@ -38,11 +38,17 @@ import scripts.seed_low_reservoir as seed_low_reservoir
 import scripts.seed_pump_degradation as seed_pump_degradation
 import scripts.seed_recovering_asset as seed_recovering_asset
 from app.audit.service import AuditActor
+from app.baselines.config.policy import load_baseline_policy
 from app.cmms.services.cmms_service import CMMSService, CMMSUnavailableError
 from app.core.config import get_settings
 from app.device_management.service import DeviceConfigurationService
 from app.domain.enums import DeviceType, IncidentState
 from app.domain.models import Gateway, Incident, Machine, MaintenanceCase, Tenant
+from app.energy.services.energy_assessment_service import (
+    EnergyAssessmentService,
+    EnergyMachineNotFoundError,
+    EnergyPowerSensorNotFoundError,
+)
 from app.features.config.policy import load_feature_policy
 from app.infrastructure.database import Database
 from app.ml.services.ml_inference_service import (
@@ -202,6 +208,68 @@ async def _seed_ml_evidence() -> None:
     print(f"ML evidence: {scored} scored, {insufficient} insufficient-features")
 
 
+#: Secondary Crusher CR-202 is deliberately excluded from `_CURATED_ASSET_CODES` (see the
+#: comment on that tuple) because ML evidence existing at all changes what
+#: `ConditionEngine.assess()`'s own "was anything checked" gate sees for that machine.
+#: `EnergyAssessment` carries no equivalent risk — this pass never wires it into
+#: `ConditionEngine`/`synthesize()` at all (see `app.energy.domain.evidence`'s own
+#: docstring), so CR-202 is included here on its own: it is this capability's
+#: representative "commissioning / insufficient baseline history" case
+#: (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md), and skipping it would silently drop the
+#: one curated example of `INSUFFICIENT_BASELINE`.
+_ENERGY_ASSET_CODES = _CURATED_ASSET_CODES + ("L1-7F84-M017",)  # + Secondary Crusher CR-202
+
+
+async def _seed_energy_assessments() -> None:
+    """Real on-demand assessment, run through the same `EnergyAssessmentService` the live
+    `/energy/machines/{id}/latest` API endpoint uses (Lubrication Efficiency
+    Intelligence, Pass 1 — docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176). Every
+    curated machine is assessed; a machine with no power telemetry yet honestly reads
+    `INSUFFICIENT_DATA` rather than being skipped — see the design doc's representative
+    -machine list for which of these are expected to show a real deviation."""
+    settings = get_settings()
+    database = Database(settings)
+    baseline_policy = load_baseline_policy()
+    by_status: dict[str, int] = {}
+    async with database.session() as session:
+        tenant = (
+            await session.execute(
+                select(Tenant).where(Tenant.slug == seed_flagship_story.DEMO_TENANT_SLUG)
+            )
+        ).scalar_one()
+        service = EnergyAssessmentService(session, baseline_policy)
+        for asset_code in _ENERGY_ASSET_CODES:
+            machine = (
+                await session.execute(
+                    select(Machine).where(
+                        Machine.tenant_id == tenant.id, Machine.asset_code == asset_code
+                    )
+                )
+            ).scalar_one_or_none()
+            if machine is None:
+                print(f"  {asset_code}: machine not found — skipping")
+                continue
+            try:
+                result = await service.assess_machine(tenant.id, machine.id)
+            except EnergyMachineNotFoundError:
+                print(f"  {asset_code}: machine not found — skipping")
+                continue
+            except EnergyPowerSensorNotFoundError:
+                print(f"  {machine.name}: no machine-power sensor commissioned — skipping")
+                continue
+            by_status[result.status.value] = by_status.get(result.status.value, 0) + 1
+            headline = (
+                f"actual={result.actual_power_kw:.1f}kW expected={result.expected_power_kw:.1f}kW "
+                f"residual={result.residual_pct:+.1f}%"
+                if result.actual_power_kw is not None and result.expected_power_kw is not None
+                else f"actual={result.actual_power_kw}"
+            )
+            print(f"  {machine.name}: {result.status.value} ({headline})")
+    await database.dispose()
+    summary = ", ".join(f"{count} {status}" for status, count in sorted(by_status.items()))
+    print(f"Energy assessments: {summary}")
+
+
 async def _seed_flagship_extras() -> None:
     """CMMS draft + device/configuration snapshot for the flagship's most recently
     completed maintenance case — real service calls, draft-only/visibility-only exactly
@@ -302,50 +370,53 @@ async def _seed_flagship_extras() -> None:
 
 
 async def main() -> None:
-    print("=== 1/15 Base asset hierarchy ===")
+    print("=== 1/16 Base asset hierarchy ===")
     await seed_demo_data.main()
 
-    print("\n=== 2/15 Clean non-canonical debris machines ===")
+    print("\n=== 2/16 Clean non-canonical debris machines ===")
     await _delete_debris_machines()
 
-    print("\n=== 3/15 Approved knowledge corpus ===")
+    print("\n=== 3/16 Approved knowledge corpus ===")
     await seed_knowledge_corpus.main()
 
-    print("\n=== 4/15 Flagship machine story (resolved) ===")
+    print("\n=== 4/16 Flagship machine story (resolved) ===")
     await seed_flagship_story.main()
 
-    print("\n=== 5/15 Healthy comparison machine ===")
+    print("\n=== 5/16 Healthy comparison machine ===")
     await seed_healthy_machine.main()
 
-    print("\n=== 6/15 Active developing-restriction incident ===")
+    print("\n=== 6/16 Active developing-restriction incident ===")
     await seed_active_restriction.main()
 
-    print("\n=== 7/15 Leakage incident ===")
+    print("\n=== 7/16 Leakage incident ===")
     await seed_leakage.main()
 
-    print("\n=== 8/15 Low-reservoir supply-risk incident ===")
+    print("\n=== 8/16 Low-reservoir supply-risk incident ===")
     await seed_low_reservoir.main()
 
-    print("\n=== 9/15 Pump-degradation incident ===")
+    print("\n=== 9/16 Pump-degradation incident ===")
     await seed_pump_degradation.main()
 
-    print("\n=== 10/15 Bearing-condition incident ===")
+    print("\n=== 10/16 Bearing-condition incident ===")
     await seed_bearing_degradation.main()
 
-    print("\n=== 11/15 Data-quality-limited machine ===")
+    print("\n=== 11/16 Data-quality-limited machine ===")
     await seed_data_quality_issue.main()
 
-    print("\n=== 12/15 Recently maintained / recovering machine ===")
+    print("\n=== 12/16 Recently maintained / recovering machine ===")
     await seed_recovering_asset.main()
 
-    print("\n=== 13/15 Insufficient-evidence machine ===")
+    print("\n=== 13/16 Insufficient-evidence machine ===")
     await seed_insufficient_evidence.main()
 
-    print("\n=== 14/15 CMMS draft + device/configuration context ===")
+    print("\n=== 14/16 CMMS draft + device/configuration context ===")
     await _seed_flagship_extras()
 
-    print("\n=== 15/15 ML evidence for the curated fleet ===")
+    print("\n=== 15/16 ML evidence for the curated fleet ===")
     await _seed_ml_evidence()
+
+    print("\n=== 16/16 Energy assessments for the curated fleet ===")
+    await _seed_energy_assessments()
 
     print("\nHosted demo seed complete.")
 

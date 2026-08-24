@@ -65,6 +65,14 @@ async def main() -> None:
         rpm = by_type["RPM"][0]
         bearing_temps = by_type["BEARING_TEMPERATURE"]
         vibrations = by_type["VIBRATION_RMS"]
+        # Lubrication Efficiency Intelligence, Pass 1
+        # (docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176) — CR-202 is this
+        # capability's representative commissioning/insufficient-history case: real power
+        # telemetry exists (and is trusted), but — like every other sensor here — no
+        # `backfill()` is ever called for it, so no baseline can be resolved and its
+        # energy assessment reads `INSUFFICIENT_BASELINE`, the same honest "not enough
+        # history yet" story this whole scenario already tells for every other signal.
+        power = by_type["MACHINE_POWER"][0]
 
         await reset_machine_data(session, tenant_id, machine_id)
 
@@ -99,6 +107,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, jitter(55.0, 0.1), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(15.0, 0.4), t)
             for b in bearing_temps:
                 add(b, jitter(41.0, 0.15), t)
             for v in vibrations:
@@ -112,7 +121,7 @@ async def main() -> None:
             f"for machine={machine_id}"
         )
 
-        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id]
+        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id, power.id]
         all_sensor_ids += [b.id for b in bearing_temps]
         all_sensor_ids += [v.id for v in vibrations]
 
