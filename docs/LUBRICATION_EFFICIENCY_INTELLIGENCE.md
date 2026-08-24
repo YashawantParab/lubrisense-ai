@@ -1,11 +1,10 @@
 # Lubrication Efficiency Intelligence — Domain & Architecture Design
 
-**Status: Pass 2 implemented (Energy Deviation + Independent Lubrication/Mechanical
-Evidence → Lubrication Attribution Assessment), building on Pass 1 (Machine Power →
-Contextual Expected Power → Energy Residual → Data-Quality-Gated Energy Assessment).**
-This is a capability extension after the completed roadmap (Phases 1–37+) — not a new
-numbered phase, and not a commitment that every remaining section here ships exactly as
-designed.
+**Status: Pass 3 implemented (Energy Outcome Verification + Qualified Avoided Energy),
+building on Pass 2 (Lubrication Attribution) and Pass 1 (Machine Power → Contextual
+Expected Power → Energy Residual → Data-Quality-Gated Energy Assessment).** This is a
+capability extension after the completed roadmap (Phases 1–37+) — not a new numbered
+phase, and not a commitment that every remaining section here ships exactly as designed.
 
 **Implemented — Pass 1** (§3–§5, §7, §14 slice): `SensorType.MACHINE_POWER`; real power
 telemetry for the curated hosted-demo fleet's representative machines
@@ -30,13 +29,20 @@ specify — §6 below is the as-implemented version of that section, superseding
 to attribution only (§8 updated below); attribution still does not modify Condition or
 Decision Intelligence in this pass.
 
+**Implemented — Pass 3** (§9 fully rewritten below): `EnergyOutcomeVerification`
+model/repository/service/query-service/API; the deterministic comparability engine
+(`app.energy.domain.comparability`); residual-based (never raw-power) pre/post
+comparison; the three-outcome architecture (condition/energy/lubrication-association,
+never collapsed); the claim hierarchy (Level 1–3); temporal-attribution-integrity
+(pre-intervention attribution frozen, never retroactively upgraded); trapezoidal
+qualified-avoided-energy integration; energy-opportunity-vs-outcome semantics.
+
 **Not yet implemented** (deliberately deferred, per this pass's own scope): Condition/
-Decision Intelligence *writing back* from attribution (§8 — observable-only boundary is
-implemented, the write-back described in the original §8 worked example is not), a
-dedicated maintenance-verification comparison service (§9), carbon estimation (§10–§11),
-the ML regression opportunity (§13, still assessed as not justified for now), and all
-frontend UX (§16). The rest of this document describes the full intended design; only the
-slices above are real today.
+Decision Intelligence *writing back* from attribution or outcome (§8 — observable-only
+boundary is implemented, the write-back described in the original §8 worked example is
+not), carbon estimation (§10–§11), the ML regression opportunity (§13, still assessed as
+not justified for now), and all frontend UX (§16). The rest of this document describes the
+full intended design; only the slices above are real today.
 
 ## Product definition
 
@@ -349,38 +355,179 @@ energy residual — however large — produces no decision. It can, at most, be 
 standalone "elevated energy demand, cause undetermined" observation, never phrased as a
 lubrication finding.
 
-## 9. Maintenance verification
+## 9. Maintenance / energy outcome verification (as implemented, Pass 3)
 
-A new, dedicated comparison service (no existing reusable mechanism — `seed_flagship_story
-.py`'s own hand-rolled recovery-telemetry replay is scenario-seeding code, not a reusable
-verification service):
-
-```
-pre-intervention window   →  MaintenanceCase.created_at (or its condition_assessment's
-                              first_detected_at) minus a configured lookback
-maintenance event          →  MaintenanceCase.completed_at (real, existing field)
-post-intervention window   →  a configured lookahead after completed_at
-```
-
-Both windows are filtered to **comparable operating context** (same `operating_state`
-population the baseline itself already buckets by) and **comparable data quality** (both
-windows must independently satisfy §7's gate) before any comparison is computed — an
-"improvement" measured while comparing a high-load pre-window to a low-load post-window is not
-a real comparison, and the service must refuse to produce one rather than silently mislead.
+Reuses the real maintenance workflow entirely — no parallel maintenance-outcome
+mechanism. `EnergyOutcomeVerification` (`app.energy.domain.comparability`/
+`app.energy.domain.outcome`, `app.energy.services.energy_outcome_service`) anchors
+itself on the most recent `COMPLETED` `MaintenanceCase` for a machine:
 
 ```
-pre_intervention_residual_kw
-post_intervention_residual_kw
-observed_residual_change_kw   = pre_intervention_residual_kw - post_intervention_residual_kw
-estimated_avoided_energy_kwh  = observed_residual_change_kw * relevant_operating_hours
-verification_confidence       # LOW/MODERATE/HIGH — driven by: window data quality,
-                                 population size in each window, operating-context comparability
+intervention_timestamp    = MaintenanceCase.completed_at (real, existing field)
+pre window   = [intervention_timestamp - 45min - 2min settle, intervention_timestamp - 2min]
+post window  = [intervention_timestamp + 2min settle, intervention_timestamp + 180min]
 ```
 
-Labeled **"Observed energy recovery"** / **"Estimated avoided energy"** in all product copy —
-never **"saved energy"** unless the comparability criteria above are genuinely satisfied for
-that specific case, and even then the estimate carries its `verification_confidence` alongside
-it, never presented as a bare number.
+The 2-minute settle gap on each side of the intervention is a simple, generic proxy for
+excluding startup/shutdown/downtime transients — this reference architecture has no
+separate downtime-interval record to exclude against instead, and this is documented as a
+known simplification, not a fabricated precision. The 45-minute pre-lookback is
+deliberately bounded (not "since the baseline was built") so the pre-window reflects the
+state *immediately preceding* the intervention, not diluted by an earlier healthy period.
+
+### Three separate outcomes, never collapsed into one Boolean
+
+- **A. Condition outcome** (`condition_outcome_status`) — reuses `ConditionLifecycle`
+  directly (IMPROVING/RESOLVED/PERSISTENT/DEVELOPING), read from the machine's current
+  `ConditionAssessment`, never written.
+- **B. Energy outcome** (`energy_outcome_status`) — `QUALIFIED_RECOVERY` /
+  `PROBABLE_RECOVERY` / `NO_MATERIAL_CHANGE` / `DETERIORATED` / `INCONCLUSIVE` /
+  `INSUFFICIENT_DATA`. Deliberately never `VERIFIED_SAVINGS`.
+- **C. Lubrication-association outcome** (`lubrication_association_status`) — the claim
+  hierarchy below.
+
+### Comparability engine
+
+`assess_comparability` (`app.energy.domain.comparability`) judges only factors genuinely
+observable in this architecture: sample count (≥5 per window), observed duration (≥5
+minutes per window), `operating_state` consistency (the platform's one existing
+operating-context signal — RPM/load are not independently re-checked, since
+`operating_state` is what `BaselineContext` already keys on everywhere else), per-sensor
+data-quality trust, and whether the same contextual baseline profile resolved for both
+windows (§"baseline version integrity" below). The worst-of-all-checks status wins:
+`COMPARABLE` / `PARTIALLY_COMPARABLE` / `NOT_COMPARABLE` / `INSUFFICIENT_DATA`, alongside
+a `ComparisonConfidence` (LOW/MODERATE/HIGH).
+
+### Residual-based comparison, never raw power
+
+```
+pre_residual_kw  = pre_window_mean_actual_kw  - pre_window_expected_kw   (own contextual baseline)
+post_residual_kw = post_window_mean_actual_kw - post_window_expected_kw  (own contextual baseline)
+residual_change_kw = pre_residual_kw - post_residual_kw   # positive = excess demand decreased
+```
+
+`mean(pre_actual) - mean(post_actual)` alone is never computed as an outcome — every
+comparison goes through each window's own contextually-expected value first.
+
+### Baseline version integrity
+
+Each window resolves its own contextual baseline profile independently (via the same
+`app.baselines.services.deviation_service.evaluate` Pass 1 already uses). If the two
+windows resolve to a *different* baseline profile id, that is recorded as a limiting
+factor and comparability is capped at `PARTIALLY_COMPARABLE` — baseline drift is never
+allowed to silently masquerade as energy recovery.
+
+### Energy-outcome classification — reused tiers, not a new percentage threshold
+
+`classify_energy_outcome` reuses `DeviationClassification` (WITHIN_EXPECTED_RANGE/MILD/
+STRONG) — the exact same MAD-based, policy-configured tiers `EnergyAssessmentStatus
+.ELEVATED_ENERGY_DEMAND` already uses — applied to each window's own mean. Since that
+enum has only three tiers, two elevated windows can both saturate at STRONG_DEVIATION
+even though the underlying residual changed substantially; a single named, documented
+tiebreaker (`MATERIAL_CHANGE_RELATIVE_THRESHOLD = 0.15`, `app.energy.domain.outcome`) —
+used *only* when both windows land on the same tier — resolves that case from the
+residual magnitude directly. This is the one genuinely new numeric policy this pass
+introduces; it is named and documented, not hidden inline.
+
+### Qualified avoided energy
+
+Computed **only** when `energy_outcome_status == QUALIFIED_RECOVERY` (full comparability,
+full recovery below the baseline's expected range). Trapezoidal integration of positive
+contextual-residual improvement (`pre_residual_kw - post_residual_kw(t)`, clamped at zero
+per sample) across the qualifying post-intervention window only — never annualized, never
+extrapolated to fleet/money. Never negative: each sample's own improvement is clamped
+before the trapezoid runs on the clamped endpoints (a documented simplification for a
+sign-crossing between two consecutive real samples — acceptable given this platform's
+dense telemetry sampling; see `app.energy.domain.outcome`'s own docstring).
+
+### Claim hierarchy
+
+```
+LEVEL 1  OBSERVED_ENERGY_CHANGE          "Contextual energy residual decreased after intervention."
+LEVEL 2  QUALIFIED_ENERGY_RECOVERY       "Under comparable operation, excess demand decreased by ~X kW."
+LEVEL 3  LUBRICATION_ASSOCIATED_RECOVERY "...consistent with the previously <LEVEL> lubrication hypothesis."
+```
+
+Level 3 requires ALL of: `QUALIFIED_RECOVERY`, a structurally relevant completed
+maintenance action (§"maintenance relevance" below), AND a pre-intervention
+`LubricationEnergyAttribution` at POSSIBLE or higher. Levels are never skipped.
+
+### Temporal attribution integrity (mandatory, tested)
+
+`pre_attribution_level` is resolved as the most recent `LubricationEnergyAttribution` **at
+or before** `intervention_timestamp` — never the machine's current/latest attribution,
+which may have been computed long after and would let a good post-maintenance outcome
+retroactively rewrite what the platform believed *before* the intervention. A regression
+test (`test_temporal_integrity_ignores_attribution_computed_after_intervention`) proves a
+STRONG attribution computed after the intervention is never used, and the claim-hierarchy
+wording itself never upgrades a frozen POSSIBLE into STRONG language.
+
+### Maintenance relevance — structured fields, not keyword matching
+
+A completed intervention only counts as "relevant" when its `RecommendedAction` is one of
+`INSPECT_LUBRICATION_PATH`/`INSPECT_DISTRIBUTOR`/`CHECK_RESERVOIR`/`CHECK_PUMP`/
+`INSPECT_BEARING` **and** at least one recorded `MaintenanceAction.action_type` is a real
+corrective step (`CLEANED`/`REFILLED`/`COMPONENT_REPLACED`/`ADJUSTMENT_RECOMMENDED`) —
+`INSPECTED`-only or `NO_ACTION_REQUIRED` never counts, matching CLAUDE.md's "a feature is
+not complete only because ... a mock response exists" discipline applied to maintenance
+relevance itself.
+
+### Energy opportunity vs. outcome
+
+- **Energy opportunity** = an active `EnergyAssessment.ELEVATED_ENERGY_DEMAND` plus
+  whatever `LubricationEnergyAttribution` evidence exists — no completed intervention
+  required. IDF-01 is the live example: `POSSIBLE` attribution, no completed maintenance
+  case, therefore no `EnergyOutcomeVerification` — `GET .../outcomes/latest` for IDF-01
+  correctly 404s with "active energy opportunity, outcome not yet verified" rather than
+  fabricating a result.
+- **Outcome** = a completed relevant intervention with a verification attempt.
+- **Qualified outcome** = comparison passed the full policy (`QUALIFIED_RECOVERY`).
+
+Opportunities are never aggregated as if they were recoveries.
+
+### Data quality — current, not historical, per-reading trust
+
+Per-sensor `QualityState` is read at verification time for both windows — this reference
+architecture has no historical, per-reading quality reconstruction, so a currently-TRUSTED
+sensor cannot repair what an earlier window's readings actually were. This is recorded as
+a limiting factor (never silently assumed away) whenever the current quality state is not
+`TRUSTED`.
+
+### Verified live cases
+
+**Bucket Elevator BE-201** (primary recovery case) — its existing recovering-asset seed
+story (`seed_recovering_asset.py`) already carried `MACHINE_POWER` telemetry through the
+pre-action and partial-recovery phases from Pass 1, but its maintenance-completion
+timestamp is a real wall-clock value produced seconds *after* the synthetic telemetry
+timeline's own anchor — meaning, empirically, zero telemetry existed strictly after
+`completed_at` before this pass. The script now adds one more physically-coherent
+telemetry phase (§"post-intervention sustained operation" in the script's own comment)
+genuinely timestamped after the real `completed_at`, at the same already-established
+recovered power level — extending the existing story, never fabricating a new one or
+hardcoding `EnergyOutcomeVerification`'s answer. The real engine derives
+`QUALIFIED_RECOVERY` (`COMPARABLE`, ~1.1 kWh estimated avoided energy) from this. Its
+`pre_attribution_level` resolves to `NO_EVIDENCE` — the only attribution ever computed for
+this machine ran on its final, already-recovered telemetry (a genuine, documented
+limitation of *when* attribution runs in this seed pipeline, not a bug) — so per the
+temporal-integrity rule, `lubrication_association_status` correctly caps at
+`QUALIFIED_ENERGY_RECOVERY` (Level 2), never claiming Level 3 it has no historical
+evidence for, even though the underlying technician-confirmed story is lubrication
+-related. This is the claim hierarchy working exactly as intended, including when the
+conservative answer is the less impressive one.
+
+**Ore Transfer Conveyor CV-101** (negative/control case) — the flagship story has a real
+`COMPLETED` maintenance case but was seeded before Pass 1 and carries no `MACHINE_POWER`
+telemetry at all. `EnergyOutcomeVerification` honestly reports `INSUFFICIENT_DATA` rather
+than fabricating a comparison — proof the system does not turn every completed
+intervention into a claimed benefit. Deliberately left as-is (no telemetry added), per the
+same "do not force it" discipline used throughout this capability.
+
+**Kiln ID Fan IDF-01** — no completed maintenance case exists; correctly remains an
+*energy opportunity*, not an outcome, preserving its Pass 2 `POSSIBLE` attribution.
+
+Labeled **"Estimated avoided energy"** in all product copy — never **"saved energy"**
+unless comparability is `COMPARABLE` and the outcome is `QUALIFIED_RECOVERY`, and even
+then the estimate carries `comparison_confidence` alongside it, never a bare number.
 
 ## 10. Carbon estimation & provenance
 

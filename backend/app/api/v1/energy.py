@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_tenant, get_db_session
 from app.api.schemas.attribution import AttributionResponse
 from app.api.schemas.energy import EnergyAssessmentResponse
+from app.api.schemas.energy_outcome import EnergyOutcomeVerificationResponse
 from app.baselines.config.policy import load_baseline_policy
 from app.domain.models import Tenant
 from app.energy.services.attribution_query_service import (
@@ -33,6 +34,17 @@ from app.energy.services.energy_assessment_service import (
     EnergyAssessmentService,
     EnergyMachineNotFoundError,
     EnergyPowerSensorNotFoundError,
+)
+from app.energy.services.energy_outcome_query_service import (
+    EnergyOutcomeQueryMachineNotFoundError,
+    EnergyOutcomeQueryService,
+    EnergyOutcomeQueryVerificationNotFoundError,
+)
+from app.energy.services.energy_outcome_service import (
+    EnergyOutcomeMachineNotFoundError,
+    EnergyOutcomeNoInterventionError,
+    EnergyOutcomeNoPowerSensorError,
+    EnergyOutcomeService,
 )
 from app.energy.services.energy_query_service import (
     EnergyQueryMachineNotFoundError,
@@ -133,3 +145,74 @@ async def get_attribution_history(
     except AttributionQueryMachineNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Machine not found.") from exc
     return [AttributionResponse.model_validate(r) for r in results]
+
+
+@router.get("/outcomes/fleet-latest", response_model=list[EnergyOutcomeVerificationResponse])
+async def get_fleet_latest_energy_outcome(
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[EnergyOutcomeVerificationResponse]:
+    service = EnergyOutcomeQueryService(session)
+    results = await service.fleet_latest(tenant.id)
+    return [EnergyOutcomeVerificationResponse.model_validate(r) for r in results]
+
+
+@router.get("/outcomes/{verification_id}", response_model=EnergyOutcomeVerificationResponse)
+async def get_energy_outcome_by_id(
+    verification_id: uuid.UUID,
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> EnergyOutcomeVerificationResponse:
+    service = EnergyOutcomeQueryService(session)
+    try:
+        result = await service.get(tenant.id, verification_id)
+    except EnergyOutcomeQueryVerificationNotFoundError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Energy outcome verification not found."
+        ) from exc
+    return EnergyOutcomeVerificationResponse.model_validate(result)
+
+
+@router.get(
+    "/machines/{machine_id}/outcomes", response_model=list[EnergyOutcomeVerificationResponse]
+)
+async def get_energy_outcome_history(
+    machine_id: uuid.UUID,
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    start: datetime | None = None,
+    end: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> list[EnergyOutcomeVerificationResponse]:
+    service = EnergyOutcomeQueryService(session)
+    try:
+        results = await service.history(tenant.id, machine_id, start=start, end=end, limit=limit)
+    except EnergyOutcomeQueryMachineNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Machine not found.") from exc
+    return [EnergyOutcomeVerificationResponse.model_validate(r) for r in results]
+
+
+@router.get(
+    "/machines/{machine_id}/outcomes/latest", response_model=EnergyOutcomeVerificationResponse
+)
+async def get_latest_energy_outcome(
+    machine_id: uuid.UUID,
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> EnergyOutcomeVerificationResponse:
+    service = EnergyOutcomeService(session, _POLICY)
+    try:
+        result = await service.assess_machine(tenant.id, machine_id)
+    except EnergyOutcomeMachineNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Machine not found.") from exc
+    except EnergyOutcomeNoInterventionError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "No completed maintenance intervention exists for this machine yet — this is "
+            "an active energy opportunity, not yet an outcome to verify.",
+        ) from exc
+    except EnergyOutcomeNoPowerSensorError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "No machine-power sensor commissioned for this machine."
+        ) from exc
+    return EnergyOutcomeVerificationResponse.model_validate(result)

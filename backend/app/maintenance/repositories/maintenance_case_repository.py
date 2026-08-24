@@ -48,6 +48,26 @@ class MaintenanceCaseRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_completed_for_machine(
+        self, tenant_id: uuid.UUID, machine_id: uuid.UUID, *, limit: int = 50
+    ) -> list[MaintenanceCase]:
+        """Most-recent-first `COMPLETED` cases for one machine (Lubrication Efficiency
+        Intelligence, Pass 3 — docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md §9, ADR-176).
+        `EnergyOutcomeService` anchors its window selection on the most recent one; older
+        completed cases remain available here for a future multi-intervention history
+        view, not consumed by this pass."""
+        result = await self.session.execute(
+            select(MaintenanceCase)
+            .where(
+                MaintenanceCase.tenant_id == tenant_id,
+                MaintenanceCase.machine_id == machine_id,
+                MaintenanceCase.state == MaintenanceState.COMPLETED,
+            )
+            .order_by(MaintenanceCase.completed_at.desc())
+            .limit(min(limit, 200))
+        )
+        return list(result.scalars().all())
+
     async def list_for_tenant(
         self,
         tenant_id: uuid.UUID,

@@ -66,6 +66,8 @@ from app.domain.enums import (
     CommercialStatus,
     CommissioningState,
     CommissioningStatus,
+    ComparabilityStatus,
+    ComparisonConfidence,
     CompatibilityStatus,
     ConditionConfidence,
     ConditionLifecycle,
@@ -78,6 +80,8 @@ from app.domain.enums import (
     DocumentType,
     Eligibility,
     EnergyAssessmentStatus,
+    EnergyEstimateStatus,
+    EnergyOutcomeStatus,
     EvidenceStrength,
     FeedbackClassification,
     ForecastHorizon,
@@ -85,6 +89,7 @@ from app.domain.enums import (
     IncidentState,
     IssueSeverity,
     IssueStatus,
+    LubricationAssociationStatus,
     LubricationSystemType,
     MachineStatus,
     MachineType,
@@ -1488,6 +1493,135 @@ class LubricationEnergyAttribution(Base, TenantScopedMixin, TimestampMixin):
     data_quality_state: Mapped[str] = mapped_column(String(20), nullable=False)
 
     condition_assessment_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class EnergyOutcomeVerification(Base, TenantScopedMixin, TimestampMixin):
+    """Lubrication Efficiency Intelligence, Pass 3 (docs/LUBRICATION_EFFICIENCY_
+    INTELLIGENCE.md §9, ADR-176) — whether contextual excess-energy behavior improved
+    after a real, relevant, COMPLETED `MaintenanceCase`, and (only when the comparison
+    qualifies) how much excess energy was avoided over the qualifying observed operation.
+
+    Reuses existing entities rather than inventing a parallel maintenance-outcome
+    workflow: `maintenance_case_id`/`incident_id` point at the real, human-recorded
+    intervention; `pre_attribution_id` points at the real `LubricationEnergyAttribution`
+    computed *before* this row ever existed. `pre_attribution_level` is a frozen snapshot
+    of that row's `attribution_level` at verification time — never re-read live — so a
+    later, better-looking energy outcome can never retroactively upgrade what the
+    platform believed about attribution *before* the intervention (temporal-integrity
+    rule; see `app.energy.domain.outcome` and its regression test).
+
+    Compute-and-persist, append-only, same "recompute latest, keep history" shape as
+    `EnergyAssessment`/`LubricationEnergyAttribution` — a later re-run with a longer
+    post-window is a new row, not a mutation of an old one.
+    """
+
+    __tablename__ = "energy_outcome_verification"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("machine_id", "machine"),
+        composite_tenant_fk("maintenance_case_id", "maintenance_case"),
+        composite_tenant_fk("incident_id", "incident"),
+        composite_tenant_fk("pre_attribution_id", "lubrication_energy_attribution"),
+        Index(
+            "ix_energy_outcome_verification_tenant_machine_time",
+            "tenant_id",
+            "machine_id",
+            text("created_at DESC"),
+        ),
+    )
+
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    maintenance_case_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+
+    intervention_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+    pre_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pre_window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    post_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    post_window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    pre_mean_actual_power_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pre_mean_expected_power_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pre_mean_residual_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pre_mean_residual_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    post_mean_actual_power_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    post_mean_expected_power_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    post_mean_residual_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    post_mean_residual_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    #: `pre_mean_residual_kw - post_mean_residual_kw` — positive means excess demand
+    #: DECREASED (improvement). Never called "savings" (see design doc §"claim
+    #: hierarchy").
+    residual_change_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    residual_change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    comparability_status: Mapped[ComparabilityStatus] = mapped_column(
+        _enum_column(ComparabilityStatus), nullable=False
+    )
+    comparison_confidence: Mapped[ComparisonConfidence] = mapped_column(
+        _enum_column(ComparisonConfidence), nullable=False
+    )
+
+    energy_outcome_status: Mapped[EnergyOutcomeStatus] = mapped_column(
+        _enum_column(EnergyOutcomeStatus), nullable=False
+    )
+
+    #: Only ever non-null when `energy_estimate_status == ESTIMATED`
+    #: (`energy_outcome_status == QUALIFIED_RECOVERY`) — trapezoidal integration of
+    #: positive contextual-residual improvement over the qualifying post window only.
+    #: Never negative, never annualized, never extrapolated.
+    estimated_avoided_energy_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    energy_estimate_status: Mapped[EnergyEstimateStatus] = mapped_column(
+        _enum_column(EnergyEstimateStatus), nullable=False
+    )
+
+    #: Frozen historical snapshot — see class docstring's temporal-integrity paragraph.
+    #: Nullable because a machine may have no `LubricationEnergyAttribution` computed
+    #: before its intervention (e.g. attribution was never run pre-maintenance).
+    pre_attribution_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    pre_attribution_level: Mapped[AttributionLevel | None] = mapped_column(
+        _enum_column(AttributionLevel), nullable=True
+    )
+
+    #: The machine's `ConditionAssessment.lifecycle_state` as of the post window — reuses
+    #: `ConditionLifecycle` directly (IMPROVING/RESOLVED/PERSISTENT/DEVELOPING) rather
+    #: than inventing a parallel vocabulary; this is condition intelligence's own already
+    #: -established "did the diagnosed condition get better" answer, read, never written.
+    condition_outcome_status: Mapped[ConditionLifecycle | None] = mapped_column(
+        _enum_column(ConditionLifecycle), nullable=True
+    )
+
+    maintenance_relevant: Mapped[bool] = mapped_column(nullable=False)
+
+    lubrication_association_status: Mapped[LubricationAssociationStatus] = mapped_column(
+        _enum_column(LubricationAssociationStatus, length=40), nullable=False
+    )
+
+    supporting_evidence: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    contradicting_evidence: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    limiting_factors: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    alternative_explanations: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
+    #: Small, auditable provenance facts (sample counts, resolved baseline profile ids per
+    #: window, dominant operating states) — never a duplicate copy of full source-object
+    #: payloads (class docstring; matches `LubricationEnergyAttribution`'s own restraint).
+    provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
 
     policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
 

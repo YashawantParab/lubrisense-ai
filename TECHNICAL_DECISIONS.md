@@ -9144,11 +9144,15 @@ ACCEPTED — Pass 1 implemented (machine power → contextual expected power →
 residual → data-quality-gated `EnergyAssessment`, observable-only evidence). Pass 2
 implemented (deterministic, evidence-family-based `LubricationEnergyAttribution` — energy
 deviation is necessary but never sufficient for attribution; independent
-lubrication/mechanical evidence is required). See
+lubrication/mechanical evidence is required). Pass 3 implemented (`EnergyOutcomeVerification`
+— reuses the real `MaintenanceCase` workflow to anchor a residual-based, comparability
+-gated pre/post comparison; qualified avoided energy only on a full `QUALIFIED_RECOVERY`;
+temporal-attribution-integrity keeps pre-intervention attribution frozen). See
 `docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md`'s own status header for exactly what is and
-is not implemented yet; the reuse-vs-new-surface decisions below held up unchanged
-through both passes — Pass 2 needed no new subsystem, only a new evidence-independence
-policy layered on existing `RuleFinding`/`StateEstimate`/`ConditionAssessment` reads.
+is not implemented yet; the reuse-vs-new-surface decisions below held up unchanged through
+all three passes — Pass 3 needed no new subsystem either, only a comparability/outcome
+policy layered on the existing `MaintenanceCase`/`MaintenanceAction`/telemetry/baseline
+reads.
 
 ### Context
 

@@ -341,6 +341,47 @@ async def main() -> None:
             await session.commit()
         print(f"Maintenance case {case.id} state: {case.state.value}")
 
+    # --- 4. Post-intervention sustained operation (Lubrication Efficiency Intelligence,
+    # Pass 3 — docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md §9, ADR-176): genuinely
+    # timestamped AFTER `case.completed_at`, not merely narratively "after" it. Every
+    # timestamp earlier in this script (healthy/restriction/recovery) is anchored to the
+    # synthetic `now` captured at the top of `main()`, while `case.completed_at` is a real
+    # wall-clock value produced by `MaintenanceService.complete()` — by the time this line
+    # runs, `completed_at` is already a few seconds *later* than the synthetic `now`
+    # every prior telemetry row tops out at, so an `EnergyOutcomeVerification`'s post
+    # -window (bounded by real `completed_at`, not `now`) would otherwise find zero
+    # samples. Extending the same already-established recovered power level
+    # (~30 kW, matching this script's own healthy-period value) a further ~30 minutes
+    # past the real completion timestamp is a physically-coherent continuation of the
+    # recovery this script already tells, not a new story and not a hardcoded outcome —
+    # `EnergyOutcomeService` still derives whatever comparability/outcome the real
+    # residual math produces from these samples.
+    if case.completed_at is not None:
+        post_start = case.completed_at + timedelta(minutes=3)
+        post_rows: list[dict[str, object]] = []
+        steps = 20
+        for i in range(steps):
+            t = post_start + timedelta(minutes=1.5 * i)
+            post_rows.append(
+                envelope(
+                    tenant_id=tenant_id,
+                    machine_id=machine_id,
+                    sensor=power,
+                    value=jitter(30.0, 0.6),
+                    t=t,
+                    now=t,
+                    device_id=DEVICE_ID,
+                )
+            )
+        async with database.session() as session:
+            repo = TelemetryRepository(session)
+            await repo.batch_insert_idempotent(post_rows)
+            await session.commit()
+        print(
+            f"Seeded {len(post_rows)} post-intervention MACHINE_POWER rows starting "
+            f"{post_start.isoformat()}"
+        )
+
     await database.dispose()
     print("")
     print(f"Recovering-asset story complete: machine_id={machine_id} incident_id={incident.id}")

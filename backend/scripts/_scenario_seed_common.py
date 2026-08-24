@@ -41,6 +41,7 @@ from app.domain.models import (
     DecisionAssessment,
     DemoCMMSWorkOrder,
     Distributor,
+    EnergyOutcomeVerification,
     FeatureVector,
     FeedbackRecord,
     Incident,
@@ -320,7 +321,22 @@ async def reset_machine_workflow_history(
 ) -> None:
     """Deletes, in FK-safe child-before-parent order, every Incident/MaintenanceCase
     (and their own children) for this one machine — see `reset_machine_data`'s docstring
-    for why. Runs inside the caller's existing transaction/retry loop, not its own."""
+    for why. Runs inside the caller's existing transaction/retry loop, not its own.
+
+    `EnergyOutcomeVerification` (Lubrication Efficiency Intelligence, Pass 3 —
+    ADR-176) is deleted first, unconditionally: it has a composite-tenant FK to both
+    `maintenance_case_id` and (nullably) `incident_id`, so — exactly the
+    `ConfigurationChange`-before-`ConfigurationSnapshot` lesson from the earlier
+    debris-cleanup pass — it must be cleared before either parent row is deleted below,
+    or the delete fails with a `ForeignKeyViolation` on any machine that has ever had an
+    outcome verification computed against it."""
+    await session.execute(
+        delete(EnergyOutcomeVerification).where(
+            EnergyOutcomeVerification.tenant_id == tenant_id,
+            EnergyOutcomeVerification.machine_id == machine_id,
+        )
+    )
+
     case_ids = (
         (
             await session.execute(

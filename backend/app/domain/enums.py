@@ -390,6 +390,72 @@ class AttributionLevel(StrEnum):
     STRONG = "STRONG"
 
 
+class ComparabilityStatus(StrEnum):
+    """How suitable a pre/post telemetry window pair is for a residual comparison
+    (Lubrication Efficiency Intelligence Pass 3 — docs/LUBRICATION_EFFICIENCY_
+    INTELLIGENCE.md §9, ADR-176). Judged only from factors genuinely observable in this
+    architecture (operating-state consistency, sensor trust, sample count/duration,
+    baseline-reference consistency) — never a fabricated process variable."""
+
+    COMPARABLE = "COMPARABLE"
+    PARTIALLY_COMPARABLE = "PARTIALLY_COMPARABLE"
+    NOT_COMPARABLE = "NOT_COMPARABLE"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+
+
+class ComparisonConfidence(StrEnum):
+    """Categorical confidence in one pre/post comparison (Pass 3). Deliberately its own
+    enum rather than a reuse of `ConditionConfidence` — same "distinct synthesis judgment
+    per layer" convention `ConditionConfidence` itself documents, even though the values
+    line up."""
+
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    HIGH = "HIGH"
+
+
+class EnergyOutcomeStatus(StrEnum):
+    """Whether contextual excess-energy behavior improved after a maintenance
+    intervention (Pass 3). Deliberately conservative language — never `VERIFIED_SAVINGS`;
+    this is a platform-level evidence assessment over synthetic demonstration data, not an
+    audited claim. Derived entirely from reused `DeviationClassification` tiers (never a
+    new invented percentage threshold) — see `app.energy.domain.outcome`."""
+
+    QUALIFIED_RECOVERY = "QUALIFIED_RECOVERY"
+    PROBABLE_RECOVERY = "PROBABLE_RECOVERY"
+    NO_MATERIAL_CHANGE = "NO_MATERIAL_CHANGE"
+    DETERIORATED = "DETERIORATED"
+    INCONCLUSIVE = "INCONCLUSIVE"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+
+
+class EnergyEstimateStatus(StrEnum):
+    """Whether `EnergyOutcomeVerification.estimated_avoided_energy_kwh` was actually
+    computed (Pass 3). A `NOT_QUALIFIED`/`NOT_COMPARABLE` energy outcome never gets an
+    estimate — avoided energy is only ever integrated over a `QUALIFIED_RECOVERY`."""
+
+    ESTIMATED = "ESTIMATED"
+    NOT_QUALIFIED = "NOT_QUALIFIED"
+    NOT_COMPARABLE = "NOT_COMPARABLE"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+
+
+class LubricationAssociationStatus(StrEnum):
+    """The claim-hierarchy level `EnergyOutcomeVerification` is entitled to make about
+    *why* an observed energy recovery happened (Pass 3, design doc §"claim hierarchy").
+    Each level requires everything the level below it requires, plus one more condition —
+    never skipped. `LUBRICATION_ASSOCIATED_RECOVERY` additionally requires the
+    *historical* pre-intervention `AttributionLevel` to have been POSSIBLE or higher — see
+    `app.energy.domain.outcome`'s temporal-integrity rule: a good post-maintenance outcome
+    is never allowed to retroactively upgrade what the platform believed *before* the
+    intervention."""
+
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    OBSERVED_ENERGY_CHANGE = "OBSERVED_ENERGY_CHANGE"
+    QUALIFIED_ENERGY_RECOVERY = "QUALIFIED_ENERGY_RECOVERY"
+    LUBRICATION_ASSOCIATED_RECOVERY = "LUBRICATION_ASSOCIATED_RECOVERY"
+
+
 # ---------------------------------------------------------------------------
 # Phase 9 — Rules Engine
 # ---------------------------------------------------------------------------
