@@ -29,6 +29,7 @@ from app.api.v1 import (
     machines,
     maintenance,
     ml,
+    performance,
     plants,
     product_metrics,
     production_lines,
@@ -78,3 +79,4 @@ api_v1_router.include_router(product_metrics.router)
 api_v1_router.include_router(audit.router)
 api_v1_router.include_router(commissioning.router)
 api_v1_router.include_router(device_management.router)
+api_v1_router.include_router(performance.router)

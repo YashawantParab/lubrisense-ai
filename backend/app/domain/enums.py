@@ -480,6 +480,86 @@ class CarbonEstimateStatus(StrEnum):
     LIMITED_ESTIMATE = "LIMITED_ESTIMATE"
 
 
+class ActionReadinessState(StrEnum):
+    """Whether — and why — a machine is ready for a human to act on
+    (Portfolio Intelligence Pass 1, ADR-177). This platform has no automated-control or
+    physical-interlock subsystem (CLAUDE.md "Workflow Intelligence" boundary — every
+    action always requires human review), so this vocabulary deliberately does not offer
+    a "simulation-only auto-eligible" or "blocked by safety/interlock" value: introducing
+    either would imply a real signal this reference architecture does not have. See
+    `app.portfolio.domain.action_readiness` for the derivation policy and
+    docs/PORTFOLIO_INTELLIGENCE.md for the documented gap."""
+
+    MONITORING_ONLY = "MONITORING_ONLY"
+    HUMAN_ACTION_REQUIRED = "HUMAN_ACTION_REQUIRED"
+    ASSESSMENT_BLOCKED = "ASSESSMENT_BLOCKED"
+    DATA_LIMITED = "DATA_LIMITED"
+    NOT_YET_ASSESSED = "NOT_YET_ASSESSED"
+
+
+class PortfolioPriority(StrEnum):
+    """Deterministic, explainable portfolio-attention category (Portfolio Intelligence
+    Pass 1, ADR-177) — deliberately categorical, never a fabricated numeric score (design
+    doc §"risk/priority model"). See `app.portfolio.domain.priority` for the derivation
+    policy: reliability/safety evidence always outranks energy/carbon evidence, which can
+    only ever raise a machine from `MONITOR` to `ATTENTION`, never higher, on its own."""
+
+    CRITICAL_ATTENTION = "CRITICAL_ATTENTION"
+    HIGH_ATTENTION = "HIGH_ATTENTION"
+    ATTENTION = "ATTENTION"
+    MONITOR = "MONITOR"
+    DATA_LIMITED = "DATA_LIMITED"
+
+
+class EnergyPortfolioBucket(StrEnum):
+    """A machine's current position in the energy-efficiency story, for portfolio
+    rollups (Portfolio Intelligence Pass 1, ADR-177). `OUTCOME_DETERIORATED` is a
+    principled addition beyond the seven buckets literally requested: folding a
+    deteriorated outcome into `INCONCLUSIVE_OUTCOME` would misrepresent a clear negative
+    signal as merely ambiguous. See `app.portfolio.domain.energy_bucket`."""
+
+    NORMAL_ENERGY_BEHAVIOR = "NORMAL_ENERGY_BEHAVIOR"
+    ACTIVE_ELEVATED_ENERGY = "ACTIVE_ELEVATED_ENERGY"
+    ATTRIBUTION_SUPPORTED_OPPORTUNITY = "ATTRIBUTION_SUPPORTED_OPPORTUNITY"
+    OUTCOME_AWAITING_VERIFICATION = "OUTCOME_AWAITING_VERIFICATION"
+    QUALIFIED_ENERGY_RECOVERY = "QUALIFIED_ENERGY_RECOVERY"
+    INCONCLUSIVE_OUTCOME = "INCONCLUSIVE_OUTCOME"
+    OUTCOME_DETERIORATED = "OUTCOME_DETERIORATED"
+    INSUFFICIENT_ENERGY_DATA = "INSUFFICIENT_ENERGY_DATA"
+
+
+class MaintenanceOutcomeBucket(StrEnum):
+    """Per-`MaintenanceCase` portfolio bucket (Portfolio Intelligence Pass 1, ADR-177) —
+    completion is never represented as automatic success. `COMPLETED_PROBABLE_RECOVERY`
+    is a principled addition beyond the six buckets literally requested: collapsing a
+    `PROBABLE_RECOVERY` energy outcome into either `COMPLETED_QUALIFIED_RECOVERY` or
+    `COMPLETED_INCONCLUSIVE` would either overstate or discard real Pass-3 evidence — the
+    same discipline that keeps `EnergyOutcomeStatus.PROBABLE_RECOVERY` distinct from
+    `QUALIFIED_RECOVERY` in the first place. See `app.portfolio.domain.maintenance_outcome`."""
+
+    OPEN_ACTION = "OPEN_ACTION"
+    COMPLETED_OUTCOME_NOT_ASSESSED = "COMPLETED_OUTCOME_NOT_ASSESSED"
+    COMPLETED_QUALIFIED_RECOVERY = "COMPLETED_QUALIFIED_RECOVERY"
+    COMPLETED_PROBABLE_RECOVERY = "COMPLETED_PROBABLE_RECOVERY"
+    COMPLETED_NO_MATERIAL_CHANGE = "COMPLETED_NO_MATERIAL_CHANGE"
+    COMPLETED_INCONCLUSIVE = "COMPLETED_INCONCLUSIVE"
+    COMPLETED_DETERIORATED = "COMPLETED_DETERIORATED"
+
+
+class DataTrustCategory(StrEnum):
+    """Per-machine data-trust category for portfolio rollups (Portfolio Intelligence
+    Pass 1, ADR-177, design doc §"data-trust rollup"). Deliberately NOT derived from mean
+    sensor quality — a site with 95% trusted sensors but one blocked critical asset must
+    still surface that limitation, so this is a categorical worst-of judgment per machine,
+    aggregated as counts, never averaged into one score. See
+    `app.portfolio.domain.data_trust`."""
+
+    DECISION_EVIDENCE_TRUSTED = "DECISION_EVIDENCE_TRUSTED"
+    CONFIDENCE_REDUCED = "CONFIDENCE_REDUCED"
+    ASSESSMENT_BLOCKED = "ASSESSMENT_BLOCKED"
+    ACTION_BLOCKED = "ACTION_BLOCKED"
+
+
 # ---------------------------------------------------------------------------
 # Phase 9 — Rules Engine
 # ---------------------------------------------------------------------------

@@ -9271,6 +9271,114 @@ evidenced gap justifies it.
 
 ---
 
+# ADR-177 — Portfolio Intelligence Is a Read Model Over Existing Data, Not a New Hierarchy or a Fabricated Score
+
+### Status
+
+ACCEPTED — Pass 1 implemented (`OrganizationPerformanceSummary`/`SitePerformanceSummary`/
+`AreaPerformanceSummary` read model, `GET /api/v1/performance/*`). Organization-level and
+site-level frontend redesign is explicitly out of scope for this pass — see
+`docs/PORTFOLIO_INTELLIGENCE.md`'s own status header.
+
+### Context
+
+A capability extension was requested to aggregate the existing asset hierarchy, condition
+intelligence, incidents, maintenance workflow, action readiness, data quality, and the
+already-implemented Lubrication Efficiency Intelligence outputs (`EnergyAssessment`,
+`LubricationEnergyAttribution`, `EnergyOutcomeVerification`, `CarbonImpactEstimate`) into an
+organization/site/area performance rollup — a product data foundation for a later
+enterprise-style command-center experience, deliberately not that experience itself. Before
+designing it, the existing asset hierarchy (`Tenant → CustomerAccount → Site → Plant →
+ProductionLine → Machine`) and existing tenant-wide query patterns
+(`app.customer_services`'s `list_for_tenant`/`fleet_latest` methods) were inspected to
+determine whether a new hierarchy level or a new bulk-query mechanism was actually needed.
+Findings: no dedicated "Area" model exists — `Machine.metadata_["area"]` (JSONB, seeded only
+for the 10 curated demo machines) is the only area signal, falling back to `Plant.plant_type`
+and then a literal `"Unspecified Area"`; every tenant-wide read this pass needs already has a
+`list_for_tenant`/`fleet_latest`-shaped method on an existing repository or service.
+
+### Decision
+
+Treat "Organization" as the existing `Tenant` (no new entity). Treat "Area" as existing
+`Machine.metadata_["area"]` metadata with the two documented fallbacks above — never a new
+table, and never a hardcoded category enum, since areas are free-text seeded metadata, not a
+closed domain vocabulary. Build `app.portfolio` as a new top-level package following
+`app.customer_services`'s established convention exactly: computed read-model frozen
+dataclasses (`app/portfolio/models.py`), pure deterministic policy functions with zero I/O
+(`app/portfolio/domain/*.py` — `action_readiness.py`, `data_trust.py`, `energy_bucket.py`,
+`maintenance_outcome.py`, `priority.py`), and a single orchestrating `PortfolioService` that
+fetches real persisted rows and calls the pure functions. `PortfolioService._load_data()`
+issues a fixed, fleet-size-independent set of tenant-wide queries once per request (hierarchy
+join + condition/incident/maintenance/sensor-quality/energy/attribution/outcome/carbon
+`fleet_latest`/`list_for_tenant` reads) into one `_PortfolioData` bundle, reused by every
+downstream aggregation — verified empirically (SQLAlchemy `before_cursor_execute` event
+counting) at exactly 9 queries regardless of whether the fleet has 10 or 50 machines.
+
+Priority is deterministic, versioned (`POLICY_VERSION = "1"` in `app/portfolio/domain/
+priority.py`), and strictly categorical (`PortfolioPriority`: CRITICAL_ATTENTION /
+HIGH_ATTENTION / ATTENTION / MONITOR / DATA_LIMITED) — never a fabricated numeric composite
+score. Reliability signals (condition severity, open incidents, maintenance urgency) rank
+first; asset criticality is only ever an escalation modifier on top of a reliability-derived
+rank, mirroring `DecisionEngine`'s existing criticality-modifier precedent
+([[ADR-176]] reuses the same principle for energy urgency); an elevated energy/carbon signal
+can raise a rank only from a floor, never outrank an existing reliability-derived tier — so
+energy/carbon evidence can never outrank a genuine safety/reliability issue.
+
+### Alternatives Considered
+
+A new `Area` ORM table with a foreign key from `Machine` — rejected: only 10 of the fleet's
+machines have any area metadata at all (curated demo seed), there is no product requirement
+yet for area-level CRUD or area-scoped RBAC, and the JSONB-metadata-plus-fallback read
+already answers every question this pass needs without a schema migration or a data-backfill
+problem for the uncurated majority of the synthetic fleet.
+
+A single blended 0-100 "organization health score" — rejected: no defensible weighting
+between reliability, energy, carbon, and data-trust exists yet, and the CLAUDE.md-level
+product principle against fabricated numeric precision (already established for
+`PortfolioPriority` and for `ActionReadinessState`) applies equally at the organization
+rollup level; categorical section-by-section status is used instead, each with its own
+denominator.
+
+Re-querying per-section inside each of `organization_summary()`'s helper methods (the
+initial implementation) — rejected after inspection showed native inefficiency
+(~16 redundant tenant-wide queries per call despite being O(1) in fleet size, not true N+1):
+replaced with the single `_load_data()`-and-reuse bundle described above.
+
+### Why This Option
+
+Verified directly against the actual codebase: read `app/domain/models.py`'s full asset
+hierarchy, `app/customer_services/`'s existing read-model/service-boundary convention,
+`app/condition_intelligence/services/condition_engine.py`'s `_overall_quality_state()`
+3-tier sensor-quality rollup (re-implemented, not imported, since it is private — see
+`app/portfolio/domain/data_trust.py`'s docstring citation), and every energy/carbon service
+built in [[ADR-176]] Passes 2-4, before deciding what to reuse versus add.
+
+### Consequences
+
+No new hierarchy level, no schema migration for "Area," no new numeric-scoring subsystem.
+The read model is fully explainable — every count/sum in `OrganizationPerformanceSummary`/
+`SitePerformanceSummary`/`AreaPerformanceSummary` traces back to a real machine-level record,
+and every section carries its own denominator and `MetricProvenance` rather than a single
+opaque aggregate. Two principled additions beyond the literally-requested category lists were
+made to avoid misrepresenting real evidence: `MaintenanceOutcomeBucket.COMPLETED_PROBABLE_RECOVERY`
+(distinct from a full `QUALIFIED_RECOVERY`, since `EnergyOutcomeStatus.PROBABLE_RECOVERY`
+exists and collapsing it into either "qualified" or "inconclusive" would misstate the real
+evidence tier) and `EnergyPortfolioBucket.OUTCOME_DETERIORATED` (a completed intervention
+whose outcome verification classified as `DETERIORATED` must remain visible, never silently
+dropped or folded into "inconclusive"). BE-201 remains a `QUALIFIED_ENERGY_RECOVERY` in the
+energy bucket, but its pre-intervention attribution is `NO_EVIDENCE` — the portfolio layer
+does not relabel it as a proven lubrication-associated recovery; IDF-01 remains an
+`ATTRIBUTION_SUPPORTED_ENERGY_OPPORTUNITY`, never inflated into a recovery, since no
+maintenance intervention has occurred yet.
+
+### Revisit When
+
+If a future pass adds area-level CRUD, area-scoped RBAC, or area membership for machines
+outside the curated demo fleet, revisit the JSONB-metadata approach in favor of a real `Area`
+table at that point — not before, since no such requirement exists yet.
+
+---
+
 # Pending Decisions (Deferred to Later Phases)
 
 Resolved by Phase 1 and removed from this list: exact service boundaries within `backend/`
