@@ -1,10 +1,11 @@
 # Lubrication Efficiency Intelligence — Domain & Architecture Design
 
-**Status: Pass 3 implemented (Energy Outcome Verification + Qualified Avoided Energy),
-building on Pass 2 (Lubrication Attribution) and Pass 1 (Machine Power → Contextual
-Expected Power → Energy Residual → Data-Quality-Gated Energy Assessment).** This is a
-capability extension after the completed roadmap (Phases 1–37+) — not a new numbered
-phase, and not a commitment that every remaining section here ships exactly as designed.
+**Status: Pass 4 implemented (Carbon Intelligence — CO2e estimation from qualified
+avoided energy), building on Pass 3 (Energy Outcome Verification), Pass 2 (Lubrication
+Attribution), and Pass 1 (Machine Power → Contextual Expected Power → Energy Residual →
+Data-Quality-Gated Energy Assessment).** This is a capability extension after the
+completed roadmap (Phases 1–37+) — not a new numbered phase, and not a commitment that
+every remaining section here ships exactly as designed.
 
 **Implemented — Pass 1** (§3–§5, §7, §14 slice): `SensorType.MACHINE_POWER`; real power
 telemetry for the curated hosted-demo fleet's representative machines
@@ -37,12 +38,21 @@ never collapsed); the claim hierarchy (Level 1–3); temporal-attribution-integr
 (pre-intervention attribution frozen, never retroactively upgraded); trapezoidal
 qualified-avoided-energy integration; energy-opportunity-vs-outcome semantics.
 
+**Implemented — Pass 4** (§10–§11 fully rewritten below): `SiteEmissionFactor` and
+`CarbonImpactEstimate` model/repository/service/query-service/API; the deterministic
+carbon-eligibility policy (`app.energy.domain.carbon`) — carbon strictly downstream of a
+*qualified* energy outcome, never manufacturing an energy benefit; the temporal
+factor-validity policy (full-period-coverage required, documented); factor provenance
+reusing `app.product_metrics`' existing `MetricProvenance` vocabulary; the
+`ADMIN_CONFIG`-gated, audited factor-configuration write endpoint.
+
 **Not yet implemented** (deliberately deferred, per this pass's own scope): Condition/
 Decision Intelligence *writing back* from attribution or outcome (§8 — observable-only
 boundary is implemented, the write-back described in the original §8 worked example is
-not), carbon estimation (§10–§11), the ML regression opportunity (§13, still assessed as
-not justified for now), and all frontend UX (§16). The rest of this document describes the
-full intended design; only the slices above are real today.
+not), any financial/cost/ROI value model (deliberately never mixed with carbon — §11),
+organization/portfolio-level aggregation UI, the ML regression opportunity (§13, still
+assessed as not justified for now), and all frontend UX (§16). The rest of this document
+describes the full intended design; only the slices above are real today.
 
 ## Product definition
 
@@ -529,53 +539,104 @@ Labeled **"Estimated avoided energy"** in all product copy — never **"saved en
 unless comparability is `COMPARABLE` and the outcome is `QUALIFIED_RECOVERY`, and even
 then the estimate carries `comparison_confidence` alongside it, never a bare number.
 
-## 10. Carbon estimation & provenance
+## 10. Carbon estimation & provenance (as implemented, Pass 4)
 
 ```
-estimated_co2e_kg = estimated_avoided_energy_kwh * electricity_emission_factor_kg_co2e_per_kwh
+estimated_co2e_kg = qualified_avoided_energy_kwh * emission_factor_value   # kg_co2e_per_kwh
 ```
 
-The emission factor is genuinely new configuration surface (§"What already exists" table — no
-precedent to extend). Proposed minimal new entity, sited at `Site` (the grid-region-relevant
-level, not `Tenant` — a multi-site tenant can span grid regions) or `Plant` if the asset
-hierarchy needs finer granularity than `Site` already provides for this:
+**Carbon is strictly downstream of a qualified energy outcome.** `CarbonImpactEstimate`
+(`app.energy.domain.carbon`, `app.energy.services.carbon_service`) consumes only
+`EnergyOutcomeVerification.estimated_avoided_energy_kwh` — already gated to
+`QUALIFIED_RECOVERY` by Pass 3 — and one explicit, active `SiteEmissionFactor`. It can
+never manufacture an energy benefit: `NOT_ELIGIBLE` when the underlying outcome has no
+qualified avoided energy (an opportunity, `PROBABLE_RECOVERY`, `NO_MATERIAL_CHANGE`,
+`DETERIORATED`, or `INCONCLUSIVE` outcome all resolve here), `FACTOR_NOT_CONFIGURED` when
+no factor exists for the machine's site, `FACTOR_NOT_APPLICABLE` when a configured factor
+is inactive/invalid/doesn't temporally cover the outcome's observed period,
+`ESTIMATE_AVAILABLE` on a full valid computation, `LIMITED_ESTIMATE` when the underlying
+`EnergyOutcomeVerification.comparison_confidence` is not `HIGH` (the same reduced
+confidence propagates downstream rather than being silently dropped).
+
+`SiteEmissionFactor` — a genuinely new configuration entity (§"What already exists" table
+had no precedent to extend), sited at `Site` (the grid-region-relevant level — a
+multi-site tenant can span grid regions, so this is never `Tenant`-level):
 
 ```
 SiteEmissionFactor
-  tenant_id
-  site_id
-  factor_value_kg_co2e_per_kwh
-  factor_unit                    # always "kg_co2e_per_kwh", explicit not implied
-  factor_source                  # free text: e.g. "national grid average, published by <ref>"
-  effective_date
-  location_method                # e.g. "location-based" vs "market-based" (GHG Protocol terms)
-  last_updated_at
-  last_updated_by
+  tenant_id, site_id
+  factor_type            # "ELECTRICITY" (only type implemented)
+  factor_value            # kg_co2e_per_kwh
+  factor_unit              # explicit column, always "kg_co2e_per_kwh" here — a
+                            # CarbonImpactEstimate snapshot never has to guess the unit
+  method                   # EmissionFactorMethod.LOCATION_BASED (the only method
+                            # implemented — MARKET_BASED needs contractual-instrument
+                            # data this platform has no source for)
+  source_name, source_reference, jurisdiction
+  effective_from, effective_to, published_at
+  is_active
+  provenance               # reuses app.product_metrics' own MetricProvenance
+                            # (MEASURED_PLATFORM_METRIC / DEMO_ESTIMATE / CONFIGURED_TARGET)
+                            # rather than inventing a parallel vocabulary
 ```
 
-No universal default factor is hardcoded anywhere. If a site has no configured factor, no
-CO2e estimate is produced for that site — an energy-only assessment (§4–§5) is still shown,
-CO2e simply does not appear, the same "insufficient evidence → no claim" discipline as every
-other gate in this design.
+No universal default factor is hardcoded anywhere in application logic. If a site has no
+configured factor, no CO2e estimate is produced for that machine — the energy outcome
+itself (§9) is still fully valid and shown; carbon failure never invalidates it.
+
+**Temporal factor validity — the defensible choice actually implemented**: this platform
+has no architecture for multi-segment integration across a factor-version boundary, so a
+factor is only considered applicable when its `[effective_from, effective_to)` window
+*fully* covers the energy outcome's observed period — a period that only partially
+overlaps a factor's validity resolves `FACTOR_NOT_APPLICABLE` rather than silently using
+whichever factor happens to be "current". Configuring a new factor deactivates the prior
+one and closes its `effective_to` — never mutates a prior factor's `factor_value` in
+place, so a past `CarbonImpactEstimate`'s own snapshot fields remain independently
+auditable regardless of later reconfiguration.
+
+**Auditability**: `CarbonImpactEstimate` snapshots the specific `emission_factor_value`/
+`_unit`/`method` used at calculation time, plus a small provenance dict (source name/
+reference/jurisdiction/effective window/provenance label) — never a duplicated copy of
+the full `SiteEmissionFactor` row, so a later factor edit can never silently change what
+an already-computed estimate says it used.
+
+**Configuration API**: `POST /api/v1/energy/sites/{site_id}/emission-factor` is gated by
+the existing `Permission.ADMIN_CONFIG` (Phase 24 RBAC) and audited through
+`AuditService`, mirroring `app.api.v1.maintenance`'s own config-write convention — no new,
+unaudited configuration surface was created.
 
 ## 11. Carbon accounting boundary
 
 Product language, enforced consistently everywhere this capability surfaces a number:
 
-**Use**: "Estimated CO2e impact", "Estimated avoided emissions", "Location-based energy-related
-estimate".
+**Use**: "Estimated CO2e impact", "Estimated avoided energy-related emissions",
+"Operational estimate", "Location-based estimate", "Configured electricity emission
+factor".
 
-**Never use** (without a genuinely separate, audited process backing it, which does not exist
-in this architecture): "Verified corporate carbon saving", "Carbon credit", "Certified
-reduction".
+**Never use** (without a genuinely separate, audited process backing it, which does not
+exist in this architecture): "Carbon saved", "Certified carbon reduction", "Carbon
+credit", "Verified corporate emissions reduction", "Net zero contribution".
 
 Every CO2e number carries this disclaimer, verbatim or materially equivalent, wherever it
 appears in the product (mirrors the existing `DEMO_ESTIMATE`/`MEASURED_PLATFORM_METRIC`
 labeling discipline in `docs/PRODUCT_METRICS.md`):
 
-> CO2e estimates are derived from measured/estimated energy changes and the configured
-> electricity emission factor. They are operational estimates and are not audited corporate
-> carbon accounting.
+> Estimated CO2e impact is derived from qualified observed energy recovery and the
+> configured location-based electricity emission factor. It is an operational estimate,
+> not audited corporate carbon accounting.
+
+**No financial value in this pass**: no electricity price, currency, cost savings, ROI,
+payback, or annual business case — those require a separate, governed value-model
+architecture not built here, and money/carbon are deliberately never mixed together in
+one number.
+
+**Verified live case**: Bucket Elevator BE-201's real `QUALIFIED_RECOVERY` (§9,
+~1.09 kWh estimated avoided energy) combined with a configured demo factor
+(0.4 kg CO2e/kWh, `DEMO_ESTIMATE`, `Eastgate Site`) resolves to `ESTIMATE_AVAILABLE`
+(~0.43 kg CO2e). Ore Transfer Conveyor CV-101's `INSUFFICIENT_DATA` energy outcome (§9)
+correctly resolves `NOT_ELIGIBLE` here — a completed intervention with no qualified
+recovery never gets a fabricated carbon claim, even with a factor configured.
+Reproduced identically across three independent reseeds.
 
 ## 12. Simulator extension design (design only — not implemented this pass)
 

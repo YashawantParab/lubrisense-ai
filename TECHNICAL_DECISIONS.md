@@ -9147,12 +9147,19 @@ deviation is necessary but never sufficient for attribution; independent
 lubrication/mechanical evidence is required). Pass 3 implemented (`EnergyOutcomeVerification`
 — reuses the real `MaintenanceCase` workflow to anchor a residual-based, comparability
 -gated pre/post comparison; qualified avoided energy only on a full `QUALIFIED_RECOVERY`;
-temporal-attribution-integrity keeps pre-intervention attribution frozen). See
-`docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md`'s own status header for exactly what is and
-is not implemented yet; the reuse-vs-new-surface decisions below held up unchanged through
-all three passes — Pass 3 needed no new subsystem either, only a comparability/outcome
-policy layered on the existing `MaintenanceCase`/`MaintenanceAction`/telemetry/baseline
-reads.
+temporal-attribution-integrity keeps pre-intervention attribution frozen). Pass 4
+implemented (`SiteEmissionFactor`/`CarbonImpactEstimate` — carbon strictly downstream of a
+*qualified* energy outcome, never manufacturing an energy benefit; reuses
+`app.product_metrics`' existing `MetricProvenance` vocabulary and the existing
+`Permission.ADMIN_CONFIG`/`AuditService` config-write pattern rather than inventing
+parallel ones). See `docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md`'s own status header for
+exactly what is and is not implemented yet; the reuse-vs-new-surface decisions below held
+up through all four passes with one honest exception — Pass 4 is the first pass in this
+capability to add genuinely new tables/entities (`SiteEmissionFactor`,
+`CarbonImpactEstimate`) rather than only a policy layered on already-existing ones, since
+no prior subsystem models an electricity emission factor at all; it still adds no new
+top-level subsystem (kept inside `app.energy`) and reuses every adjacent mechanism
+(RBAC, audit, provenance vocabulary) that already existed.
 
 ### Context
 

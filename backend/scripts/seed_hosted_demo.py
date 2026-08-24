@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -42,18 +43,25 @@ from app.baselines.config.policy import load_baseline_policy
 from app.cmms.services.cmms_service import CMMSService, CMMSUnavailableError
 from app.core.config import get_settings
 from app.device_management.service import DeviceConfigurationService
-from app.domain.enums import DeviceType, IncidentState
-from app.domain.models import Gateway, Incident, Machine, MaintenanceCase, Tenant
+from app.domain.enums import DeviceType, EmissionFactorMethod, IncidentState, MetricProvenance
+from app.domain.models import Gateway, Incident, Machine, MaintenanceCase, Site, Tenant
 from app.energy.services.attribution_service import (
     AttributionEnergyAssessmentNotFoundError,
     AttributionMachineNotFoundError,
     AttributionService,
 )
+from app.energy.services.carbon_service import (
+    CarbonOutcomeNotFoundError,
+    CarbonService,
+    CarbonSiteNotResolvedError,
+)
+from app.energy.services.emission_factor_service import EmissionFactorService
 from app.energy.services.energy_assessment_service import (
     EnergyAssessmentService,
     EnergyMachineNotFoundError,
     EnergyPowerSensorNotFoundError,
 )
+from app.energy.services.energy_outcome_query_service import EnergyOutcomeQueryService
 from app.energy.services.energy_outcome_service import (
     EnergyOutcomeMachineNotFoundError,
     EnergyOutcomeNoInterventionError,
@@ -386,6 +394,112 @@ async def _seed_energy_outcomes() -> None:
     print(f"Energy outcome verification: {summary}")
 
 
+#: Every site the curated fleet actually spans (Lubrication Efficiency Intelligence, Pass
+#: 4 — docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176). Configuring a demo factor
+#: for all four (not just BE-201's own EASTGATE) exercises the config API across the real
+#: portfolio, not one hand-picked machine.
+_CURATED_SITE_CODES = ("RIDGE", "EASTGATE", "HARBOR", "MILLBROOK")
+
+#: A single plausible, neutral, clearly-labelled illustrative value — not any real
+#: jurisdiction's actual published grid-average factor. See `SiteEmissionFactor
+#: .provenance` (`MetricProvenance.DEMO_ESTIMATE`) and `source_name` below for the
+#: explicit synthetic-data disclosure this number carries end-to-end.
+_DEMO_FACTOR_KG_CO2E_PER_KWH = 0.40
+
+
+async def _seed_emission_factors() -> None:
+    """Configures one active `SiteEmissionFactor` per curated site — never a hardcoded
+    default inside application logic (`app.energy.domain.carbon` refuses to estimate
+    without one). `effective_from` is set far enough in the past that it safely covers
+    any curated machine's real `EnergyOutcomeVerification` observed period."""
+    settings = get_settings()
+    database = Database(settings)
+    async with database.session() as session:
+        tenant = (
+            await session.execute(
+                select(Tenant).where(Tenant.slug == seed_flagship_story.DEMO_TENANT_SLUG)
+            )
+        ).scalar_one()
+        service = EmissionFactorService(session)
+        effective_from = datetime.now(UTC) - timedelta(days=365)
+        for site_code in _CURATED_SITE_CODES:
+            site = (
+                await session.execute(
+                    select(Site).where(Site.tenant_id == tenant.id, Site.code == site_code)
+                )
+            ).scalar_one_or_none()
+            if site is None:
+                print(f"  {site_code}: site not found — skipping")
+                continue
+            factor = await service.configure(
+                tenant.id,
+                site.id,
+                factor_value=_DEMO_FACTOR_KG_CO2E_PER_KWH,
+                source_name="Illustrative demonstration factor (not an audited grid dataset)",
+                source_reference=None,
+                jurisdiction="Demo region",
+                provenance=MetricProvenance.DEMO_ESTIMATE,
+                method=EmissionFactorMethod.LOCATION_BASED,
+                effective_from=effective_from,
+            )
+            print(f"  {site.name}: {factor.factor_value} {factor.factor_unit} (DEMO_ESTIMATE)")
+    await database.dispose()
+
+
+async def _seed_carbon_estimates() -> None:
+    """Real deterministic-policy estimation, run through the same `CarbonService` the
+    live `/energy/outcomes/{id}/carbon` API endpoint uses. Only machines with an already
+    -persisted `EnergyOutcomeVerification` (this run's step 18) are attempted; a machine
+    with none yet is honestly skipped — carbon is strictly downstream of a real energy
+    outcome, never computed independently of one."""
+    settings = get_settings()
+    database = Database(settings)
+    by_status: dict[str, int] = {}
+    async with database.session() as session:
+        tenant = (
+            await session.execute(
+                select(Tenant).where(Tenant.slug == seed_flagship_story.DEMO_TENANT_SLUG)
+            )
+        ).scalar_one()
+        outcome_query = EnergyOutcomeQueryService(session)
+        service = CarbonService(session)
+        for asset_code in _ENERGY_ASSET_CODES:
+            machine = (
+                await session.execute(
+                    select(Machine).where(
+                        Machine.tenant_id == tenant.id, Machine.asset_code == asset_code
+                    )
+                )
+            ).scalar_one_or_none()
+            if machine is None:
+                print(f"  {asset_code}: machine not found — skipping")
+                continue
+            outcome = await outcome_query.latest(tenant.id, machine.id)
+            if outcome is None:
+                print(f"  {machine.name}: no energy outcome verification yet — skipping")
+                continue
+            try:
+                result = await service.assess_for_outcome(tenant.id, outcome.id)
+            except CarbonOutcomeNotFoundError:
+                print(f"  {machine.name}: energy outcome verification not found — skipping")
+                continue
+            except CarbonSiteNotResolvedError:
+                print(f"  {machine.name}: site could not be resolved — skipping")
+                continue
+            by_status[result.estimate_status.value] = (
+                by_status.get(result.estimate_status.value, 0) + 1
+            )
+            co2e = (
+                f", {result.estimated_co2e_kg:.2f}kg CO2e"
+                if result.estimated_co2e_kg is not None
+                else ""
+            )
+            print(f"  {machine.name}: {result.estimate_status.value}{co2e}")
+    await database.dispose()
+    summary = ", ".join(f"{count} {status}" for status, count in sorted(by_status.items()))
+    print(f"Carbon impact estimation: {summary}")
+
+
 async def _seed_flagship_extras() -> None:
     """CMMS draft + device/configuration snapshot for the flagship's most recently
     completed maintenance case — real service calls, draft-only/visibility-only exactly
@@ -486,59 +600,65 @@ async def _seed_flagship_extras() -> None:
 
 
 async def main() -> None:
-    print("=== 1/18 Base asset hierarchy ===")
+    print("=== 1/20 Base asset hierarchy ===")
     await seed_demo_data.main()
 
-    print("\n=== 2/18 Clean non-canonical debris machines ===")
+    print("\n=== 2/20 Clean non-canonical debris machines ===")
     await _delete_debris_machines()
 
-    print("\n=== 3/18 Approved knowledge corpus ===")
+    print("\n=== 3/20 Approved knowledge corpus ===")
     await seed_knowledge_corpus.main()
 
-    print("\n=== 4/18 Flagship machine story (resolved) ===")
+    print("\n=== 4/20 Flagship machine story (resolved) ===")
     await seed_flagship_story.main()
 
-    print("\n=== 5/18 Healthy comparison machine ===")
+    print("\n=== 5/20 Healthy comparison machine ===")
     await seed_healthy_machine.main()
 
-    print("\n=== 6/18 Active developing-restriction incident ===")
+    print("\n=== 6/20 Active developing-restriction incident ===")
     await seed_active_restriction.main()
 
-    print("\n=== 7/18 Leakage incident ===")
+    print("\n=== 7/20 Leakage incident ===")
     await seed_leakage.main()
 
-    print("\n=== 8/18 Low-reservoir supply-risk incident ===")
+    print("\n=== 8/20 Low-reservoir supply-risk incident ===")
     await seed_low_reservoir.main()
 
-    print("\n=== 9/18 Pump-degradation incident ===")
+    print("\n=== 9/20 Pump-degradation incident ===")
     await seed_pump_degradation.main()
 
-    print("\n=== 10/18 Bearing-condition incident ===")
+    print("\n=== 10/20 Bearing-condition incident ===")
     await seed_bearing_degradation.main()
 
-    print("\n=== 11/18 Data-quality-limited machine ===")
+    print("\n=== 11/20 Data-quality-limited machine ===")
     await seed_data_quality_issue.main()
 
-    print("\n=== 12/18 Recently maintained / recovering machine ===")
+    print("\n=== 12/20 Recently maintained / recovering machine ===")
     await seed_recovering_asset.main()
 
-    print("\n=== 13/18 Insufficient-evidence machine ===")
+    print("\n=== 13/20 Insufficient-evidence machine ===")
     await seed_insufficient_evidence.main()
 
-    print("\n=== 14/18 CMMS draft + device/configuration context ===")
+    print("\n=== 14/20 CMMS draft + device/configuration context ===")
     await _seed_flagship_extras()
 
-    print("\n=== 15/18 ML evidence for the curated fleet ===")
+    print("\n=== 15/20 ML evidence for the curated fleet ===")
     await _seed_ml_evidence()
 
-    print("\n=== 16/18 Energy assessments for the curated fleet ===")
+    print("\n=== 16/20 Energy assessments for the curated fleet ===")
     await _seed_energy_assessments()
 
-    print("\n=== 17/18 Lubrication-energy attribution for the curated fleet ===")
+    print("\n=== 17/20 Lubrication-energy attribution for the curated fleet ===")
     await _seed_attribution_assessments()
 
-    print("\n=== 18/18 Energy outcome verification for the curated fleet ===")
+    print("\n=== 18/20 Energy outcome verification for the curated fleet ===")
     await _seed_energy_outcomes()
+
+    print("\n=== 19/20 Site emission factors (carbon intelligence) ===")
+    await _seed_emission_factors()
+
+    print("\n=== 20/20 Carbon impact estimation for the curated fleet ===")
+    await _seed_carbon_estimates()
 
     print("\nHosted demo seed complete.")
 

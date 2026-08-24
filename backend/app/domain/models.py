@@ -61,6 +61,7 @@ from app.domain.enums import (
     BaselineState,
     BaselineStrategyType,
     CapabilityLevel,
+    CarbonEstimateStatus,
     ClockStatus,
     CMMSWorkOrderStatus,
     CommercialStatus,
@@ -79,6 +80,7 @@ from app.domain.enums import (
     DocumentStatus,
     DocumentType,
     Eligibility,
+    EmissionFactorMethod,
     EnergyAssessmentStatus,
     EnergyEstimateStatus,
     EnergyOutcomeStatus,
@@ -95,6 +97,7 @@ from app.domain.enums import (
     MachineType,
     MaintenanceActionType,
     MaintenanceState,
+    MetricProvenance,
     MLConfidenceCategory,
     MLInferenceStatus,
     MLResultKind,
@@ -1619,6 +1622,118 @@ class EnergyOutcomeVerification(Base, TenantScopedMixin, TimestampMixin):
     #: Small, auditable provenance facts (sample counts, resolved baseline profile ids per
     #: window, dominant operating states) — never a duplicate copy of full source-object
     #: payloads (class docstring; matches `LubricationEnergyAttribution`'s own restraint).
+    provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class SiteEmissionFactor(Base, TenantScopedMixin, TimestampMixin):
+    """Tenant/site-scoped electricity emission-factor configuration (Lubrication
+    Efficiency Intelligence, Pass 4 — docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md §10,
+    ADR-176). Never a hardcoded global default in application logic — `CarbonImpactEstimate`
+    always resolves an explicit, active, temporally-applicable row here, or produces no
+    estimate at all. Multiple rows may exist per site over time (`is_active` plus
+    `effective_from`/`effective_to`), never mutated in place — a factor update is a new
+    row, so a past estimate's snapshot fields remain independently auditable.
+    """
+
+    __tablename__ = "site_emission_factor"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("site_id", "site"),
+        Index("ix_site_emission_factor_tenant_site", "tenant_id", "site_id"),
+    )
+
+    site_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+
+    factor_type: Mapped[str] = mapped_column(String(30), nullable=False, default="ELECTRICITY")
+    factor_value: Mapped[float] = mapped_column(Float, nullable=False)
+    #: Always `"kg_co2e_per_kwh"` in this implementation — an explicit column rather than
+    #: an assumed constant so a `CarbonImpactEstimate` snapshot never has to guess what
+    #: unit a stored `factor_value` was in.
+    factor_unit: Mapped[str] = mapped_column(String(30), nullable=False, default="kg_co2e_per_kwh")
+    method: Mapped[EmissionFactorMethod] = mapped_column(
+        _enum_column(EmissionFactorMethod), nullable=False
+    )
+
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    jurisdiction: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
+
+    #: Reuses the platform's existing DEMO_ESTIMATE/MEASURED_PLATFORM_METRIC/
+    #: CONFIGURED_TARGET vocabulary (`app.product_metrics`) rather than inventing a
+    #: parallel one — a synthetic demo factor is always `DEMO_ESTIMATE`, never presented
+    #: as if it were an audited governmental/utility dataset (CLAUDE.md "Customer /
+    #: Business Thinking" — simulated values must be labelled, never presented as proven).
+    provenance: Mapped[MetricProvenance] = mapped_column(
+        _enum_column(MetricProvenance), nullable=False
+    )
+
+
+class CarbonImpactEstimate(Base, TenantScopedMixin, TimestampMixin):
+    """Lubrication Efficiency Intelligence, Pass 4 (docs/LUBRICATION_EFFICIENCY_
+    INTELLIGENCE.md §10-§11, ADR-176) — a translation layer from a *qualified* observed
+    avoided-energy figure (Pass 3's `EnergyOutcomeVerification`) to an estimated CO2e
+    impact over the identical observed period, using an explicit, provenance-carrying
+    `SiteEmissionFactor`. Never computed from an unqualified energy outcome, a raw
+    residual, or a machine's nameplate power.
+
+    Snapshots the specific factor values used (`emission_factor_value`/`_unit`/`method`)
+    at calculation time, plus a small provenance dict (source name/reference/jurisdiction/
+    effective window) — never a duplicated copy of the full `SiteEmissionFactor` row —
+    so a later factor edit/deactivation can never silently change what an already
+    -computed estimate says it used (auditability)."""
+
+    __tablename__ = "carbon_impact_estimate"
+    __table_args__ = (
+        tenant_unique(),
+        composite_tenant_fk("site_id", "site"),
+        composite_tenant_fk("machine_id", "machine"),
+        composite_tenant_fk("energy_outcome_verification_id", "energy_outcome_verification"),
+        composite_tenant_fk("emission_factor_id", "site_emission_factor", nullable=True),
+        Index(
+            "ix_carbon_impact_estimate_tenant_machine_time",
+            "tenant_id",
+            "machine_id",
+            text("created_at DESC"),
+        ),
+    )
+
+    site_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    machine_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    energy_outcome_verification_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    emission_factor_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+
+    observed_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observed_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    qualified_avoided_energy_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    #: Snapshot, not a live join — see class docstring.
+    emission_factor_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    emission_factor_unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    method: Mapped[EmissionFactorMethod | None] = mapped_column(
+        _enum_column(EmissionFactorMethod), nullable=True
+    )
+
+    estimated_co2e_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estimate_status: Mapped[CarbonEstimateStatus] = mapped_column(
+        _enum_column(CarbonEstimateStatus), nullable=False
+    )
+
+    limitations: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    #: Factor source_name/source_reference/jurisdiction/effective_from/effective_to/
+    #: provenance — small, auditable facts, never a duplicated full-row copy.
     provenance: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )

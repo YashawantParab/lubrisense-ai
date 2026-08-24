@@ -32,6 +32,7 @@ from app.domain.enums import Eligibility, IncidentState, QualityState, Telemetry
 from app.domain.models import (
     BaselineProfile,
     Bearing,
+    CarbonImpactEstimate,
     Circuit,
     CommissioningSession,
     ConditionAssessment,
@@ -323,13 +324,20 @@ async def reset_machine_workflow_history(
     (and their own children) for this one machine — see `reset_machine_data`'s docstring
     for why. Runs inside the caller's existing transaction/retry loop, not its own.
 
-    `EnergyOutcomeVerification` (Lubrication Efficiency Intelligence, Pass 3 —
-    ADR-176) is deleted first, unconditionally: it has a composite-tenant FK to both
-    `maintenance_case_id` and (nullably) `incident_id`, so — exactly the
+    `CarbonImpactEstimate` (Pass 4) is deleted first — it has a composite-tenant FK to
+    `energy_outcome_verification_id` — then `EnergyOutcomeVerification` (Pass 3), which
+    has a composite-tenant FK to both `maintenance_case_id` and (nullably) `incident_id`.
+    Both must be cleared before their respective parent rows are deleted below, or the
+    delete fails with a `ForeignKeyViolation` on any machine that has ever had a carbon
+    estimate or outcome verification computed against it — exactly the
     `ConfigurationChange`-before-`ConfigurationSnapshot` lesson from the earlier
-    debris-cleanup pass — it must be cleared before either parent row is deleted below,
-    or the delete fails with a `ForeignKeyViolation` on any machine that has ever had an
-    outcome verification computed against it."""
+    debris-cleanup pass, applied twice here for the two-deep chain."""
+    await session.execute(
+        delete(CarbonImpactEstimate).where(
+            CarbonImpactEstimate.tenant_id == tenant_id,
+            CarbonImpactEstimate.machine_id == machine_id,
+        )
+    )
     await session.execute(
         delete(EnergyOutcomeVerification).where(
             EnergyOutcomeVerification.tenant_id == tenant_id,

@@ -456,6 +456,30 @@ class LubricationAssociationStatus(StrEnum):
     LUBRICATION_ASSOCIATED_RECOVERY = "LUBRICATION_ASSOCIATED_RECOVERY"
 
 
+class EmissionFactorMethod(StrEnum):
+    """CO2e accounting method for a `SiteEmissionFactor` (Lubrication Efficiency
+    Intelligence Pass 4 — docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md, ADR-176). Only
+    `LOCATION_BASED` (grid-average, by jurisdiction) is implemented — `MARKET_BASED`
+    accounting requires contractual-instrument data (RECs/PPAs) this reference platform
+    has no source for, so it is deliberately not offered as a choice yet rather than
+    silently defaulted."""
+
+    LOCATION_BASED = "LOCATION_BASED"
+
+
+class CarbonEstimateStatus(StrEnum):
+    """Why a `CarbonImpactEstimate` was or was not computed (Pass 4). An
+    `EnergyOutcomeVerification` remains fully valid even when carbon estimation cannot
+    proceed — carbon failure never invalidates the underlying energy outcome (design
+    doc §"carbon is downstream")."""
+
+    NOT_ELIGIBLE = "NOT_ELIGIBLE"
+    FACTOR_NOT_CONFIGURED = "FACTOR_NOT_CONFIGURED"
+    FACTOR_NOT_APPLICABLE = "FACTOR_NOT_APPLICABLE"
+    ESTIMATE_AVAILABLE = "ESTIMATE_AVAILABLE"
+    LIMITED_ESTIMATE = "LIMITED_ESTIMATE"
+
+
 # ---------------------------------------------------------------------------
 # Phase 9 — Rules Engine
 # ---------------------------------------------------------------------------
