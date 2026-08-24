@@ -9136,6 +9136,123 @@ on pre-seeded static data at all (its current design, see `docs/HOSTED_DEPLOYMEN
 
 ---
 
+# ADR-176 — Lubrication Efficiency Intelligence Extends Existing Evidence/Baseline Patterns, Not a New Subsystem
+
+### Status
+
+PROPOSED (design only — no code from this decision has been implemented; see
+`docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md` for the full design this ADR summarizes)
+
+### Context
+
+A capability extension was requested connecting lubrication condition to energy/power
+deviation and estimated CO2e impact — after the completed roadmap, deliberately not framed
+as a new numbered phase. Before designing it, an architecture inventory (read-only) checked
+whether any existing subsystem already models power/energy, and whether the existing
+baseline, evidence-fusion, decision, data-quality, and ML-lifecycle mechanisms could host
+this capability without a parallel architecture. Findings: no `SensorType` for power/energy/
+voltage/torque exists anywhere; `PUMP_CURRENT` is a real, already-modeled, physically
+distinct signal (the lubrication pump's own motor current, driven by pump discharge pressure
+in `simulator/simulator/physics/pump.py`) that must not be conflated with machine driveline
+power. Every other mechanism this capability needs — contextual "expected value under
+comparable conditions" (`app.baselines`' `CONTEXTUAL_ASSET_BASELINE`), a pluggable evidence
+source (`EvidenceItem.source_type` is already a plain string, not a closed enum), a
+modifier-not-authority decision pattern (`DecisionEngine`'s existing criticality rule), and
+per-sensor/aggregate data-quality gating — already exists and was verified to fit without
+modification.
+
+### Decision
+
+Build Lubrication Efficiency Intelligence as an additive extension of the existing evidence
+pipeline, reusing:
+
+- `app.baselines`' contextual baseline engine for expected-power (a new baselined
+  measurement type, not a new statistical method or a regression model for v1)
+- `app.condition_intelligence`'s `EvidenceItem` shape for a new `source_type=
+  "ENERGY_RESIDUAL"` value (zero schema change — the field is already string-typed)
+- `app.decision_intelligence`'s existing criticality-modifier precedent for an
+  energy-urgency modifier (energy evidence can raise/lower urgency; it can never manufacture
+  a diagnosis on its own — mirrors the existing rule almost exactly)
+- `app.data_quality`'s existing per-sensor/aggregate gating vocabulary, unchanged
+
+Two genuinely new pieces of surface area, explicitly not reuse of an existing pattern:
+
+- `SensorType.POWER` plus a new machine-driveline power physics model in the simulator
+  (`docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md` §12) — distinct from the existing
+  pump-current/pressure chain, which is left untouched
+- A new per-site `SiteEmissionFactor` configuration table — no existing per-tenant/per-site
+  DB-backed numeric-config precedent exists to extend (the only prior art is versioned
+  *global* YAML policy, e.g. `condition_intelligence_v1.yaml`'s `policy_version`)
+
+State estimation (`app.state_estimation`'s Kalman-filtered `StateEstimator`) was
+deliberately **not** reused: an energy residual is a per-tick comparison against a
+contextual expectation, not a physically slowly-drifting latent quantity, and forcing it
+into that architecture would misrepresent what it is for no real benefit.
+
+An ML regression model (`EXPECTED_ENERGY_REGRESSION`) was assessed and deliberately deferred
+past v1 — the contextual baseline needs no training data and is fully explainable from day
+one; a regression model would additionally risk the same train/inference domain-shift
+failure mode already documented for the existing fault classifiers (`condition_engine.py`'s
+own comment on `FAILURE_CLASSIFICATION_V1`/`FAILURE_CLASSIFICATION_BASELINE_V1`), likely
+worse for a continuous target than a discrete one.
+
+### Alternatives Considered
+
+Treating `PUMP_CURRENT` as an energy/power proxy directly — rejected: it is a real,
+different, already-load-bearing signal (pump-motor current, not machine driveline power);
+conflating the two would misrepresent both and make neither trustworthy.
+
+Modeling the energy residual as a third `StateEstimator` state type, alongside
+`LUBRICATION_DELIVERY_STATE`/`BEARING_CONDITION_STATE` — rejected (see Decision above): not
+a physically slowly-drifting latent quantity; the comparison-against-contextual-expectation
+shape this needs is exactly what `app.baselines` already does.
+
+Building the expected-energy model as an ML regression model from the start — rejected for
+v1: no training-data requirement is satisfiable yet, no explainability gap the baseline
+doesn't already close, and a real risk of repeating the existing classifiers' documented
+domain-shift problem before the simplest defensible approach has even been tried.
+
+A single generic "site configuration" table for all future per-site numeric factors —
+rejected in favor of a purpose-specific `SiteEmissionFactor` table: this repo's existing
+config precedent (`condition_intelligence_v1.yaml`) is already purpose-specific and
+versioned per subsystem, not a generic key-value store; a generic table would need its own
+provenance/validation scheme invented on top, defeating the point of following precedent.
+
+### Why This Option
+
+Verified directly against the actual codebase, not reasoned about in the abstract: read
+`app/baselines/strategies/contextual.py`, `app/condition_intelligence/domain/models.py`,
+`app/decision_intelligence/services/decision_synthesis.py`, `app/state_estimation/`'s config
+and `StateEstimator`, `app/domain/enums.py`'s `SensorType`/`MLResultKind`, `ml_service
+/domain/model_metadata.py`'s `ModelType`, and `simulator/simulator/physics/{pump,circuit,
+bearing,machine}.py`'s actual formulas, confirming exactly which mechanisms fit unmodified
+and which genuinely do not exist yet, before deciding what to reuse versus build new.
+
+### Consequences
+
+The evidence-fusion, decision, and data-quality architecture needs zero redesign — new
+evidence sources have been a supported extension point since Phase 13
+(`docs/CONDITION_INTELLIGENCE.md`), and this capability is the first to actually exercise
+that extensibility for a non-rule/ML/state-estimate source. The two new surfaces
+(`SensorType.POWER` + simulator physics, `SiteEmissionFactor`) are small, isolated, and
+additive — neither requires touching `ConditionEngine`'s core synthesis logic beyond adding
+one more `_evidence_from_energy_assessment`-shaped method following the exact pattern its
+three siblings already establish. No existing behavior changes until implementation actually
+wires the new evidence source in (§18 implementation order in
+`docs/LUBRICATION_EFFICIENCY_INTELLIGENCE.md` sequences this deliberately: expected-energy
+data ships and is provable before it ever influences a real condition or decision).
+
+### Revisit When
+
+If real (not synthetic) field telemetry later shows the contextual baseline's
+`(operating_state, cycle_phase)` context granularity is too coarse for expected-power
+specifically (a genuine risk flagged in the design doc §4 — load can vary materially within
+a single `RUNNING_NORMAL_LOAD` bucket) — at that point, either bin by continuous `LOAD`
+directly, or revisit the deferred `EXPECTED_ENERGY_REGRESSION` model now that a concrete,
+evidenced gap justifies it.
+
+---
+
 # Pending Decisions (Deferred to Later Phases)
 
 Resolved by Phase 1 and removed from this list: exact service boundaries within `backend/`
