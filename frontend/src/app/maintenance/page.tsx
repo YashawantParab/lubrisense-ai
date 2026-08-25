@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useMemo } from "react";
 
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
@@ -24,11 +25,57 @@ interface MachineRef {
   siteName: string;
 }
 
+type StateFilter = "all" | "open" | "completed";
+
+const FILTER_LABEL: Record<StateFilter, string> = {
+  all: "All",
+  open: "Open",
+  completed: "Completed",
+};
+
+// Mirrors the backend's own `_OPEN_MAINTENANCE_STATES`
+// (backend/app/portfolio/services/portfolio_service.py) — the exact set Organization's
+// "Open maintenance actions" KPI counts, so this filter is the one destination that
+// reconciles with it (Enterprise Product Rebuild §2/§3).
+const OPEN_STATES = new Set([
+  "REVIEW_REQUIRED",
+  "NOT_STARTED",
+  "PLANNED",
+  "IN_PROGRESS",
+  "AWAITING_VERIFICATION",
+]);
+
+const FILTER_MATCH: Record<StateFilter, (state: string) => boolean> = {
+  all: () => true,
+  open: (s) => OPEN_STATES.has(s),
+  completed: (s) => s === "COMPLETED",
+};
+
 export default function MaintenancePage() {
+  return (
+    <Suspense fallback={null}>
+      <MaintenancePageContent />
+    </Suspense>
+  );
+}
+
+function MaintenancePageContent() {
   usePageTitle("Maintenance");
   const cases = useMaintenanceCases();
   const hierarchy = useHierarchy();
   const fleetOutcome = useFleetLatestEnergyOutcome();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const filter = (searchParams.get("state") as StateFilter | null) ?? "all";
+  const setFilter = (value: StateFilter) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === "all") params.delete("state");
+    else params.set("state", value);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   const machineById = useMemo(() => {
     const map = new Map<string, MachineRef>();
@@ -51,6 +98,12 @@ export default function MaintenancePage() {
     [fleetOutcome.data],
   );
 
+  const allCases = useMemo(() => cases.data ?? [], [cases.data]);
+  const filteredCases = useMemo(
+    () => allCases.filter((c) => FILTER_MATCH[filter](c.state)),
+    [allCases, filter],
+  );
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
       <PageHeader
@@ -58,16 +111,44 @@ export default function MaintenancePage() {
         description="Human-controlled workflow — every physical action is a technician-recorded observation, never an automated one."
       />
 
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 rounded-md border border-zinc-300 p-0.5 text-xs dark:border-zinc-700">
+          {(Object.keys(FILTER_LABEL) as StateFilter[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilter(key)}
+              className={`rounded px-2.5 py-1 font-medium ${
+                filter === key
+                  ? "bg-sky-600 text-white"
+                  : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              }`}
+            >
+              {FILTER_LABEL[key]}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          {filteredCases.length} of {allCases.length} cases
+        </span>
+      </div>
+
       <DataState
         isPending={cases.isPending}
         isError={cases.isError}
         error={cases.error}
         loadingLabel="Loading maintenance cases…"
       >
-        {(cases.data ?? []).length === 0 ? (
+        {filteredCases.length === 0 ? (
           <EmptyState
-            title="No maintenance cases yet"
-            description="Open one from an incident under investigation."
+            title={
+              allCases.length === 0 ? "No maintenance cases yet" : "No cases match this filter"
+            }
+            description={
+              allCases.length === 0
+                ? "Open one from an incident under investigation."
+                : "Try clearing the filter or switching back to all cases."
+            }
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -85,7 +166,7 @@ export default function MaintenancePage() {
                 </tr>
               </thead>
               <tbody>
-                {(cases.data ?? []).map((c) => {
+                {filteredCases.map((c) => {
                   const machine = machineById.get(c.machine_id);
                   const energyOutcome = outcomeByCase.get(c.id);
                   return (

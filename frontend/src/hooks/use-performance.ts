@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getAreaPerformance,
   getAttentionQueue,
+  getEnergyQueue,
   getOrganizationPerformance,
   getRecentOutcomes,
   getSitePerformance,
@@ -60,5 +61,12 @@ export function useRecentPortfolioOutcomes(limit = 20) {
   return useQuery({
     queryKey: ["performance", "outcomes", limit],
     queryFn: () => getRecentOutcomes(limit),
+  });
+}
+
+export function useEnergyQueue(limit = 200) {
+  return useQuery({
+    queryKey: ["performance", "energy", limit],
+    queryFn: () => getEnergyQueue(limit),
   });
 }

@@ -24,6 +24,7 @@ function site(overrides: Partial<SitePerformance> = {}): SitePerformance {
     qualified_avoided_energy_kwh_total: 0,
     carbon_estimate_available_count: 0,
     estimated_co2e_kg_total: 0,
+    energy_assessable_assets: 0,
     open_maintenance_outcome_distribution: {},
     recent_outcomes: [],
     top_attention_assets: [],

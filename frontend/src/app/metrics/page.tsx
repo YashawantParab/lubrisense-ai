@@ -53,7 +53,7 @@ function MetricCard({ metric }: { metric: MetricResponse }) {
 }
 
 export default function MetricsPage() {
-  usePageTitle("Metrics");
+  usePageTitle("Product Performance");
   const metrics = useProductMetrics();
 
   const grouped = (metrics.data?.supporting ?? []).reduce<Record<string, MetricResponse[]>>(
@@ -68,8 +68,8 @@ export default function MetricsPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
       <PageHeader
-        title="Product Metrics"
-        description="The North Star and supporting metrics, each with explicit provenance — measured, demo estimate, or configured target — never mixed silently into one number."
+        title="Product Performance"
+        description="How the platform is performing as a decision-support product — the North Star and supporting metrics, each with explicit provenance (measured, demo estimate, or configured target), never mixed silently into one number."
       />
 
       <DataState isPending={metrics.isPending} isError={metrics.isError} error={metrics.error}>

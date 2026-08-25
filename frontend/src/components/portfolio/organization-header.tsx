@@ -33,7 +33,12 @@ export function OrganizationHeader({
           {monitoredAssets === 1 ? "" : "s"} · as of <RelativeTime iso={asOf} />
         </p>
       </div>
-      <ProvenanceBadge value={provenance} />
+      <div className="flex flex-col items-end gap-1">
+        <ProvenanceBadge value={provenance} />
+        <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
+          Synthetic industrial scenarios — demonstrates product behavior, not field validation.
+        </p>
+      </div>
     </header>
   );
 }

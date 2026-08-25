@@ -21,7 +21,7 @@ function statusTone(value: string): "ok" | "warn" | "error" | "neutral" {
 }
 
 export default function KnowledgePage() {
-  usePageTitle("Knowledge");
+  usePageTitle("Knowledge Base");
   const [statusFilter, setStatusFilter] = useState("");
   const documents = useDocuments(statusFilter || undefined);
   const [query, setQuery] = useState("");

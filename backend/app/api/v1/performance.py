@@ -18,6 +18,7 @@ from app.api.deps import get_current_tenant, get_db_session, require_permission
 from app.api.schemas.portfolio import (
     AreaPerformanceResponse,
     AttentionAssetResponse,
+    EnergyAssetResponse,
     OrganizationPerformanceResponse,
     RecentOutcomeResponse,
     SitePerformanceResponse,
@@ -111,6 +112,18 @@ async def get_attention_queue(
     service = PortfolioService(session)
     assets = await service.attention_queue(tenant.id, limit=limit)
     return [AttentionAssetResponse.model_validate(a) for a in assets]
+
+
+@router.get("/energy", response_model=list[EnergyAssetResponse])
+async def get_energy_queue(
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _principal: Annotated[object, require_permission(Permission.METRICS_READ)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 200,
+) -> list[EnergyAssetResponse]:
+    service = PortfolioService(session)
+    assets = await service.energy_queue(tenant.id, limit=limit)
+    return [EnergyAssetResponse.model_validate(a) for a in assets]
 
 
 @router.get("/outcomes", response_model=list[RecentOutcomeResponse])

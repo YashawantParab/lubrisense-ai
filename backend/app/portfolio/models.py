@@ -85,6 +85,27 @@ class AttentionAsset:
 
 
 @dataclass(frozen=True)
+class EnergyAsset:
+    """One row per energy-assessable machine (`energy_status is not None` — a
+    `MACHINE_POWER` sensor is commissioned and at least one `EnergyAssessment` has been
+    computed) for the fleet Energy & Efficiency workspace (Enterprise Product Rebuild
+    §7). Never includes a machine with no power sensor at all — that is a coverage gap,
+    not an energy row; see `EnergySection.energy_assessable_assets` for the denominator."""
+
+    ref: AssetRef
+    energy_bucket: EnergyPortfolioBucket
+    energy_status: EnergyAssessmentStatus | None
+    attribution_level: AttributionLevel | None
+    actual_power_kw: float | None
+    expected_power_kw: float | None
+    residual_pct: float | None
+    latest_outcome_status: EnergyOutcomeStatus | None
+    latest_outcome_avoided_kwh: float | None
+    carbon_status: CarbonEstimateStatus | None
+    carbon_estimated_kg: float | None
+
+
+@dataclass(frozen=True)
 class RecentOutcome:
     """One meaningful, provenance-carrying event — never mixed with a different-meaning
     event type in the same undifferentiated feed without an explicit `outcome_type`."""
@@ -122,12 +143,21 @@ class ActionReadinessSection:
 
 @dataclass(frozen=True)
 class EnergySection:
+    """`energy_assessable_assets` is the real denominator behind a sparse-looking
+    `active_opportunities` count (Enterprise Product Rebuild §6) — a machine with no
+    commissioned machine-power sensor never gets an `EnergyAssessment` row at all
+    (distinct from one that has a row but reads `INSUFFICIENT_DATA`/
+    `INSUFFICIENT_BASELINE`), so "1 opportunity" only becomes trustworthy once it's read
+    as "1 opportunity from N energy-assessable assets," not "1 of 24 monitored assets."
+    """
+
     monitored_assets: int
     distribution: dict[str, int] = field(default_factory=dict)
     active_opportunities: int = 0
     attribution_supported_opportunities: int = 0
     qualified_recovery_count: int = 0
     qualified_avoided_energy_kwh_total: float = 0.0
+    energy_assessable_assets: int = 0
 
 
 @dataclass(frozen=True)
@@ -199,6 +229,7 @@ class SitePerformanceSummary:
     top_attention_assets: tuple[AttentionAsset, ...]
     provenance: str
     policy_version: str
+    energy_assessable_assets: int = 0
 
 
 @dataclass(frozen=True)

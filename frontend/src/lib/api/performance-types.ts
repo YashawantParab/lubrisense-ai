@@ -60,6 +60,26 @@ export interface EnergySection {
   attribution_supported_opportunities: number;
   qualified_recovery_count: number;
   qualified_avoided_energy_kwh_total: number;
+  /** Assets with a commissioned power sensor and at least one computed
+   * `EnergyAssessment` — the real denominator for "N active opportunities" (Enterprise
+   * Product Rebuild §6). Distinct from `monitored_assets`: most background machines in
+   * this fleet have no power sensor at all, which is a coverage gap, not a "normal"
+   * reading. */
+  energy_assessable_assets: number;
+}
+
+export interface EnergyAsset {
+  ref: AssetRef;
+  energy_bucket: string;
+  energy_status: string | null;
+  attribution_level: string | null;
+  actual_power_kw: number | null;
+  expected_power_kw: number | null;
+  residual_pct: number | null;
+  latest_outcome_status: string | null;
+  latest_outcome_avoided_kwh: number | null;
+  carbon_status: string | null;
+  carbon_estimated_kg: number | null;
 }
 
 export interface CarbonSection {
@@ -117,6 +137,7 @@ export interface SitePerformance {
   qualified_avoided_energy_kwh_total: number;
   carbon_estimate_available_count: number;
   estimated_co2e_kg_total: number;
+  energy_assessable_assets: number;
   open_maintenance_outcome_distribution: Record<string, number>;
   recent_outcomes: RecentOutcome[];
   top_attention_assets: AttentionAsset[];

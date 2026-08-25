@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { useSensors } from "@/hooks/use-asset-hierarchy";
 import { useCurrentBaseline, useSensorBaselines, useBaselineSummary } from "@/hooks/use-baselines";
+import { expectedRangeLabel, humanizedBaselineName } from "@/lib/baseline-naming";
 import { humanize } from "@/lib/terminology";
 import type { BaselineState, DeviationClassification } from "@/lib/api/baselines-types";
 
@@ -161,55 +162,78 @@ export default function BaselinesPage() {
                   so a brand-new sensor may not have been evaluated yet.
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                        <th className="py-2 pr-4 font-medium">Strategy</th>
-                        <th className="py-2 pr-4 font-medium">Context</th>
-                        <th className="py-2 pr-4 font-medium">State</th>
-                        <th className="py-2 pr-4 font-medium">Version</th>
-                        <th className="py-2 pr-4 font-medium">Samples</th>
-                        <th className="py-2 pr-4 font-medium">Machine</th>
-                        <th className="py-2 pr-4 font-medium">Last evaluated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sensorBaselines.data.profiles.map((p) => (
-                        <tr
-                          key={p.id}
-                          className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
-                        >
-                          <td className="py-2 pr-4 text-zinc-800 dark:text-zinc-200">
-                            {humanize(p.strategy)}
-                          </td>
-                          <td className="py-2 pr-4 font-mono text-xs text-zinc-600 dark:text-zinc-400">
-                            {p.context_key || "—"}
-                          </td>
-                          <td className="py-2 pr-4">
-                            <StatusPill tone={toneForState(p.state)}>
-                              {humanize(p.state)}
-                            </StatusPill>
-                          </td>
-                          <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">
-                            v{p.version}
-                          </td>
-                          <td className="py-2 pr-4 text-zinc-600 dark:text-zinc-400">
-                            {p.sample_count}
-                            {p.min_sample_required > 0 ? ` / ${p.min_sample_required}` : ""}
-                          </td>
-                          <td className="py-2 pr-4 font-mono text-xs text-zinc-500">
-                            {p.machine_id ? `${p.machine_id.slice(0, 8)}…` : "—"}
-                          </td>
-                          <td className="py-2 pr-4 text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="flex flex-col gap-3">
+                  {sensorBaselines.data.profiles.map((p) => (
+                    <div
+                      key={p.id}
+                      className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                            {humanizedBaselineName(p)}
+                          </h3>
+                          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                            {selectedSensor?.unit ? `Measured in ${selectedSensor.unit} · ` : ""}
+                            {p.sample_count} sample{p.sample_count === 1 ? "" : "s"}
+                            {p.min_sample_required > 0
+                              ? ` of ${p.min_sample_required} required`
+                              : ""}
+                          </p>
+                        </div>
+                        <StatusPill tone={toneForState(p.state)}>{humanize(p.state)}</StatusPill>
+                      </div>
+
+                      <dl className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                        <div>
+                          <dt className="text-zinc-500 dark:text-zinc-400">Expected range</dt>
+                          <dd className="mt-0.5 font-mono text-zinc-800 dark:text-zinc-200">
+                            {expectedRangeLabel(p.statistics, selectedSensor?.unit ?? null)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-zinc-500 dark:text-zinc-400">Last updated</dt>
+                          <dd className="mt-0.5 text-zinc-800 dark:text-zinc-200">
                             {p.last_evaluated_at
                               ? new Date(p.last_evaluated_at).toLocaleString()
-                              : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                              : "Never evaluated"}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <details className="mt-3 border-t border-zinc-100 pt-2 dark:border-zinc-800">
+                        <summary className="cursor-pointer text-xs font-medium text-sky-600 select-none dark:text-sky-400">
+                          Technical detail
+                        </summary>
+                        <dl className="mt-2 grid grid-cols-2 gap-2 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-4">
+                          <div>
+                            <dt>Strategy</dt>
+                            <dd className="text-zinc-800 dark:text-zinc-200">
+                              {humanize(p.strategy)}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Context key</dt>
+                            <dd className="font-mono text-zinc-800 dark:text-zinc-200">
+                              {p.context_key || "—"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Baseline ID / version</dt>
+                            <dd className="font-mono text-zinc-800 dark:text-zinc-200">
+                              {p.id.slice(0, 8)}… · v{p.version}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Config / quality policy</dt>
+                            <dd className="font-mono text-zinc-800 dark:text-zinc-200">
+                              {p.config_version} / {p.quality_policy_version ?? "—"}
+                            </dd>
+                          </div>
+                        </dl>
+                      </details>
+                    </div>
+                  ))}
                 </div>
               )}
             </>

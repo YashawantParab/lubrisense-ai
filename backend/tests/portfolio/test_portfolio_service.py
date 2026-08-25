@@ -508,3 +508,7 @@ async def test_energy_and_carbon_sections_empty_without_any_energy_data(
     assert summary.carbon.carbon_outcomes_missing_factor == 0
     # No EnergyAssessment at all -> every machine reads INSUFFICIENT_ENERGY_DATA.
     assert summary.energy_efficiency.distribution.get("INSUFFICIENT_ENERGY_DATA") == 3
+    # No machine has ever had an EnergyAssessment row computed (no power sensor
+    # commissioned) -> the real "assessable" denominator is 0, not 3 (Enterprise
+    # Product Rebuild §6 — distinct from "assessed but insufficient data").
+    assert summary.energy_efficiency.energy_assessable_assets == 0

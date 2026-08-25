@@ -35,6 +35,22 @@ class AttentionAssetResponse(BaseModel):
     condition_severity: str | None
 
 
+class EnergyAssetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ref: AssetRefResponse
+    energy_bucket: str
+    energy_status: str | None
+    attribution_level: str | None
+    actual_power_kw: float | None
+    expected_power_kw: float | None
+    residual_pct: float | None
+    latest_outcome_status: str | None
+    latest_outcome_avoided_kwh: float | None
+    carbon_status: str | None
+    carbon_estimated_kg: float | None
+
+
 class RecentOutcomeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -81,6 +97,7 @@ class EnergySectionResponse(BaseModel):
     attribution_supported_opportunities: int
     qualified_recovery_count: int
     qualified_avoided_energy_kwh_total: float
+    energy_assessable_assets: int
 
 
 class CarbonSectionResponse(BaseModel):
@@ -153,6 +170,7 @@ class SitePerformanceResponse(BaseModel):
     top_attention_assets: list[AttentionAssetResponse]
     provenance: str
     policy_version: str
+    energy_assessable_assets: int
 
 
 class AreaPerformanceResponse(BaseModel):

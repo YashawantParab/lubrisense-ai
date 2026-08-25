@@ -514,6 +514,122 @@ engine's live re-assessment needs a few minutes of post-seed telemetry to settle
 its intended story state — genuine, honest behavior (not a bug to fix), but exactly the
 kind of timing detail a demo-readiness checklist exists to capture.
 
+## Enterprise Product Rebuild — Semantic Correctness + Organization Experience
+
+A KPI-correctness and information-architecture pass, distinct from the two before it:
+those improved cross-product integration and pre-demo polish on an already-working
+product; this one starts from "does every headline number actually mean what it claims,
+and does clicking it land on the exact records it claims to summarize."
+
+**Status: partial.** This section documents what was completed and verified against real
+seeded data. Items from the originating brief not yet done are listed at the end —
+nothing below should be read as a claim that the full 31-section brief is complete.
+
+### KPI → drilldown reconciliation (Rule 0)
+
+Three Organization KPIs did not reconcile with their destination page before this pass:
+
+- **Need attention (4) / Critical attention (1)** both linked to the same unfiltered
+  `/performance/attention`, which actually lists 22 assets (18 of them `DATA_LIMITED` —
+  a real, different concept: data-quality-limited, not reliability-priority). The
+  backend counts were correct; the destination just couldn't be narrowed to match. Fixed
+  by adding a URL-synced priority filter to `/performance/attention`
+  (`?priority=reliability|critical|data-limited`) and pointing each KPI at its exact
+  filtered view. Verified live: "Need attention" → 4 of 22 with the reliability filter
+  active; "Critical attention" → 1 of 22 with the critical filter active.
+- **Open maintenance actions (0)** linked to unfiltered `/maintenance`, which shows
+  every case ever opened, including completed ones — a user clicking "0" would land on a
+  non-empty table. Fixed by adding a state filter to `/maintenance`
+  (`?state=open|completed`, mirroring the backend's own `_OPEN_MAINTENANCE_STATES`
+  exactly) and pointing the KPI at `?state=open`. Verified live: 0 of 2 cases match,
+  with an explicit empty state instead of a silent full list.
+- **Active energy opportunities / Qualified recoveries** had no `href` at all — a direct
+  §3 violation. Fixed by building the Energy & Efficiency workspace (below) and pointing
+  both KPIs at it with `?status=opportunity` / `?status=qualified`. Verified live: both
+  show `1 of 10` with the matching filter active, reconciling exactly with the
+  Organization KPI values.
+
+### Energy coverage denominator (§6) + Energy & Efficiency workspace (§7)
+
+Only 10 of this tenant's 24 monitored machines have ever had an `EnergyAssessment`
+computed (a `MACHINE_POWER` sensor is commissioned) — the other 14 have no power sensor
+at all, which is a coverage gap, not a "normal" reading. That distinction previously had
+no dedicated backend field or UI surface.
+
+- Backend: added `EnergySection.energy_assessable_assets` and
+  `SitePerformanceSummary.energy_assessable_assets`
+  (`sum(1 for s in snapshots if s.energy_status is not None)`, reusing data
+  `PortfolioService._load_data()` already fetches — no new query). Regression test added
+  and passing.
+- Backend: added `GET /api/v1/performance/energy` (`PortfolioService.energy_queue`),
+  returning one row per energy-assessable machine — actual/expected power, residual %,
+  energy bucket, attribution level, latest outcome, avoided energy, carbon status —
+  ordered most-actionable-first. Reuses the existing pure `derive_energy_bucket` policy;
+  no bucket logic duplicated in the frontend.
+- Frontend: new `/energy` workspace page — coverage line ("10 of 24 monitored assets are
+  currently energy-assessable…"), a filter bar (All/Opportunity/Awaiting
+  verification/Qualified outcome/Normal/Insufficient data, URL-synced via `?status=`),
+  and a table with the exact columns §7 asks for. Every bucket the backend can return
+  maps to exactly one filter, so a row can never silently disappear from every category.
+  Added to primary nav under Performance as "Energy & Efficiency."
+
+### Baselines humanization (§12)
+
+`/baselines` previously showed raw implementation fields — a `context_key` like
+`"operating_state=STOPPED"`, a `strategy` enum, and a truncated raw machine-id UUID with
+no name resolution. Replaced the flat table with per-profile cards led by a derived
+plain-language name (`lib/baseline-naming.ts`: e.g. "Bearing temperature — stopped
+operation", "Bearing temperature — engineering reference range"), showing unit, sample
+count vs. required, expected range (from persisted statistics, never fabricated when
+absent), status, and last-updated up front; strategy/context-key/baseline-id/version
+moved into a per-card "Technical detail" disclosure. The previous raw-UUID "Machine"
+column was dropped rather than resolved with a fake/partial identity — the sensor
+selector already scopes the view to one machine. Verified live against a real
+`BEARING_TEMPERATURE` sensor with three profiles (contextual/rolling/static-reference).
+
+### "Metrics" → Product Performance, "Knowledge" → Knowledge Base (§13/§14)
+
+Both investigated before renaming, per the brief's own decision tree:
+
+- `/metrics` genuinely is product-outcomes/usage metrics (North Star + Coverage /
+  Detection quality / Workflow / Service burden / Knowledge-Assistant groups, each with
+  explicit provenance) — exactly what §13 describes as the "Product Performance" case.
+  Renamed page title, tab title, and nav label; no metric definitions changed.
+- `/knowledge` was already titled "Approved Knowledge Base" in its own page heading and
+  already links bidirectionally with the Assistant (Assistant cites knowledge sources
+  with document/version/section; both pages link to each other) — only the nav label and
+  browser-tab title needed to change to match the page's own existing heading.
+
+### Identity/role selector, tenant name (carried over from investigation)
+
+Confirmed via a live RBAC check (switched to Technician role on a real incident, saw the
+correctly-gated "cannot manage incident lifecycle transitions" message) that the role
+selector has a real, functional effect — kept it, renamed "Demo identity" → "Identity."
+Tenant display name changed to "LubriSense Industrial" in the seed script; **the hosted
+database has not yet been reseeded**, so the running product still shows "LubriSense
+Demo Tenant" until that reseed runs.
+
+### "Fan before equipment identity" (§11) — verified already resolved
+
+Grepped every primary-UI usage of `machine_type`; the only raw (non-`equipmentTypeFor`)
+renders left are in `/hierarchy` and `/intelligence` (Technical Provenance) — both
+explicitly engineering/raw surfaces where CLAUDE.md and `lib/equipment.ts`'s own
+docstring say the internal enum belongs. Fleet, Machine Detail, ML, and Condition
+Estimation machine selectors all already lead with the curated equipment name. This
+appears to have been resolved by the prior "Industrial asset realism pass" commits — no
+further change made here.
+
+### Not yet done from this brief
+
+The following sections of the originating brief are **not implemented**: §4 Organization
+Home IA rebuild (decision groups / workspace tabs / redesigned attention queue
+placement), §5 Site Detail tabs, §8 carbon "how this is calculated" disclosure, §10 ML
+Intelligence three-view rebuild, §11 fleet condition workspace table + detail redesign,
+§17-18 broader visual-language pass, a full traceability matrix document, the full
+manual-walkthrough list (§27 A-I), and the hosted-demo reseed. Treat this pass as a
+correctness/plumbing foundation (real backend fields, real filtered destinations, real
+naming) that the structural page rebuilds still need to build on.
+
 ## Known limitations
 
 - `/intelligence` (the "Intelligence (raw)" secondary-nav page, deliberately kept as a

@@ -28,6 +28,7 @@ const PRIMARY_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { href: "/performance/organization", label: "Organization" },
       { href: "/performance/sites", label: "Sites" },
       { href: "/fleet", label: "Fleet" },
+      { href: "/energy", label: "Energy & Efficiency" },
     ],
   },
   {
@@ -41,9 +42,9 @@ const PRIMARY_GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
     items: [
-      { href: "/knowledge", label: "Knowledge" },
+      { href: "/knowledge", label: "Knowledge Base" },
       { href: "/assistant", label: "Assistant" },
-      { href: "/metrics", label: "Metrics" },
+      { href: "/metrics", label: "Product Performance" },
     ],
   },
 ];
@@ -140,7 +141,7 @@ function RoleSwitcher() {
   const { role, displayName, switchRole, isLoading } = useAuth();
   return (
     <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-      <span className="hidden sm:inline">Demo identity</span>
+      <span className="hidden sm:inline">Identity</span>
       <select
         value={role}
         disabled={isLoading}

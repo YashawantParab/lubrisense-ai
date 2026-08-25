@@ -2,6 +2,7 @@ import { tenantScopedFetch } from "@/lib/api/client";
 import type {
   AreaPerformance,
   AttentionAsset,
+  EnergyAsset,
   OrganizationPerformance,
   RecentOutcome,
   SitePerformance,
@@ -35,4 +36,8 @@ export function getAttentionQueue(limit = 50): Promise<AttentionAsset[]> {
 
 export function getRecentOutcomes(limit = 20): Promise<RecentOutcome[]> {
   return tenantScopedFetch<RecentOutcome[]>(`/api/v1/performance/outcomes?limit=${limit}`);
+}
+
+export function getEnergyQueue(limit = 200): Promise<EnergyAsset[]> {
+  return tenantScopedFetch<EnergyAsset[]>(`/api/v1/performance/energy?limit=${limit}`);
 }

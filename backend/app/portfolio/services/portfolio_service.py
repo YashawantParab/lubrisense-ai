@@ -50,6 +50,7 @@ from app.domain.enums import (
 from app.domain.models import (
     CarbonImpactEstimate,
     ConditionAssessment,
+    EnergyAssessment,
     EnergyOutcomeVerification,
     Incident,
     Machine,
@@ -77,6 +78,7 @@ from app.portfolio.models import (
     AttentionAsset,
     CarbonSection,
     DataTrustSection,
+    EnergyAsset,
     EnergySection,
     MachineSnapshot,
     MaintenanceSection,
@@ -129,6 +131,7 @@ class _PortfolioData:
     all_maintenance: list[MaintenanceCase]
     outcome_by_machine: dict[uuid.UUID, EnergyOutcomeVerification]
     carbon_rows: list[CarbonImpactEstimate]
+    energy_by_machine: dict[uuid.UUID, EnergyAssessment]
 
 
 class PortfolioService:
@@ -164,6 +167,7 @@ class PortfolioService:
                 all_maintenance=[],
                 outcome_by_machine={},
                 carbon_rows=[],
+                energy_by_machine={},
             )
 
         conditions = await self._conditions.list_latest_for_tenant(tenant_id)
@@ -306,6 +310,7 @@ class PortfolioService:
             all_maintenance=all_maintenance,
             outcome_by_machine=outcome_by_machine,
             carbon_rows=carbon_rows,
+            energy_by_machine=energy_by_machine,
         )
 
     # ------------------------------------------------------------------
@@ -412,6 +417,14 @@ class PortfolioService:
     ) -> list[RecentOutcome]:
         data = await self._load_data(tenant_id)
         return _recent_outcomes(data, data.snapshots, limit=limit)
+
+    async def energy_queue(self, tenant_id: uuid.UUID, *, limit: int = 200) -> list[EnergyAsset]:
+        """Every energy-*assessable* machine (`energy_status is not None`), for the
+        fleet Energy & Efficiency workspace (Enterprise Product Rebuild §7) — never a
+        machine with no commissioned power sensor at all. Ordered most-actionable first
+        so an opportunity/outcome-in-progress never scrolls below a normal-behavior row."""
+        data = await self._load_data(tenant_id)
+        return _energy_queue(data.snapshots, data.energy_by_machine, limit=limit)
 
 
 # ------------------------------------------------------------------
@@ -650,6 +663,7 @@ def _energy_section(snapshots: list[MachineSnapshot]) -> EnergySection:
         qualified_avoided_energy_kwh_total=sum(
             s.latest_outcome_avoided_kwh for s in qualified if s.latest_outcome_avoided_kwh
         ),
+        energy_assessable_assets=sum(1 for s in snapshots if s.energy_status is not None),
     )
 
 
@@ -718,6 +732,49 @@ def _top_attention(snapshots: list[MachineSnapshot], *, limit: int) -> list[Atte
         )
         for s in ranked[:limit]
     ]
+
+
+_ENERGY_QUEUE_ORDER = {
+    EnergyPortfolioBucket.ATTRIBUTION_SUPPORTED_OPPORTUNITY: 6,
+    EnergyPortfolioBucket.ACTIVE_ELEVATED_ENERGY: 5,
+    EnergyPortfolioBucket.OUTCOME_AWAITING_VERIFICATION: 4,
+    EnergyPortfolioBucket.OUTCOME_DETERIORATED: 3,
+    EnergyPortfolioBucket.QUALIFIED_ENERGY_RECOVERY: 2,
+    EnergyPortfolioBucket.INCONCLUSIVE_OUTCOME: 1,
+    EnergyPortfolioBucket.NORMAL_ENERGY_BEHAVIOR: 0,
+    EnergyPortfolioBucket.INSUFFICIENT_ENERGY_DATA: -1,
+}
+
+
+def _energy_queue(
+    snapshots: list[MachineSnapshot],
+    energy_by_machine: dict[uuid.UUID, EnergyAssessment],
+    *,
+    limit: int,
+) -> list[EnergyAsset]:
+    assessable = [s for s in snapshots if s.energy_status is not None]
+    ranked = sorted(
+        assessable, key=lambda s: _ENERGY_QUEUE_ORDER.get(s.energy_bucket, -1), reverse=True
+    )
+    rows: list[EnergyAsset] = []
+    for s in ranked[:limit]:
+        energy = energy_by_machine.get(s.ref.machine_id)
+        rows.append(
+            EnergyAsset(
+                ref=s.ref,
+                energy_bucket=s.energy_bucket,
+                energy_status=s.energy_status,
+                attribution_level=s.attribution_level,
+                actual_power_kw=energy.actual_power_kw if energy else None,
+                expected_power_kw=energy.expected_power_kw if energy else None,
+                residual_pct=energy.residual_pct if energy else None,
+                latest_outcome_status=s.latest_outcome_status,
+                latest_outcome_avoided_kwh=s.latest_outcome_avoided_kwh,
+                carbon_status=s.carbon_status,
+                carbon_estimated_kg=s.carbon_estimated_kg,
+            )
+        )
+    return rows
 
 
 def _build_site_summary(
@@ -795,6 +852,7 @@ def _build_site_summary(
         top_attention_assets=tuple(_top_attention(snapshots, limit=5)),
         provenance=MetricProvenance.MEASURED_PLATFORM_METRIC.value,
         policy_version=POLICY_VERSION,
+        energy_assessable_assets=sum(1 for s in snapshots if s.energy_status is not None),
     )
 
 

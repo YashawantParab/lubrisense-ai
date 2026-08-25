@@ -50,7 +50,7 @@ export default function OrganizationPerformancePage() {
                 {
                   label: "Need attention",
                   value: org.data.reliability.attention_assets,
-                  href: "/performance/attention",
+                  href: "/performance/attention?priority=reliability",
                 },
                 {
                   label: "Critical attention",
@@ -59,12 +59,12 @@ export default function OrganizationPerformancePage() {
                     org.data.reliability.critical_attention_assets > 0
                       ? "text-red-600 dark:text-red-400"
                       : undefined,
-                  href: "/performance/attention",
+                  href: "/performance/attention?priority=critical",
                 },
                 {
                   label: "Open maintenance actions",
                   value: org.data.maintenance.open_actions,
-                  href: "/maintenance",
+                  href: "/maintenance?state=open",
                 },
                 {
                   label: "Assets with evidence limitations",
@@ -74,6 +74,7 @@ export default function OrganizationPerformancePage() {
                 {
                   label: "Active energy opportunities",
                   value: org.data.energy_efficiency.active_opportunities,
+                  href: "/energy?status=opportunity",
                 },
                 {
                   label: "Qualified recoveries",
@@ -82,6 +83,7 @@ export default function OrganizationPerformancePage() {
                     org.data.energy_efficiency.qualified_recovery_count > 0
                       ? "text-emerald-600 dark:text-emerald-400"
                       : undefined,
+                  href: "/energy?status=qualified",
                 },
               ]}
             />
