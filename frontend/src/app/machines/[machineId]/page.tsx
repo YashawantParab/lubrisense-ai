@@ -23,7 +23,7 @@ import {
 } from "@/components/badges";
 import { RelativeTime } from "@/components/relative-time";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useMachineHierarchy } from "@/hooks/use-asset-hierarchy";
+import { useHierarchy, useMachineHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useMachineBaselines } from "@/hooks/use-baselines";
 import { useMachineConfigurationChanges, useMachineDevices } from "@/hooks/use-device-management";
 import { useIncidents } from "@/hooks/use-incidents";
@@ -176,6 +176,23 @@ function SensorRow({ sensor }: { sensor: SensorResponse }) {
 export default function MachineDetailPage({ params }: { params: Promise<{ machineId: string }> }) {
   const { machineId } = use(params);
   const hierarchy = useMachineHierarchy(machineId);
+  // Full tenant tree, used only to resolve the Organization/Site breadcrumb below — same
+  // tenant-wide query the Fleet/Overview pages already fetch, so this is typically already
+  // warm in the React Query cache rather than a fresh request.
+  const fullHierarchy = useHierarchy();
+  const siteForMachine = useMemo(() => {
+    if (!fullHierarchy.data) return null;
+    for (const customer of fullHierarchy.data.customers) {
+      for (const site of customer.sites) {
+        for (const plant of site.plants) {
+          for (const line of plant.production_lines) {
+            if (line.machines.some((m) => m.id === machineId)) return site;
+          }
+        }
+      }
+    }
+    return null;
+  }, [fullHierarchy.data, machineId]);
   // 2000 is the API's max (`limit: le=2000`) and is applied across *all* measurement
   // types combined for this machine, not per-type — a low limit here silently truncates
   // to only the most recent minutes of a multi-hour story once several sensors share the
@@ -351,7 +368,18 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
           <>
             <PageHeader
               breadcrumbs={[
-                { label: "Fleet", href: "/fleet" },
+                { label: "Organization", href: "/performance/organization" },
+                siteForMachine
+                  ? { label: siteForMachine.name, href: `/performance/sites/${siteForMachine.id}` }
+                  : { label: "Fleet", href: "/fleet" },
+                ...(equipmentIdentity?.area
+                  ? [
+                      {
+                        label: equipmentIdentity.area,
+                        href: `/performance/areas/${encodeURIComponent(equipmentIdentity.area)}`,
+                      },
+                    ]
+                  : []),
                 { label: hierarchy.data.machine.name },
               ]}
               title={equipmentIdentity?.equipmentName ?? hierarchy.data.machine.name}

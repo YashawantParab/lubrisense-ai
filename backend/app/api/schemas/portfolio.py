@@ -112,6 +112,7 @@ class OrganizationPerformanceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     tenant_id: uuid.UUID
+    organization_name: str
     as_of: datetime
     portfolio: PortfolioSectionResponse
     reliability: ReliabilitySectionResponse

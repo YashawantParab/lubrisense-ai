@@ -200,3 +200,59 @@ export function toneForStatus(value: string): Tone {
   if (STATUS_NEUTRAL.has(value)) return "neutral";
   return "ok";
 }
+
+// --- Portfolio Intelligence (organization/site/area performance, ADR-177) ----------
+// These map the backend's own categorical enums 1:1 — never a value this layer invents.
+
+export function portfolioPriorityTone(value: string): Tone {
+  if (value === "CRITICAL_ATTENTION") return "error";
+  if (value === "HIGH_ATTENTION" || value === "ATTENTION") return "warn";
+  if (value === "MONITOR") return "ok";
+  return "neutral"; // DATA_LIMITED
+}
+
+export function actionReadinessStateTone(value: string): Tone {
+  if (value === "MONITORING_ONLY") return "ok";
+  if (value === "HUMAN_ACTION_REQUIRED") return "warn";
+  if (value === "ASSESSMENT_BLOCKED") return "error";
+  return "neutral"; // DATA_LIMITED / NOT_YET_ASSESSED
+}
+
+export function energyBucketTone(value: string): Tone {
+  if (value === "NORMAL_ENERGY_BEHAVIOR" || value === "QUALIFIED_ENERGY_RECOVERY") return "ok";
+  if (value === "ACTIVE_ELEVATED_ENERGY" || value === "ATTRIBUTION_SUPPORTED_OPPORTUNITY") {
+    return "warn";
+  }
+  if (value === "OUTCOME_AWAITING_VERIFICATION") return "info";
+  if (value === "OUTCOME_DETERIORATED") return "error";
+  return "neutral"; // INCONCLUSIVE_OUTCOME / INSUFFICIENT_ENERGY_DATA
+}
+
+export function maintenanceOutcomeBucketTone(value: string): Tone {
+  if (value === "COMPLETED_QUALIFIED_RECOVERY" || value === "COMPLETED_PROBABLE_RECOVERY") {
+    return "ok";
+  }
+  if (value === "OPEN_ACTION") return "warn";
+  if (value === "COMPLETED_OUTCOME_NOT_ASSESSED") return "info";
+  if (value === "COMPLETED_DETERIORATED") return "error";
+  return "neutral"; // COMPLETED_NO_MATERIAL_CHANGE / COMPLETED_INCONCLUSIVE
+}
+
+export function dataTrustCategoryTone(value: string): Tone {
+  if (value === "DECISION_EVIDENCE_TRUSTED") return "ok";
+  if (value === "CONFIDENCE_REDUCED") return "warn";
+  if (value === "ASSESSMENT_BLOCKED" || value === "ACTION_BLOCKED") return "error";
+  return "neutral";
+}
+
+export function portfolioOutcomeTone(value: string): Tone {
+  if (
+    value === "CONDITION_RESOLVED" ||
+    value === "QUALIFIED_ENERGY_RECOVERY" ||
+    value === "MAINTENANCE_COMPLETED"
+  ) {
+    return "ok";
+  }
+  if (value === "CONDITION_IMPROVING") return "info";
+  return "neutral"; // CARBON_ESTIMATE_PRODUCED
+}

@@ -81,8 +81,13 @@ async def list_area_performance(
     return [AreaPerformanceResponse.model_validate(s) for s in summaries]
 
 
-@router.get("/areas/{area_key}", response_model=AreaPerformanceResponse)
+@router.get("/areas/{area_key:path}", response_model=AreaPerformanceResponse)
 async def get_area_performance(
+    # `:path` (not a plain string converter) — real seeded area names can contain "/"
+    # (e.g. "Metals / Rolling"); the client percent-encodes it (%2F), but Starlette
+    # decodes the path before route matching, so a plain converter would see three
+    # segments and 404 (Enterprise Experience Pass A — found via manual browser
+    # verification of a real click-through, not a synthetic test case).
     area_key: str,
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
     session: Annotated[AsyncSession, Depends(get_db_session)],

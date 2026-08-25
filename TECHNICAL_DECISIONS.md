@@ -9379,6 +9379,99 @@ table at that point — not before, since no such requirement exists yet.
 
 ---
 
+# ADR-178 — Organization Command Center Consumes Portfolio Intelligence As-Is; Area Drilldown Stays Organization-Wide
+
+### Status
+
+ACCEPTED — Enterprise Experience Pass A implemented (`/performance/organization`,
+`/performance/sites`, `/performance/sites/[siteId]`, `/performance/areas`,
+`/performance/areas/[areaKey]`, `/performance/attention`; new home page; Machine Detail
+breadcrumb). See `docs/PRODUCT_EXPERIENCE.md`'s own "Enterprise Experience Pass A" section
+for the full page/terminology/cross-link design.
+
+### Context
+
+[[ADR-177]] shipped a complete organization/site/area read model and API with no frontend
+consumer. This pass builds that consumer — the product's new default landing experience —
+and was scoped, per its own brief, to change the frontend only, reusing the Portfolio
+Intelligence API's response shapes exactly as designed rather than requesting backend
+changes to make the frontend's job easier. Two exceptions were made, both discovered by
+actually building against and clicking through the real API rather than assumed in advance:
+`OrganizationPerformanceSummary` had no organization *name* field (only `tenant_id`), and the
+`/areas/{area_key}` route 404s for any real area name containing a literal "/" (e.g. "Metals
+/ Rolling") once a browser percent-encodes it, because Starlette decodes `%2F` before
+matching a plain string path converter.
+
+### Decision
+
+Add `organization_name: str` to `OrganizationPerformanceSummary` (sourced from `Tenant.name`,
+fetched once per `organization_summary()` call — not part of the fixed 9-query
+`_load_data()` bundle, since only the organization endpoint needs it) rather than have the
+frontend guess at a name from unrelated data (e.g. the first customer account's name, which
+is a different real entity). Fix the area-key route with `{area_key:path}` rather than
+requiring the frontend to avoid slash-containing area names (which are real, backend-owned
+metadata this product does not control the vocabulary of).
+
+Area drilldown from within a Site Detail page still resolves to the same
+organization-wide `/performance/areas/{area_key}` page a Site's own click-through and the
+top-level Areas index both use — never a fabricated "this site's slice of the area" number.
+No site-scoped area sub-aggregate exists in the backend (an area's `site_codes` can span
+multiple sites by design, per [[ADR-177]]), and computing one client-side by filtering
+machines would be exactly the "no client-side recomputation of backend business semantics"
+violation both this pass's and [[ADR-177]]'s briefs prohibit. Instead, the Area Detail page
+explicitly discloses which sites contribute to the number shown whenever there is more than
+one, so the organization-wide framing is visible rather than assumed.
+
+No new frontend test framework existed before this pass (`frontend/package.json` had no
+test script or test dependency at all); added Vitest + Testing Library rather than a
+heavier end-to-end framework, scoped to pure logic and presentational components only —
+hook-driven pages were verified manually against a real backend/Postgres instead of
+building a `QueryClientProvider` mocking layer this pass did not otherwise need.
+
+### Alternatives Considered
+
+Deriving an organization display name from `CustomerAccount.name` (already available via
+the existing `/hierarchy` endpoint) instead of adding `organization_name` — rejected: a
+tenant can have more than one customer account, and picking "the first one" would silently
+misrepresent the organization by an unrelated entity's name.
+
+A site-scoped area filter computed client-side (join the site's own machine list against
+area metadata) instead of the organization-wide Area Detail page — rejected: this is exactly
+the kind of backend-semantics recomputation both this pass and [[ADR-177]] forbid on the
+frontend; the honest organization-wide rollup, clearly labeled, was preferred over a
+plausible-looking but backend-uncomputed number.
+
+Playwright/Cypress end-to-end tests instead of Vitest unit/component tests — rejected for
+this pass: no CI runner for a browser-based suite exists yet in this repository, and the
+highest-value, fastest-to-add coverage was the deterministic pure-logic and presentational
+layer; e2e coverage is a reasonable future addition, not a substitute for this pass's manual
+browser verification.
+
+### Why This Option
+
+Verified directly against the real, running Portfolio Intelligence API (a local backend
+process against the same Postgres the hosted-demo stack uses) rather than against the
+response schemas alone — the area-slash bug was found this way, by clicking through the
+real rendered Areas table, not by reading the route declaration and assuming it was correct.
+
+### Consequences
+
+The Portfolio Intelligence API gained exactly two changes attributable to its first real
+consumer: `organization_name` (additive, non-breaking) and the `area_key` path-converter fix
+(a genuine bug fix — no client of the old, broken behavior could have depended on it,
+since it only ever 404'd). `docs/PORTFOLIO_INTELLIGENCE.md`'s own field list should be
+treated as extended by `organization_name`, not superseded.
+
+### Revisit When
+
+If a future pass adds site-scoped area membership (per [[ADR-177]]'s own "Revisit When"),
+the Area Detail page's organization-wide framing and disclosure text should be revisited
+alongside it — a genuine site-scoped number would no longer need the "active at several
+sites" disclosure for a single-site area, though it would still be needed for any area that
+remains genuinely multi-site.
+
+---
+
 # Pending Decisions (Deferred to Later Phases)
 
 Resolved by Phase 1 and removed from this list: exact service boundaries within `backend/`

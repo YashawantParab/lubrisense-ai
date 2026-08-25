@@ -8,7 +8,9 @@ attribution/outcome/carbon-estimate per machine) — nine total, regardless of f
 then joins everything in Python by `machine_id`. Every public method on `PortfolioService`
 calls `_load_data` exactly once per request and reuses its `_PortfolioData` bundle for any
 further per-section computation, instead of re-querying the same tenant-wide table. No
-route in this module issues one query per machine.
+route in this module issues one query per machine. `organization_summary` issues one
+additional fixed lookup (the tenant row itself, for `organization_name`) — still
+fleet-size-independent.
 
 **Read-only**: this service never computes/writes `EnergyAssessment`,
 `LubricationEnergyAttribution`, `EnergyOutcomeVerification`, or `CarbonImpactEstimate` —
@@ -55,6 +57,7 @@ from app.domain.models import (
     Plant,
     ProductionLine,
     Site,
+    Tenant,
 )
 from app.energy.services.attribution_query_service import AttributionQueryService
 from app.energy.services.carbon_query_service import CarbonQueryService
@@ -314,6 +317,10 @@ class PortfolioService:
         snapshots = data.snapshots
         as_of = datetime.now(UTC)
 
+        tenant = (
+            await self._session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        ).scalar_one()
+
         sites = {s.ref.site_id for s in snapshots}
         areas = {s.ref.area for s in snapshots}
 
@@ -328,6 +335,7 @@ class PortfolioService:
 
         return OrganizationPerformanceSummary(
             tenant_id=tenant_id,
+            organization_name=tenant.name,
             as_of=as_of,
             portfolio=PortfolioSection(
                 sites=len(sites), areas=len(areas), monitored_assets=len(snapshots)

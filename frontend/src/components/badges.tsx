@@ -1,15 +1,21 @@
 import { StatusPill } from "@/components/status-pill";
 import {
+  actionReadinessStateTone,
   capabilityLevelTone,
   commissioningStatusTone,
   compatibilityTone,
   confidenceTone,
   customerStatusTone,
+  dataTrustCategoryTone,
+  energyBucketTone,
   feedbackTone,
   humanize,
   incidentStateTone,
+  maintenanceOutcomeBucketTone,
   maintenanceStateTone,
   modelStatusTone,
+  portfolioOutcomeTone,
+  portfolioPriorityTone,
   priorityTone,
   provenanceTone,
   qualityLabel,
@@ -71,4 +77,30 @@ export function CompatibilityBadge({ value }: { value: string }) {
 
 export function ModelStatusBadge({ value }: { value: string }) {
   return <StatusPill tone={modelStatusTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+// --- Portfolio Intelligence (organization/site/area performance, ADR-177) ----------
+
+export function PortfolioPriorityBadge({ value }: { value: string }) {
+  return <StatusPill tone={portfolioPriorityTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function ActionReadinessStateBadge({ value }: { value: string }) {
+  return <StatusPill tone={actionReadinessStateTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function EnergyBucketBadge({ value }: { value: string }) {
+  return <StatusPill tone={energyBucketTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function MaintenanceOutcomeBadge({ value }: { value: string }) {
+  return <StatusPill tone={maintenanceOutcomeBucketTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function DataTrustCategoryBadge({ value }: { value: string }) {
+  return <StatusPill tone={dataTrustCategoryTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function PortfolioOutcomeBadge({ value }: { value: string }) {
+  return <StatusPill tone={portfolioOutcomeTone(value)}>{humanize(value)}</StatusPill>;
 }

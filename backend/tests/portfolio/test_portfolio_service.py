@@ -248,6 +248,7 @@ async def test_organization_totals_match_machine_count_no_double_counting(
     assert summary.portfolio.monitored_assets == 3
     assert summary.reliability.monitored_assets == 3
     assert summary.maintenance.open_actions == 0  # incidents, not maintenance cases
+    assert summary.organization_name == org.tenant.name
 
 
 @pytest.mark.asyncio

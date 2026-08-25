@@ -15,8 +15,11 @@ interface NavItem {
   label: string;
 }
 
+// Organization/site/fleet foregrounded as primary (Enterprise Experience Pass A §16) —
+// the Organization Command Center is now the product's home screen (see app/page.tsx).
 const PRIMARY_NAV: NavItem[] = [
-  { href: "/overview", label: "Overview" },
+  { href: "/performance/organization", label: "Organization" },
+  { href: "/performance/sites", label: "Sites" },
   { href: "/fleet", label: "Fleet" },
   { href: "/incidents", label: "Incidents" },
   { href: "/maintenance", label: "Maintenance" },
@@ -142,7 +145,7 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
   return (
     <>
       <div className="px-4 py-5">
-        <Link href="/overview" className="block">
+        <Link href="/performance/organization" className="block">
           <span className="text-sm font-semibold tracking-wide text-white">LubriSense AI</span>
           <span className="mt-0.5 block text-xs text-slate-400">
             Condition-driven lubrication intelligence

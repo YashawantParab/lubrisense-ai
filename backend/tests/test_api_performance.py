@@ -162,6 +162,40 @@ def test_area_performance_by_key(client: TestClient, seeded_portfolio: SeededPor
     assert response.json()["asset_count"] == 1
 
 
+@pytest_asyncio.fixture
+async def tenant_with_slash_area() -> AsyncIterator[Tenant]:
+    database = Database(get_settings())
+    try:
+        async with database.session() as session:
+            tenant = await make_tenant(session)
+            customer = await make_customer(session, tenant)
+            site = await make_site(session, tenant, customer)
+            plant = await make_plant(session, tenant, site)
+            line = await make_production_line(session, tenant, plant)
+            machine = await make_machine(session, tenant, line)
+            machine.metadata_ = {"area": "Metals / Rolling"}
+            await session.commit()
+            yield tenant
+    finally:
+        await database.dispose()
+
+
+def test_area_performance_by_key_with_slash_in_name(
+    client: TestClient, tenant_with_slash_area: Tenant
+) -> None:
+    """Regression: a real seeded area name can contain "/" (e.g. "Metals / Rolling") —
+    found via manual browser click-through (Enterprise Experience Pass A), not a synthetic
+    case. A plain `{area_key}` string converter 404s once the client percent-encodes the
+    slash, because Starlette decodes it before route matching; `{area_key:path}` fixes it.
+    """
+    response = client.get(
+        "/api/v1/performance/areas/Metals%20%2F%20Rolling",
+        headers={TENANT_HEADER: str(tenant_with_slash_area.id)},
+    )
+    assert response.status_code == 200
+    assert response.json()["area"] == "Metals / Rolling"
+
+
 def test_area_performance_404_for_unknown_area(
     client: TestClient, seeded_portfolio: SeededPortfolio
 ) -> None:

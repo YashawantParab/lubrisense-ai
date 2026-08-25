@@ -159,6 +159,7 @@ class PortfolioSection:
 @dataclass(frozen=True)
 class OrganizationPerformanceSummary:
     tenant_id: uuid.UUID
+    organization_name: str
     as_of: datetime
     portfolio: PortfolioSection
     reliability: ReliabilitySection
