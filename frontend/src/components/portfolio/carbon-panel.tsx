@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { SectionCard } from "@/components/section-card";
 
 export interface CarbonPanelProps {
@@ -57,6 +59,37 @@ export function CarbonPanel({
         electricity emission factor. Never a claim of &ldquo;carbon saved&rdquo; or a sustainability
         commitment.
       </p>
+
+      <details className="mt-2 border-t border-zinc-100 pt-2 dark:border-zinc-800">
+        <summary className="cursor-pointer text-xs font-medium text-sky-600 select-none dark:text-sky-400">
+          How this is calculated
+        </summary>
+        <div className="mt-2 flex flex-col gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+          <p className="font-mono text-zinc-800 dark:text-zinc-200">
+            Estimated CO2e = Qualified observed avoided energy × Applicable configured electricity
+            emission factor
+          </p>
+          <ul className="list-disc space-y-1 pl-4">
+            <li>
+              Only a completed maintenance intervention with a comparable pre/post measurement
+              window and a qualified residual improvement contributes to this total.
+            </li>
+            <li>
+              A site&rsquo;s emission factor must be configured and applicable to the
+              outcome&rsquo;s period, or that outcome contributes nothing to this total (see
+              &ldquo;missing an applicable emission factor&rdquo; above).
+            </li>
+            <li>An operational estimate, not certified or audited carbon accounting.</li>
+            <li>Derived from synthetic demonstration data across this fleet.</li>
+          </ul>
+          <Link
+            href="/energy?status=qualified"
+            className="text-sky-600 hover:underline dark:text-sky-400"
+          >
+            See each qualifying outcome&rsquo;s own calculation →
+          </Link>
+        </div>
+      </details>
     </SectionCard>
   );
 }

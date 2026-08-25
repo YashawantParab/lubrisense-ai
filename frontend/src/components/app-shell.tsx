@@ -16,11 +16,12 @@ interface NavItem {
 }
 
 // Organization/site/fleet foregrounded as primary (Enterprise Experience Pass A §16),
-// grouped into Performance/Execution (Pass B §21) so a flat 9-item list doesn't read as
-// one undifferentiated block — labels are light-touch (smaller/lighter than the
-// "ENGINEERING" master label below) since this is still the product's primary nav, not a
-// secondary registry. Knowledge/Assistant/Metrics stay ungrouped: none belongs to either
-// cluster, and a group of one item would be noise, not clarity.
+// grouped into Performance/Intelligence/Execution/Assistance (Enterprise Product Rebuild
+// Pass 2 §16's target grouping) so a flat list doesn't read as one undifferentiated block
+// — labels are light-touch (smaller/lighter than the "ENGINEERING" master label below)
+// since this is still the product's primary nav, not a secondary registry. Product
+// Performance stays ungrouped: it's neither an intelligence surface nor raw engineering,
+// and a group of one item would be noise, not clarity.
 const PRIMARY_GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: "Performance",
@@ -28,7 +29,14 @@ const PRIMARY_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { href: "/performance/organization", label: "Organization" },
       { href: "/performance/sites", label: "Sites" },
       { href: "/fleet", label: "Fleet" },
+    ],
+  },
+  {
+    label: "Intelligence",
+    items: [
+      { href: "/condition", label: "Condition Intelligence" },
       { href: "/energy", label: "Energy & Efficiency" },
+      { href: "/ml", label: "ML Intelligence" },
     ],
   },
   {
@@ -40,12 +48,15 @@ const PRIMARY_GROUPS: { label: string | null; items: NavItem[] }[] = [
     ],
   },
   {
-    label: null,
+    label: "Assistance",
     items: [
-      { href: "/knowledge", label: "Knowledge Base" },
       { href: "/assistant", label: "Assistant" },
-      { href: "/metrics", label: "Product Performance" },
+      { href: "/knowledge", label: "Knowledge Base" },
     ],
+  },
+  {
+    label: null,
+    items: [{ href: "/metrics", label: "Product Performance" }],
   },
 ];
 
@@ -67,7 +78,6 @@ const ENGINEERING_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/baselines", label: "Baselines" },
       { href: "/rules", label: "Rule Findings" },
       { href: "/features", label: "Features" },
-      { href: "/ml", label: "ML Evidence" },
       { href: "/state-estimation", label: "Condition Estimation" },
       { href: "/intelligence", label: "Technical Provenance" },
     ],

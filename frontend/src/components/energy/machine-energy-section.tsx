@@ -104,7 +104,7 @@ export function MachineEnergySection({
             <div className="flex flex-col gap-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
               <EnergyOutcomeJourney outcome={outcome} carbon={carbon} />
               <EnergyOutcomePanel outcome={outcome} />
-              {carbon && <MachineCarbonPanel estimate={carbon} />}
+              {carbon && <MachineCarbonPanel estimate={carbon} outcome={outcome} />}
             </div>
           ) : (
             !NO_OPPORTUNITY_STATUSES.has(assessment.status) && (

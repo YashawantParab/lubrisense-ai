@@ -619,16 +619,208 @@ Estimation machine selectors all already lead with the curated equipment name. T
 appears to have been resolved by the prior "Industrial asset realism pass" commits — no
 further change made here.
 
-### Not yet done from this brief
+### Not yet done from this brief (as of this pass — see Pass 2 below)
 
-The following sections of the originating brief are **not implemented**: §4 Organization
-Home IA rebuild (decision groups / workspace tabs / redesigned attention queue
-placement), §5 Site Detail tabs, §8 carbon "how this is calculated" disclosure, §10 ML
-Intelligence three-view rebuild, §11 fleet condition workspace table + detail redesign,
-§17-18 broader visual-language pass, a full traceability matrix document, the full
-manual-walkthrough list (§27 A-I), and the hosted-demo reseed. Treat this pass as a
-correctness/plumbing foundation (real backend fields, real filtered destinations, real
-naming) that the structural page rebuilds still need to build on.
+At the end of this first pass, the following remained undone: §4 Organization Home IA
+rebuild, §5 Site Detail tabs, §8 carbon "how this is calculated" disclosure, §10 ML
+Intelligence three-view rebuild, §11 fleet condition workspace, a traceability matrix,
+and the manual-walkthrough list. All of these were picked up in the "Enterprise Product
+Rebuild Pass 2" section below.
+
+## Enterprise Product Rebuild Pass 2 — Structural Experience + Traceability
+
+The second half of the Enterprise Product Rebuild: the structural page rebuilds the first
+pass deliberately deferred, plus a real traceability verification pass. Reuses every
+piece of correctness work from Pass 1 (KPI filters, `/energy` workspace,
+`energy_assessable_assets`, baseline naming, Product Performance/Knowledge Base naming) —
+nothing there was regressed; the regression tests from Pass 1 still pass (verified by
+re-running the full suite after these changes).
+
+### Organization Home — decision-group IA + workspace tabs (§2)
+
+Replaced the flat six-item KPI strip with three visually distinct decision groups
+(`components/portfolio/decision-groups.tsx`) — **Reliability/Risk** (dominant: larger
+card, larger numbers, first), **Maintenance Execution**, **Efficiency/Outcomes** — CO2e
+is one same-sized number among several in the third group, never enlarged. Below that, a
+tabbed portfolio workspace (`components/workspace-tabs.tsx`, URL-synced via `?view=`)
+with four views — Health & Attention (fleet reliability distribution + site table),
+Maintenance (outcome distribution + action readiness), Energy & Efficiency (opportunity/
+qualified-outcome panel + carbon), Data Trust — replacing what was previously nine
+independently-stacked `SectionCard`s in one long scroll. Priority Attention and Recent
+Qualified Outcomes stay below the tabs as the page's operational queue/outcome feed, per
+spec.
+
+### Site Detail — operational workspace (§4)
+
+Rebuilt with the same `WorkspaceTabs` component: Overview / Reliability / Maintenance /
+Energy & Efficiency / Data Trust / Outcomes, behind a compact top summary strip (areas /
+need-attention-with-critical-count / open maintenance / evidence limitations). Each tab
+goes deeper than Organization's equivalent view (full attention queue, the site's own
+energy-assessable denominator, etc.) rather than merely re-filtering the Organization
+page. The area table's existing "Also active at SITE" annotation (from an earlier pass)
+already satisfies §5's "is this area site-local or organization-wide" requirement — no
+change needed there.
+
+### Carbon calculation transparency + traceability (§6/§7)
+
+`MachineCarbonPanel` (Machine Detail's per-outcome carbon panel) and the organization/
+site-level `CarbonPanel` both gained a "How this is calculated" disclosure:
+
+- The literal formula (`Estimated CO2e = Qualified observed avoided energy × Applicable
+  configured electricity emission factor`) plus, at the machine level, the real worked
+  calculation from that estimate's own operands (`lib/carbon-calc.ts:calculationLine` —
+  never a hardcoded number; returns `null`, not a fabricated product, when either operand
+  is missing).
+- Real factor provenance — source name/reference, effective period, and provenance label
+  — read from `CarbonImpactEstimate.provenance` (already written by
+  `app/energy/services/carbon_service.py`; the frontend added no new backend field, only
+  finally rendered what was already persisted).
+- At the machine level: comparability status, comparison confidence, and a link to the
+  source maintenance case (`outcome.maintenance_case_id`) — the full traceability chain
+  §7 asks for (Carbon → qualified avoided kWh → energy outcome → maintenance intervention
+  → comparison status → factor source/effective dates) is now click-through in one panel.
+- Boundary language every time: outcome-must-qualify-first, factor-must-be-configured,
+  operational (not certified) estimate, synthetic demo data, not audited accounting.
+
+Verified live against the real seeded BE-201 qualified outcome: `1.09 kWh × 0.4
+kg_co2e_per_kwh = 0.43 kg CO2e`, factor source "Illustrative demonstration factor (not an
+audited grid dataset)", comparability "Comparable", confidence "High", linking to
+BE-201's real maintenance case. New tests: `machine-carbon-panel.test.tsx` (4 new cases)
+and `lib/carbon-calc.test.ts` (7 cases, pure-function coverage of the extraction/
+formatting/calculation helpers).
+
+### ML Intelligence — three-view rebuild (§8/§9)
+
+Restructured the existing (already largely correct, just un-tabbed) 1000-line page into
+three `WorkspaceTabs` views (URL-synced via `?tab=`), reusing all existing sub-components
+rather than rewriting them:
+
+- **Fleet Evidence** — the existing top summary strip, the per-machine ML-analysis panel
+  (classification/anomaly cards, evidence fusion diagram), and the fleet-wide evidence
+  table — extended with two new columns, **Model maturity** (the primary model's
+  lifecycle badge) and **Operational influence** (whether this machine's ML evidence is
+  actually included in its current condition assessment, not just present). The machine
+  selector now defaults to assets **with** ML evidence only (`lib/ml-terminology.ts:
+  selectableMachinesFor`, unit tested) — a no-evidence machine only enters the dropdown
+  behind an explicit "All assets" checkbox, or when deep-linked directly. Verified live:
+  default selector opens on a scored machine (Ore Transfer Conveyor CV-101); checking
+  "All assets" reveals the no-evidence machines with an explicit "(no ML evidence)"
+  suffix — never silently indistinguishable from a scored "normal" reading.
+- **Model Performance** — the model-card selector plus macro/weighted F1, evaluation
+  sample count, per-class performance, confusion matrix, and anomaly precision/recall/
+  FPR/PR-AUC where applicable, and known limitations. Weak performance (the Staging
+  baseline classifier's real 29%/38% F1) is shown as-is, never hidden.
+- **Model Governance** — the same model-card selector, but showing `LifecycleExplainer`
+  (current lifecycle, eligibility for decision influence, why/why not — e.g. "Eligible to
+  provide governed supporting evidence... eligibility does not by itself guarantee this
+  model's evidence is actually used" for the Staging classifier), lifecycle/promotion
+  history, and validation limitations. The exact required phrase "Experimental evidence —
+  not used for decision" (`lib/ml-terminology.ts:ML_ROLE_LABEL`) already surfaces
+  per-machine on the Fleet Evidence tab whenever an Experiment-lifecycle model's evidence
+  applies to that machine. No model lifecycle was changed or promoted by this pass.
+
+### Condition Intelligence — fleet workspace (§10/§11)
+
+New primary page at `/condition` (added to primary nav) — the fleet-wide table §10
+describes: Asset (equipment identity first — curated class + component, or the machine's
+own name; internal `machine_type` never shown here, only in Technical Provenance/Asset
+Hierarchy), Site/Area, Current condition, Confidence, Lifecycle (renamed from the
+brief's "Trend" — `ConditionAssessment` has no directional improving/worsening trend
+field; `lifecycle_state`, e.g. Detected/Resolved, is what the backend actually persists,
+and labeling it "Trend" would overclaim a signal that isn't there), Primary evidence (the
+condition's own `evidence_summary.why[0]`), Action readiness (reusing the existing
+`readinessModeFor` policy — no new readiness logic invented), Maintenance state. Filters:
+site, area, condition, confidence, action readiness, plus free-text search — all
+URL-synced. Clicking a row goes to the existing Machine Detail page, which already
+provides §11's "Condition Detail" structure (current condition, why/evidence, decision,
+action readiness, technical provenance) from earlier passes — verified sufficient rather
+than rebuilt, to avoid duplicating a page that already does its job.
+
+### Navigation — final structure (§16)
+
+Reorganized `app-shell.tsx`'s `PRIMARY_GROUPS` into Performance (Organization/Sites/
+Fleet), **Intelligence** (new group: Condition Intelligence/Energy & Efficiency/ML
+Intelligence), Execution (Incidents/Maintenance/Action Readiness), **Assistance** (new
+group: Assistant/Knowledge Base), and Product Performance standing alone. Removed the
+Engineering group's redundant "ML Evidence" entry (same `/ml` route as the new primary
+"ML Intelligence" item) — `/ml` is now reachable from primary nav for the first time.
+"Condition Estimation" (`/state-estimation`, the raw Kalman-filter state-estimate page)
+stays in Engineering — a genuinely different, lower-level page from the new
+`/condition` fleet workspace, not a duplicate.
+
+### Traceability matrix
+
+| Metric | Definition | Count (live, post-reseed) | Source API | Drilldown | Verified |
+|---|---|---|---|---|---|
+| Need attention | `reliability.attention_assets` — priority ∈ {ATTENTION,HIGH_ATTENTION,CRITICAL_ATTENTION} | 7 | `GET /performance/organization` | `/performance/attention?priority=reliability` → 7 of 22 | ✅ matches exactly |
+| Critical attention | `reliability.critical_attention_assets` — priority = CRITICAL_ATTENTION | 1 | `GET /performance/organization` | `/performance/attention?priority=critical` → 1 of 22 | ✅ matches exactly |
+| Open maintenance | `maintenance.open_actions` — machines with a case in an open state | 0 | `GET /performance/organization` | `/maintenance?state=open` → 0 of 2 cases (explicit empty state) | ✅ matches exactly |
+| Evidence limitations | `ASSESSMENT_BLOCKED + ACTION_BLOCKED` counts | 13 (13+0 this reseed) | `GET /performance/organization` (`data_trust.distribution`) | `/data-quality` | ✅ same underlying `DataTrustCategory` computation Data Quality itself reads |
+| Energy assessable | count of machines with `energy_status is not None` | 10 of 24 | `GET /performance/organization` (`energy_efficiency.energy_assessable_assets`) | `/energy` → "10 of 24 monitored assets…", 10 rows in the table | ✅ matches exactly |
+| Active energy opportunity | energy_bucket ∈ {ACTIVE_ELEVATED_ENERGY, ATTRIBUTION_SUPPORTED_OPPORTUNITY} | 1 (IDF-01) | `GET /performance/organization` | `/energy?status=opportunity` → 1 of 10 | ✅ matches exactly |
+| Qualified recovery | outcome_status = QUALIFIED_RECOVERY with a non-null avoided-kWh | 1 (BE-201) | `GET /performance/organization` | `/energy?status=qualified` → 1 of 10 | ✅ matches exactly |
+| Estimated CO2e | qualified avoided kWh × applicable emission factor | 0.43 kg (1 estimate) | `GET /performance/organization` (`carbon`) + `CarbonImpactEstimate` | Machine Detail → BE-201 → "How this is calculated" → 1.09 kWh × 0.4 = 0.43 kg | ✅ matches exactly, formula shown live with real operands |
+| ML evidence count | `MLInferenceResult` rows | 27 (24 OK + 3 insufficient-features) | `GET /ml/fleet-latest` | `/ml` Fleet Evidence tab summary ("24 scored"/"3 insufficient") | ✅ matches exactly |
+| Condition count/distribution | persisted `ConditionAssessment` rows, one per assessed machine | 12 of 24 machines | `GET /conditions/fleet-latest` | `/condition` → 12 rows show a real condition, 12 show "Not yet assessed" | ✅ matches exactly |
+
+Every row above was checked by direct `curl` against the local backend (tenant
+`bbdd114e-b5a7-5890-a5bd-9e8c787a5fe0`) compared against the rendered page, both before
+and after a local reseed (values shift slightly release-to-release since telemetry is
+regenerated, but the flagship IDF-01/BE-201 story and every reconciliation held across
+the reseed).
+
+### Manual walkthrough findings (§18, real seeded local data)
+
+- **A/B — Organization → attention/critical**: confirmed above (7 of 22, 1 of 22).
+- **C — Organization → open maintenance**: confirmed above (0 of 2, explicit empty
+  state instead of a misleading full case list).
+- **D — Energy opportunity**: Organization → Energy & Efficiency tab → 1 active
+  opportunity → `/energy?status=opportunity` → IDF-01, residual +13.7%, attribution
+  "Possible", outcome "No intervention yet" — correctly not yet a benefit claim.
+- **E — Qualified energy outcome/carbon**: `/energy?status=qualified` → BE-201 → Machine
+  Detail's Energy & Efficiency section → pre-intervention residual +7.4%/post -0.3% →
+  ~1.1 kWh avoided → Carbon panel → "How this is calculated" → factor source/effective
+  period/provenance, all real. No finding.
+- **F — ML**: `/ml` Fleet Evidence (default scoped to evidence machines) → Model
+  Performance (real 29%/38% F1 shown, not hidden) → Model Governance (Staging
+  classifier's real eligibility-vs.-actual-use gap explained). No finding.
+- **G — Condition**: `/condition` → filter to an attention asset → evidence column shows
+  the real rule-finding text → row links to Machine Detail for full evidence/action-
+  readiness/maintenance context. No finding.
+- **H — Baseline**: `/baselines` → a `BEARING_TEMPERATURE` sensor → three humanized
+  profile names ("Bearing temperature — stopped operation" etc.) → Technical detail
+  discloses strategy/context key/ID/version. No finding (already fixed in Pass 1).
+- **I — Knowledge**: `/knowledge` already titled "Approved Knowledge Base" with a
+  document-type column and Assistant cross-links (from an earlier pass) — no finding.
+- **J — Product Performance**: `/metrics` header now reads "How the platform is
+  performing as a decision-support product" with grouped supporting metrics — no
+  finding.
+
+No P0 (nothing broken/false) or P1 findings surfaced during this walkthrough — the one
+real P2-level clarity issue found (the fleet condition table's "Trend" column implying a
+directional signal the backend doesn't compute) was fixed inline during this pass
+(relabeled "Lifecycle").
+
+### Responsive review (§19) — disclosed limitation, unchanged from prior passes
+
+Attempted `resize_window` to 390×844 on `/condition` (a newly built page) before relying
+on the code-level audit — confirmed once again non-functional in this environment (the
+tool reports success; `window.innerWidth` and the rendered layout do not change). This is
+the same limitation disclosed in every prior pass, now confirmed a fourth time. Fell back
+to the same code-level audit as before: every new/changed table has an `overflow-x-auto`
+wrapper (`/energy`, `/condition`, the restructured `/ml` fleet table); every new/changed
+filter bar has `flex-wrap` (found and fixed one miss — the ML page's new "All assets"
+checkbox + machine-selector row was missing `flex-wrap`, added). `WorkspaceTabs` itself
+wraps. No pixel-level verification was performed or is claimed.
+
+### Tests added this pass
+
+`machine-carbon-panel.test.tsx` (+4), `lib/carbon-calc.test.ts` (+7, new file),
+`lib/ml-terminology.test.ts` (+4, new file, covers `selectableMachinesFor`'s
+evidence-only default and deep-link-resolution behavior). No backend changes this pass,
+so no backend tests were added; the full backend suite was re-confirmed unaffected (987
+passed, the same 2 pre-existing, unrelated `tests/knowledge/test_retrieval.py` failures
+from before this pass, reproduced independently via `git stash`).
 
 ## Known limitations
 
@@ -640,11 +832,12 @@ naming) that the structural page rebuilds still need to build on.
   `app/auth/permissions.py` if one is edited without the other (ADR-160) — there is no
   automated check for this today.
 - No automated visual-regression or accessibility-audit tooling is wired into CI;
-  narrow-viewport verification across all three product passes has been a code-level
+  narrow-viewport verification across all four product passes has been a code-level
   review (table/filter-bar/breadcrumb wrap-safety), not pixel-verified — the
   `resize_window` MCP tool does not change the actual rendered viewport in this
-  environment, confirmed on three separate attempts across three passes (most recently
-  at 390×844, mobile-sized, during the Final Product Review).
+  environment, confirmed on four separate attempts across four passes (most recently at
+  390×844, mobile-sized, on the new `/condition` page during Enterprise Product Rebuild
+  Pass 2).
 - Maintenance Detail's new "Energy outcome" panel has no dedicated drill-down route of
   its own (see "Deep links" above) — it is the deepest view of that data today.
 - The Assistant has no energy/attribution/carbon-aware tool in its backend allowlist —

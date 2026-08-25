@@ -128,3 +128,21 @@ export function mlRoleFor(params: {
   if (confident) return "SUPPORTING_EVIDENCE";
   return "CORROBORATING_EVIDENCE";
 }
+
+/** The ML Intelligence "Fleet Evidence" machine selector's option list (Enterprise
+ * Product Rebuild Pass 2 §8) — defaults to assets WITH ML evidence only; a no-evidence
+ * machine only appears when the user opts into "All assets", or when it's the currently
+ * selected machine via a deep link (so an incoming `?machineId=` never silently resolves
+ * to a mismatched dropdown value). Pure so the default-exclusion behavior is unit
+ * testable without mounting the whole page. */
+export function selectableMachinesFor<M extends { id: string }>(params: {
+  allMachines: M[];
+  machinesWithEvidence: M[];
+  showAllAssets: boolean;
+  effectiveMachineId: string;
+}): M[] {
+  const base = params.showAllAssets ? params.allMachines : params.machinesWithEvidence;
+  if (base.some((m) => m.id === params.effectiveMachineId)) return base;
+  const deepLinked = params.allMachines.find((m) => m.id === params.effectiveMachineId);
+  return deepLinked ? [...base, deepLinked] : base;
+}
