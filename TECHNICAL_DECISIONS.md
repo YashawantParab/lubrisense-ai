@@ -9472,6 +9472,117 @@ remains genuinely multi-site.
 
 ---
 
+# ADR-179 — Machine-Level Energy Surface Reads Fleet-Latest Only; Cross-Product Context Is a Shared Utility, Not Four Copies
+
+### Status
+
+ACCEPTED — Enterprise Experience Pass B implemented (Machine Detail Energy & Efficiency
+section; shared Organization/Site/Area breadcrumb on Machine/Incident/Maintenance Detail;
+Fleet site/area filters; Incidents/Maintenance hierarchy/energy-outcome integration;
+grouped primary nav). See `docs/PRODUCT_EXPERIENCE.md`'s "Enterprise Experience Pass B"
+section for the full page/component/wording design.
+
+### Context
+
+[[ADR-176]] (Passes 1-4) shipped a complete machine-level energy/attribution/outcome/
+carbon API surface with no frontend consumer at all — Machine Detail had no energy section
+whatsoever before this pass, despite the backend chain being real and complete. Separately,
+[[ADR-178]] gave the organization/site/area layer a shared breadcrumb builder, but
+Machine/Incident/Maintenance Detail — the product's actual asset-journey drilldown — still
+each computed (or, for Incident/Maintenance, entirely lacked) their own site/area context.
+This pass closes both gaps in the same pass because the task's own framing treated them as
+one problem: making the whole product feel like one coherent journey, not a command center
+bolted onto an unchanged asset-detail experience.
+
+### Decision
+
+**Energy data access**: `hooks/use-energy.ts` reads only the backend's `fleet-latest`
+endpoints (`EnergyQueryService.fleet_latest`/`AttributionQueryService.fleet_latest`/
+`EnergyOutcomeQueryService.fleet_latest`/`CarbonQueryService.fleet_latest` — all pure
+reads over already-persisted rows) and filters client-side to one `machine_id`, exactly
+mirroring the pre-existing `useFleetLatestML` pattern already used on this same page.
+Deliberately **not** the backend's single-machine `.../latest` routes
+(`EnergyAssessmentService.assess_machine`, etc.) — those compute and persist a fresh
+assessment on every GET, which is correct for an explicit "assess now" action but wrong
+for a page render, which must be idempotent and side-effect-free.
+
+**Cross-product context**: `lib/asset-context.ts` (`findSiteForMachine`) and
+`lib/breadcrumbs.ts` (`buildAssetBreadcrumb`) are the one shared implementation Machine
+Detail, Incident Detail, and Maintenance Detail all call — extracted from Machine Detail's
+own pre-existing inline tree-walk rather than each detail page reinventing it. `PageHeader`
+itself gained `flex-wrap` on its breadcrumb `<nav>` (previously a plain `flex` row) once
+this pass's longer breadcrumbs (up to 5 segments on Incident/Maintenance Detail, versus
+Pass A's 3-4 on Machine Detail alone) made the pre-existing non-wrapping row a genuine
+overflow risk — a real defect found by code-level audit (§31), fixed once in the shared
+component rather than three times downstream.
+
+**Claim-hierarchy wording**: `lib/energy-outcome-wording.ts`'s `associationWording()` is a
+pure function that only ever restates `EnergyOutcomeVerification.lubrication_association_
+status` in prose — it never infers a stronger claim from the residual numbers themselves.
+This is the same discipline [[ADR-176]]'s backend policy already enforces
+(`app.energy.domain.outcome`'s temporal-integrity rule); this function is the frontend's
+one, single place that discipline could have been silently violated by a careless string
+template, so it exists as its own named, independently-tested unit rather than being
+inlined into `EnergyOutcomePanel`.
+
+### Alternatives Considered
+
+Computing the current energy assessment via the single-machine `.../latest` compute
+endpoint, so Machine Detail always shows a maximally fresh number — rejected: a GET request
+must not have the side effect of writing a new `EnergyAssessment` row merely because a user
+opened a page; `fleet-latest` is exactly as fresh as the platform's own periodic assessment
+cadence already provides, matching how every other "current state" value on this page
+(condition, decision, ML) is already sourced.
+
+Leaving Incident/Maintenance Detail without site/area context (out of this pass's scope,
+since only Machine Detail was explicitly required to have one before) — rejected: the
+task's own core principle ("a user should never feel they entered a separate subsystem")
+applies exactly as much to the asset-journey pages as to the new command-center pages; an
+inconsistent breadcrumb depth between Machine Detail and its own child pages would be
+precisely the kind of seam this pass exists to remove.
+
+Inlining `associationWording()`'s logic directly into `EnergyOutcomePanel` — rejected:
+the exact wording rule (BE-201-shaped case must never read as a lubrication claim) is
+independently, cheaply unit-testable as a pure function against the real
+`lubrication_association_status` enum, and doing so caught nothing wrong here — but the
+same policy inlined into JSX would have been much harder to verify was still correct after
+a future edit to that component.
+
+### Why This Option
+
+Verified directly against the real backend, not just the schemas: ran a local backend
+process against the same Postgres the hosted-demo stack uses, and manually inspected
+`GET /api/v1/energy/fleet-latest`'s actual response for BE-201/IDF-01/CV-101 in the
+browser — this is how the `residual_pct` doubling bug (see "Consequences") was found; no
+static check would have caught it, since both the doubled and correct values are
+type-valid numbers.
+
+### Consequences
+
+Machine Detail now has the first-class energy surface [[ADR-176]] always intended but never
+had a consumer for — verified live for all three real seeded shapes: BE-201 (qualified
+recovery, `NO_EVIDENCE` pre-attribution, correctly never described as a lubrication-
+associated recovery), IDF-01 (active opportunity, `POSSIBLE` attribution, correctly shows
+no avoided energy or CO2e), CV-101 (`INSUFFICIENT_DATA` throughout, every field renders
+"—" honestly rather than a fabricated value). A real, non-trivial bug was found and fixed
+during this verification: every `*_residual_pct` display in the first draft multiplied an
+already-percentage backend value by 100 again (`backend/app/energy/domain/residual.py`
+already computes `* 100.0`), turning a real +13.7% into a would-be +1372.0%-shaped
+number — fixed by centralizing formatting in `lib/energy-format.ts` with a regression test
+pinning the real seeded values, rather than three independently-fixed call sites.
+
+### Revisit When
+
+If a future pass adds a dedicated per-machine energy-outcome or per-machine energy-history
+route, revisit whether `MachineCarbonPanel`/`EnergyOutcomePanel` should link out to it
+instead of being the deepest view of that data, as they are today (see `docs/
+PRODUCT_EXPERIENCE.md`'s "Deep links" note). If the Assistant's backend tool allowlist ever
+gains an energy/attribution/carbon-aware tool, revisit the deliberately-deferred
+energy-specific contextual prompts ("Explain this energy deviation") this pass declined to
+add ahead of that capability existing.
+
+---
+
 # Pending Decisions (Deferred to Later Phases)
 
 Resolved by Phase 1 and removed from this list: exact service boundaries within `backend/`

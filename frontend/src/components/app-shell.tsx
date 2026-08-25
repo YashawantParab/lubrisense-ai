@@ -15,18 +15,37 @@ interface NavItem {
   label: string;
 }
 
-// Organization/site/fleet foregrounded as primary (Enterprise Experience Pass A §16) —
-// the Organization Command Center is now the product's home screen (see app/page.tsx).
-const PRIMARY_NAV: NavItem[] = [
-  { href: "/performance/organization", label: "Organization" },
-  { href: "/performance/sites", label: "Sites" },
-  { href: "/fleet", label: "Fleet" },
-  { href: "/incidents", label: "Incidents" },
-  { href: "/maintenance", label: "Maintenance" },
-  { href: "/action-readiness", label: "Action Readiness" },
-  { href: "/knowledge", label: "Knowledge" },
-  { href: "/assistant", label: "Assistant" },
-  { href: "/metrics", label: "Metrics" },
+// Organization/site/fleet foregrounded as primary (Enterprise Experience Pass A §16),
+// grouped into Performance/Execution (Pass B §21) so a flat 9-item list doesn't read as
+// one undifferentiated block — labels are light-touch (smaller/lighter than the
+// "ENGINEERING" master label below) since this is still the product's primary nav, not a
+// secondary registry. Knowledge/Assistant/Metrics stay ungrouped: none belongs to either
+// cluster, and a group of one item would be noise, not clarity.
+const PRIMARY_GROUPS: { label: string | null; items: NavItem[] }[] = [
+  {
+    label: "Performance",
+    items: [
+      { href: "/performance/organization", label: "Organization" },
+      { href: "/performance/sites", label: "Sites" },
+      { href: "/fleet", label: "Fleet" },
+    ],
+  },
+  {
+    label: "Execution",
+    items: [
+      { href: "/incidents", label: "Incidents" },
+      { href: "/maintenance", label: "Maintenance" },
+      { href: "/action-readiness", label: "Action Readiness" },
+    ],
+  },
+  {
+    label: null,
+    items: [
+      { href: "/knowledge", label: "Knowledge" },
+      { href: "/assistant", label: "Assistant" },
+      { href: "/metrics", label: "Metrics" },
+    ],
+  },
 ];
 
 // Grouped per the Engineering IA (data collection -> intelligence pipeline ->
@@ -152,9 +171,23 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
           </span>
         </Link>
       </div>
-      <nav aria-label="Primary" className="flex flex-col gap-0.5 px-2">
-        {PRIMARY_NAV.map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(item.href)} onClick={onNavigate} />
+      <nav aria-label="Primary" className="flex flex-col gap-3 px-2">
+        {PRIMARY_GROUPS.map((group, index) => (
+          <div key={group.label ?? `group-${index}`} className="flex flex-col gap-0.5">
+            {group.label && (
+              <div className="px-2 pb-0.5 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
+                {group.label}
+              </div>
+            )}
+            {group.items.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                active={isActive(item.href)}
+                onClick={onNavigate}
+              />
+            ))}
+          </div>
         ))}
       </nav>
 

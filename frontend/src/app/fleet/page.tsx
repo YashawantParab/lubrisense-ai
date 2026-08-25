@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useMemo, useState } from "react";
 
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
@@ -33,6 +34,7 @@ import type { HierarchyMachine } from "@/lib/api/asset-hierarchy-types";
 interface FleetRow {
   machine: HierarchyMachine;
   customerName: string;
+  siteId: string;
   siteName: string;
   plantName: string;
   lineName: string;
@@ -41,13 +43,49 @@ interface FleetRow {
 type AttentionFilter = "all" | "needs-attention";
 
 export default function FleetPage() {
+  return (
+    <Suspense fallback={null}>
+      <FleetPageContent />
+    </Suspense>
+  );
+}
+
+function FleetPageContent() {
   usePageTitle("Fleet");
   const hierarchy = useHierarchy();
   const { data: incidents, priorityIncident } = usePriorityIncident();
   const conditions = useFleetLatestConditions();
   const decisions = useFleetLatestDecisions();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [search, setSearch] = useState("");
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>("all");
+  // Organization/Site pages deep-link here with ?site=<id> and/or ?area=<name> (Enterprise
+  // Experience Pass B §13/§22) — URL is the source of truth, no hidden global filter state.
+  const [siteFilter, setSiteFilterState] = useState(searchParams.get("site") ?? "");
+  const [areaFilter, setAreaFilterState] = useState(searchParams.get("area") ?? "");
+
+  const pushQuery = useCallback(
+    (next: Record<string, string>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(next)) {
+        if (value) params.set(key, value);
+        else params.delete(key);
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+  const setSiteFilter = (value: string) => {
+    setSiteFilterState(value);
+    pushQuery({ site: value });
+  };
+  const setAreaFilter = (value: string) => {
+    setAreaFilterState(value);
+    pushQuery({ area: value });
+  };
 
   const rows: FleetRow[] = useMemo(() => {
     if (!hierarchy.data) return [];
@@ -60,6 +98,7 @@ export default function FleetPage() {
               out.push({
                 machine,
                 customerName: customer.name,
+                siteId: site.id,
                 siteName: site.name,
                 plantName: plant.name,
                 lineName: line.name,
@@ -71,6 +110,19 @@ export default function FleetPage() {
     }
     return out;
   }, [hierarchy.data]);
+
+  const siteOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of rows) map.set(row.siteId, row.siteName);
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
+  const areaOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of rows) {
+      if (row.machine.area) set.add(row.machine.area);
+    }
+    return Array.from(set).sort();
+  }, [rows]);
 
   const conditionByMachine = useMemo(
     () => new Map((conditions.data ?? []).map((c) => [c.machine_id, c])),
@@ -132,12 +184,14 @@ export default function FleetPage() {
         const haystack = `${row.machine.name} ${row.machine.asset_code}`.toLowerCase();
         if (!haystack.includes(term)) return false;
       }
+      if (siteFilter && row.siteId !== siteFilter) return false;
+      if (areaFilter && row.machine.area !== areaFilter) return false;
       if (attentionFilter === "needs-attention") {
         return openIncidentsByMachine.has(row.machine.id);
       }
       return true;
     });
-  }, [rows, search, attentionFilter, openIncidentsByMachine]);
+  }, [rows, search, siteFilter, areaFilter, attentionFilter, openIncidentsByMachine]);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-6 py-10 lg:px-10">
@@ -177,6 +231,44 @@ export default function FleetPage() {
               </button>
             ))}
           </div>
+          <select
+            value={siteFilter}
+            onChange={(e) => setSiteFilter(e.target.value)}
+            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            aria-label="Filter by site"
+          >
+            <option value="">All sites</option>
+            {siteOptions.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={areaFilter}
+            onChange={(e) => setAreaFilter(e.target.value)}
+            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            aria-label="Filter by area"
+          >
+            <option value="">All areas</option>
+            {areaOptions.map((area) => (
+              <option key={area} value={area}>
+                {area}
+              </option>
+            ))}
+          </select>
+          {(siteFilter || areaFilter) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSiteFilter("");
+                setAreaFilter("");
+              }}
+              className="rounded-full px-3 py-1 text-xs font-medium text-sky-600 ring-1 ring-sky-300 hover:bg-sky-50 dark:text-sky-400 dark:ring-sky-800 dark:hover:bg-sky-950/40"
+            >
+              Clear site/area ✕
+            </button>
+          )}
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
             {filteredRows.length} of {rows.length} machines
           </span>

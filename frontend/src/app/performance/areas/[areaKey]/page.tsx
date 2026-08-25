@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import Link from "next/link";
 
 import { ProvenanceBadge } from "@/components/badges";
 import { DataState } from "@/components/data-state";
@@ -53,6 +54,12 @@ export default function AreaDetailPage({ params }: { params: Promise<{ areaKey: 
                   <span className="text-xs text-zinc-400 dark:text-zinc-600">
                     as of <RelativeTime iso={area.data.as_of} />
                   </span>
+                  <Link
+                    href={`/fleet?area=${encodeURIComponent(area.data.area)}`}
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  >
+                    View this area&rsquo;s fleet →
+                  </Link>
                 </>
               }
             />

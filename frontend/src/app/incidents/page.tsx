@@ -9,12 +9,15 @@ import { IncidentStateBadge, PriorityBadge, SeverityBadge } from "@/components/b
 import { evidenceBackingLine } from "@/components/condition-evidence";
 import { PageHeader } from "@/components/page-header";
 import { RelativeTime } from "@/components/relative-time";
+import { useFleetLatestEnergyAssessment } from "@/hooks/use-energy";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useHierarchy } from "@/hooks/use-asset-hierarchy";
 import { useEvaluateMachine, useIncidents } from "@/hooks/use-incidents";
 import { useMaintenanceCases } from "@/hooks/use-maintenance";
 import { useAuth } from "@/lib/auth/context";
 import { humanize } from "@/lib/terminology";
+
+const ENERGY_OPPORTUNITY_STATUSES = new Set(["ELEVATED_ENERGY_DEMAND", "BELOW_EXPECTED_RANGE"]);
 
 const STATE_FILTERS = ["ALL", "OPEN", "ACKNOWLEDGED", "INVESTIGATING", "RESOLVED"] as const;
 type StateFilter = (typeof STATE_FILTERS)[number];
@@ -58,8 +61,29 @@ export default function IncidentsPage() {
   const evaluate = useEvaluateMachine(effectiveMachineId);
   const canEvaluate = can("INCIDENT_MANAGE");
   const cases = useMaintenanceCases();
+  const fleetEnergy = useFleetLatestEnergyAssessment();
 
   const machineName = useMemo(() => new Map(machines.map((m) => [m.id, m.name])), [machines]);
+  const siteNameByMachine = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const customer of hierarchy.data?.customers ?? []) {
+      for (const site of customer.sites) {
+        for (const plant of site.plants) {
+          for (const line of plant.production_lines) {
+            for (const machine of line.machines) map.set(machine.id, site.name);
+          }
+        }
+      }
+    }
+    return map;
+  }, [hierarchy.data]);
+  const energyOpportunityByMachine = useMemo(() => {
+    const set = new Set<string>();
+    for (const assessment of fleetEnergy.data ?? []) {
+      if (ENERGY_OPPORTUNITY_STATUSES.has(assessment.status)) set.add(assessment.machine_id);
+    }
+    return set;
+  }, [fleetEnergy.data]);
   const caseByIncident = useMemo(
     () => new Map((cases.data ?? []).map((c) => [c.incident_id, c])),
     [cases.data],
@@ -169,14 +193,24 @@ export default function IncidentsPage() {
                       {incident.title}
                     </Link>
                     <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                      {machineName.get(incident.machine_id) ?? "Unknown machine"} ·{" "}
-                      {evidenceBackingLine(incident)}
+                      {machineName.get(incident.machine_id) ?? "Unknown machine"}
+                      {siteNameByMachine.get(incident.machine_id) &&
+                        ` · ${siteNameByMachine.get(incident.machine_id)}`}{" "}
+                      · {evidenceBackingLine(incident)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <SeverityBadge value={incident.severity} />
                     <PriorityBadge value={incident.priority} />
                     <IncidentStateBadge value={incident.state} />
+                    {energyOpportunityByMachine.has(incident.machine_id) && (
+                      <span
+                        title="This asset also currently shows elevated contextual energy demand"
+                        className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-600/20 ring-inset dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/30"
+                      >
+                        Energy opportunity
+                      </span>
+                    )}
                   </div>
                   <div className="min-w-40 text-sm text-zinc-600 dark:text-zinc-400">
                     {linkedCase

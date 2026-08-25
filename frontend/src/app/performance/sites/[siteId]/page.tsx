@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import Link from "next/link";
 
 import { DataState } from "@/components/data-state";
 import { ProvenanceBadge } from "@/components/badges";
@@ -55,6 +56,12 @@ export default function SiteDetailPage({ params }: { params: Promise<{ siteId: s
                   <span className="text-xs text-zinc-400 dark:text-zinc-600">
                     as of <RelativeTime iso={site.data.as_of} />
                   </span>
+                  <Link
+                    href={`/fleet?site=${site.data.site_id}`}
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  >
+                    View this site&rsquo;s fleet →
+                  </Link>
                 </>
               }
             />

@@ -1,16 +1,24 @@
 import { StatusPill } from "@/components/status-pill";
 import {
   actionReadinessStateTone,
+  attributionLevelTone,
   capabilityLevelTone,
+  carbonEstimateStatusTone,
   commissioningStatusTone,
+  comparabilityStatusTone,
+  comparisonConfidenceTone,
   compatibilityTone,
   confidenceTone,
   customerStatusTone,
   dataTrustCategoryTone,
+  energyAssessmentStatusTone,
   energyBucketTone,
+  energyEstimateStatusTone,
+  energyOutcomeStatusTone,
   feedbackTone,
   humanize,
   incidentStateTone,
+  lubricationAssociationStatusTone,
   maintenanceOutcomeBucketTone,
   maintenanceStateTone,
   modelStatusTone,
@@ -103,4 +111,39 @@ export function DataTrustCategoryBadge({ value }: { value: string }) {
 
 export function PortfolioOutcomeBadge({ value }: { value: string }) {
   return <StatusPill tone={portfolioOutcomeTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+// --- Lubrication Efficiency Intelligence (machine-level energy/attribution/outcome/
+// carbon, ADR-176) ------------------------------------------------------------------
+
+export function EnergyAssessmentStatusBadge({ value }: { value: string }) {
+  return <StatusPill tone={energyAssessmentStatusTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function AttributionLevelBadge({ value }: { value: string }) {
+  return <StatusPill tone={attributionLevelTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function ComparabilityStatusBadge({ value }: { value: string }) {
+  return <StatusPill tone={comparabilityStatusTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function ComparisonConfidenceBadge({ value }: { value: string }) {
+  return <StatusPill tone={comparisonConfidenceTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function EnergyOutcomeStatusBadge({ value }: { value: string }) {
+  return <StatusPill tone={energyOutcomeStatusTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function EnergyEstimateStatusBadge({ value }: { value: string }) {
+  return <StatusPill tone={energyEstimateStatusTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function LubricationAssociationStatusBadge({ value }: { value: string }) {
+  return <StatusPill tone={lubricationAssociationStatusTone(value)}>{humanize(value)}</StatusPill>;
+}
+
+export function CarbonEstimateStatusBadge({ value }: { value: string }) {
+  return <StatusPill tone={carbonEstimateStatusTone(value)}>{humanize(value)}</StatusPill>;
 }

@@ -1,15 +1,18 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { CaseContextHeader, CaseWorkflow } from "@/components/case-workflow";
 import { DataState } from "@/components/data-state";
 import { FeedbackBadge, HumanReviewBadge, MaintenanceStateBadge } from "@/components/badges";
+import { EnergyOutcomePanel } from "@/components/energy/energy-outcome-panel";
+import { MachineCarbonPanel } from "@/components/energy/machine-carbon-panel";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { StatusPill } from "@/components/status-pill";
-import { useMachine } from "@/hooks/use-asset-hierarchy";
+import { useHierarchy, useMachine } from "@/hooks/use-asset-hierarchy";
+import { useFleetLatestCarbon, useFleetLatestEnergyOutcome } from "@/hooks/use-energy";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
   useCompleteCase,
@@ -23,7 +26,10 @@ import {
   useRecordFinding,
   useStartCase,
 } from "@/hooks/use-maintenance";
+import { findSiteForMachine } from "@/lib/asset-context";
 import { useAuth } from "@/lib/auth/context";
+import { buildAssetBreadcrumb } from "@/lib/breadcrumbs";
+import { stringMeta } from "@/lib/equipment";
 import { humanize, type Tone } from "@/lib/terminology";
 
 function findingResultTone(result: string): Tone {
@@ -69,6 +75,27 @@ export default function MaintenanceCaseDetailPage({
   const findings = useMaintenanceFindings(caseId);
   const actions = useMaintenanceActions(caseId);
   const feedback = useMaintenanceFeedback(caseId);
+  const fullHierarchy = useHierarchy();
+  const siteForMachine = useMemo(
+    () => findSiteForMachine(fullHierarchy.data, caseQuery.data?.machine_id),
+    [fullHierarchy.data, caseQuery.data?.machine_id],
+  );
+  const machineArea = machine.data ? stringMeta(machine.data.metadata, "area") : null;
+  const fleetOutcome = useFleetLatestEnergyOutcome();
+  const fleetCarbon = useFleetLatestCarbon();
+  const energyOutcome = useMemo(
+    () => (fleetOutcome.data ?? []).find((o) => o.maintenance_case_id === caseId) ?? null,
+    [fleetOutcome.data, caseId],
+  );
+  const energyCarbon = useMemo(
+    () =>
+      energyOutcome
+        ? ((fleetCarbon.data ?? []).find(
+            (c) => c.energy_outcome_verification_id === energyOutcome.id,
+          ) ?? null)
+        : null,
+    [fleetCarbon.data, energyOutcome],
+  );
 
   const plan = usePlanCase(caseId);
   const start = useStartCase(caseId);
@@ -101,10 +128,17 @@ export default function MaintenanceCaseDetailPage({
         {caseQuery.data && (
           <>
             <PageHeader
-              breadcrumbs={[
-                { label: "Maintenance", href: "/maintenance" },
-                { label: humanize(caseQuery.data.recommended_action) },
-              ]}
+              breadcrumbs={buildAssetBreadcrumb({
+                site: siteForMachine,
+                area: machineArea,
+                trailing: [
+                  {
+                    label: machine.data?.name ?? "Machine",
+                    href: `/machines/${caseQuery.data.machine_id}`,
+                  },
+                  { label: humanize(caseQuery.data.recommended_action) },
+                ],
+              })}
               title={humanize(caseQuery.data.recommended_action)}
               description={`${machine.data ? `${machine.data.name} · ` : ""}Window: ${humanize(caseQuery.data.recommended_window)} · Priority: ${humanize(caseQuery.data.priority)}`}
               actions={
@@ -354,6 +388,21 @@ export default function MaintenanceCaseDetailPage({
                         Post-action condition: {humanize(feedback.data.post_action_condition_type)}
                       </span>
                     </div>
+                  </SectionCard>
+                )}
+
+                {/* Energy outcome — Enterprise Experience Pass B §15: whether this case's
+                    intervention was assessed for an energy outcome, and whether a
+                    recovery/carbon estimate was qualified. Never implies completion means
+                    a qualified recovery. */}
+                {energyOutcome && (
+                  <SectionCard title="Energy outcome">
+                    <EnergyOutcomePanel outcome={energyOutcome} />
+                    {energyCarbon && (
+                      <div className="mt-4">
+                        <MachineCarbonPanel estimate={energyCarbon} />
+                      </div>
+                    )}
                   </SectionCard>
                 )}
               </div>

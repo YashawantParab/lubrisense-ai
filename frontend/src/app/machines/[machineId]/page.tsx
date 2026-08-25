@@ -7,6 +7,7 @@ import { CaseContextHeader, CaseWorkflow } from "@/components/case-workflow";
 import { EvidenceWhyDetails, evidenceBackingLine } from "@/components/condition-evidence";
 import { DataState } from "@/components/data-state";
 import { EmptyState } from "@/components/empty-state";
+import { MachineEnergySection } from "@/components/energy/machine-energy-section";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { StatusPill } from "@/components/status-pill";
@@ -51,6 +52,8 @@ import {
   equipmentTypeFor,
   stringMeta,
 } from "@/lib/equipment";
+import { findSiteForMachine } from "@/lib/asset-context";
+import { buildAssetBreadcrumb } from "@/lib/breadcrumbs";
 import { failureLabelName, modelDisplayName } from "@/lib/ml-terminology";
 import { interpretState, STATE_TYPE_LABELS } from "@/lib/state-interpretation";
 import { humanize, toneForStatus } from "@/lib/terminology";
@@ -180,19 +183,10 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
   // tenant-wide query the Fleet/Overview pages already fetch, so this is typically already
   // warm in the React Query cache rather than a fresh request.
   const fullHierarchy = useHierarchy();
-  const siteForMachine = useMemo(() => {
-    if (!fullHierarchy.data) return null;
-    for (const customer of fullHierarchy.data.customers) {
-      for (const site of customer.sites) {
-        for (const plant of site.plants) {
-          for (const line of plant.production_lines) {
-            if (line.machines.some((m) => m.id === machineId)) return site;
-          }
-        }
-      }
-    }
-    return null;
-  }, [fullHierarchy.data, machineId]);
+  const siteForMachine = useMemo(
+    () => findSiteForMachine(fullHierarchy.data, machineId),
+    [fullHierarchy.data, machineId],
+  );
   // 2000 is the API's max (`limit: le=2000`) and is applied across *all* measurement
   // types combined for this machine, not per-type — a low limit here silently truncates
   // to only the most recent minutes of a multi-hour story once several sensors share the
@@ -367,21 +361,11 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
         {hierarchy.data && (
           <>
             <PageHeader
-              breadcrumbs={[
-                { label: "Organization", href: "/performance/organization" },
-                siteForMachine
-                  ? { label: siteForMachine.name, href: `/performance/sites/${siteForMachine.id}` }
-                  : { label: "Fleet", href: "/fleet" },
-                ...(equipmentIdentity?.area
-                  ? [
-                      {
-                        label: equipmentIdentity.area,
-                        href: `/performance/areas/${encodeURIComponent(equipmentIdentity.area)}`,
-                      },
-                    ]
-                  : []),
-                { label: hierarchy.data.machine.name },
-              ]}
+              breadcrumbs={buildAssetBreadcrumb({
+                site: siteForMachine,
+                area: equipmentIdentity?.area,
+                trailing: [{ label: hierarchy.data.machine.name }],
+              })}
               title={equipmentIdentity?.equipmentName ?? hierarchy.data.machine.name}
               description={[
                 equipmentIdentity?.component,
@@ -552,6 +536,17 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                   </div>
                 )}
               </DataState>
+            </SectionCard>
+
+            {/* Energy & Efficiency — Enterprise Experience Pass B §5. Uses only real,
+                already-persisted fleet-latest energy/attribution/outcome/carbon rows. */}
+            <SectionCard title="Energy & Efficiency">
+              <MachineEnergySection
+                machineId={machineId}
+                conditionType={intelligence.data?.condition.condition_type}
+                maintenanceStateLabel={machineCase ? humanize(machineCase.state) : undefined}
+                storyMarkers={telemetryStoryMarkers}
+              />
             </SectionCard>
 
             {/* Three intelligence layers */}
@@ -727,6 +722,14 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
                         >
                           View fleet action readiness →
                         </Link>
+                        {readiness.mode === "BLOCKED_INSUFFICIENT_EVIDENCE" && (
+                          <Link
+                            href={`/data-quality?machine=${machineId}`}
+                            className="mt-1 block text-sky-600 hover:underline dark:text-sky-400"
+                          >
+                            See the data-quality issue blocking this →
+                          </Link>
+                        )}
                       </details>
                     )}
                   </div>

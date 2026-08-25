@@ -245,6 +245,64 @@ export function dataTrustCategoryTone(value: string): Tone {
   return "neutral";
 }
 
+// --- Lubrication Efficiency Intelligence (machine-level energy/attribution/outcome/
+// carbon, ADR-176) — these map the backend's own enums 1:1, mirroring the Portfolio
+// Intelligence tone functions above. See docs/PRODUCT_EXPERIENCE.md's "Machine Energy &
+// Efficiency" section for how each one is used and why energy deviation and lubrication
+// attribution are always rendered as visually separate concepts.
+
+export function energyAssessmentStatusTone(value: string): Tone {
+  if (value === "WITHIN_EXPECTED_RANGE") return "ok";
+  if (value === "ELEVATED_ENERGY_DEMAND" || value === "BELOW_EXPECTED_RANGE") return "warn";
+  return "neutral"; // INSUFFICIENT_BASELINE / INSUFFICIENT_DATA / DATA_QUALITY_LIMITED
+}
+
+export function attributionLevelTone(value: string): Tone {
+  if (value === "NO_EVIDENCE") return "neutral";
+  if (value === "POSSIBLE" || value === "MODERATE") return "warn";
+  if (value === "STRONG") return "error"; // deliberately the strongest tone available — a
+  // STRONG attribution is the rarest, most evidence-backed level this policy can reach.
+  return "neutral";
+}
+
+export function comparabilityStatusTone(value: string): Tone {
+  if (value === "COMPARABLE") return "ok";
+  if (value === "PARTIALLY_COMPARABLE") return "warn";
+  if (value === "NOT_COMPARABLE") return "error";
+  return "neutral"; // INSUFFICIENT_DATA
+}
+
+export function comparisonConfidenceTone(value: string): Tone {
+  if (value === "HIGH") return "ok";
+  if (value === "MODERATE") return "warn";
+  return "neutral"; // LOW
+}
+
+export function energyOutcomeStatusTone(value: string): Tone {
+  if (value === "QUALIFIED_RECOVERY" || value === "PROBABLE_RECOVERY") return "ok";
+  if (value === "DETERIORATED") return "error";
+  if (value === "NO_MATERIAL_CHANGE") return "neutral";
+  return "neutral"; // INCONCLUSIVE / INSUFFICIENT_DATA
+}
+
+export function energyEstimateStatusTone(value: string): Tone {
+  if (value === "ESTIMATED") return "ok";
+  return "neutral"; // NOT_QUALIFIED / NOT_COMPARABLE / INSUFFICIENT_DATA
+}
+
+export function lubricationAssociationStatusTone(value: string): Tone {
+  if (value === "LUBRICATION_ASSOCIATED_RECOVERY") return "ok";
+  if (value === "QUALIFIED_ENERGY_RECOVERY") return "ok";
+  if (value === "OBSERVED_ENERGY_CHANGE") return "info";
+  return "neutral"; // NOT_APPLICABLE
+}
+
+export function carbonEstimateStatusTone(value: string): Tone {
+  if (value === "ESTIMATE_AVAILABLE") return "ok";
+  if (value === "LIMITED_ESTIMATE") return "warn";
+  return "neutral"; // NOT_ELIGIBLE / FACTOR_NOT_CONFIGURED / FACTOR_NOT_APPLICABLE
+}
+
 export function portfolioOutcomeTone(value: string): Tone {
   if (
     value === "CONDITION_RESOLVED" ||

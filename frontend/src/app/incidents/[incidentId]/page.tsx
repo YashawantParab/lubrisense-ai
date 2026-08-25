@@ -20,6 +20,7 @@ import { RelativeTime } from "@/components/relative-time";
 import { SectionCard } from "@/components/section-card";
 import { StatusPill } from "@/components/status-pill";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useHierarchy, useMachine } from "@/hooks/use-asset-hierarchy";
 import { useFleetLatestConditions } from "@/hooks/use-intelligence";
 import {
   useAcknowledgeIncident,
@@ -32,7 +33,10 @@ import {
 import { useCreateCase, useMaintenanceCases } from "@/hooks/use-maintenance";
 import { useFleetLatestML, useModels } from "@/hooks/use-ml";
 import { useFindings } from "@/hooks/use-rules";
+import { findSiteForMachine } from "@/lib/asset-context";
 import { useAuth } from "@/lib/auth/context";
+import { buildAssetBreadcrumb } from "@/lib/breadcrumbs";
+import { stringMeta } from "@/lib/equipment";
 import {
   dataTrustFusionStrength,
   FUSION_STRENGTH_LABEL,
@@ -78,6 +82,13 @@ export default function IncidentDetailPage({
   const resolve = useResolveIncident(incidentId);
   const close = useCloseIncident(incidentId);
   const createCase = useCreateCase();
+  const fullHierarchy = useHierarchy();
+  const machine = useMachine(incident.data?.machine_id ?? "");
+  const siteForMachine = useMemo(
+    () => findSiteForMachine(fullHierarchy.data, incident.data?.machine_id),
+    [fullHierarchy.data, incident.data?.machine_id],
+  );
+  const machineArea = machine.data ? stringMeta(machine.data.metadata, "area") : null;
 
   usePageTitle(incident.data ? incident.data.title : "Incident");
 
@@ -147,10 +158,17 @@ export default function IncidentDetailPage({
         {incident.data && (
           <>
             <PageHeader
-              breadcrumbs={[
-                { label: "Incidents", href: "/incidents" },
-                { label: incident.data.title },
-              ]}
+              breadcrumbs={buildAssetBreadcrumb({
+                site: siteForMachine,
+                area: machineArea,
+                trailing: [
+                  {
+                    label: machine.data?.name ?? "Machine",
+                    href: `/machines/${incident.data.machine_id}`,
+                  },
+                  { label: incident.data.title },
+                ],
+              })}
               title={incident.data.title}
               description={evidenceBackingLine(incident.data)}
               actions={

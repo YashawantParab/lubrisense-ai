@@ -278,6 +278,194 @@ and `overflow-x-auto` table wrapper already verified working elsewhere in this a
 e.g. the Fleet page table) rather than pixel-verified — disclosed here rather than
 claimed as tested.
 
+## Enterprise Experience Pass B — Cross-Product Integration + Asset Journey Coherence
+
+Where Pass A built the organization-level command center as a new destination, Pass B's
+job was making the *rest* of the product feel like the same product as that destination —
+a consistent Organization/Site/Area/Asset context system, a first-class machine-level
+energy surface (the single largest piece of this pass), and cross-links so no major panel
+is a dead end. See ADR-179.
+
+### Shared breadcrumb/context system
+
+Before this pass, Machine Detail alone resolved its own Organization/Site breadcrumb with
+an ad hoc inline tree-walk; Incident Detail and Maintenance Detail had no site/area
+context at all (`Incidents / <title>`, `Maintenance / <title>`). Extracted the walk into
+`lib/asset-context.ts`'s `findSiteForMachine()` and the crumb-array construction into
+`lib/breadcrumbs.ts`'s `buildAssetBreadcrumb({ site, area, trailing })` — all three detail
+pages now call the same two functions. The result:
+
+- Machine Detail: `Organization / <Site> / <Area> / <Machine name>`
+- Incident Detail: `Organization / <Site> / <Area> / <Machine name> / <Incident title>`
+- Maintenance Detail: `Organization / <Site> / <Area> / <Machine name> / <Recommended action>`
+
+`PageHeader`'s breadcrumb `<nav>` also gained `flex-wrap` in this pass (was a plain
+`flex` row) — a real, code-level-audit-found risk: Pass A's own machine breadcrumb was
+already 3-4 segments, and Pass B's incident/maintenance breadcrumbs push that to 5; an
+unwrapped row would have silently pushed the page into horizontal scroll on a narrow
+viewport. Fixed once, in the shared component, benefiting every page that uses it.
+
+### Machine Detail restructuring — Energy & Efficiency (the major addition)
+
+A new `SectionCard` between Telemetry and the three-intelligence-layer grid,
+`components/energy/machine-energy-section.tsx`, composing six new presentational
+components (`components/energy/*`) — first-class instead of Machine Detail having no
+energy surface at all, per CLAUDE.md's own "if ML fails, condition continues" pattern of
+graceful degradation, but for the inverse case: the section renders an honest empty state
+for the ~60% of the fleet with no commissioned power sensor, rather than a blank gap.
+
+- `MachineEnergyCurrent` — current `EnergyAssessment`: actual/expected/range/residual/
+  status/data-quality/baseline-source/operating-state/as-of, plus the exact required
+  sentence ("Power demand is 13.7% above contextual expectation.") — never "energy loss
+  due to lubrication."
+- `EnergyPowerChart` — actual-vs-expected power over time from `EnergyAssessment` history
+  only (no interpolation, no reconstructed points), reusing `TelemetryChart`'s exact
+  restrained-charting/story-marker idiom rather than inventing a second one.
+- `AttributionPanel` — energy deviation and lubrication attribution rendered as two
+  visually distinct panels (neutral vs. amber), evidence lists (supporting/contradicting/
+  limiting/alternative) below — the deviation percentage is never allowed to read as a
+  lubrication claim.
+- `OpportunityStatePanel` — an IDF-01-shaped active opportunity (elevated demand, possibly
+  attribution-supported, no completed intervention): explicitly never shows avoided
+  energy, a CO2e figure, or "savings" language, only "Outcome: Not yet verified."
+- `EnergyOutcomePanel` — a completed intervention's `EnergyOutcomeVerification`: pre/post
+  residual, comparability, and `lib/energy-outcome-wording.ts`'s `associationWording()` —
+  a pure function that only ever restates `lubrication_association_status` in prose,
+  never infers a stronger claim from the residual numbers. A BE-201-shaped case
+  (`QUALIFIED_ENERGY_RECOVERY`, `NO_EVIDENCE` pre-attribution) reads "Energy performance
+  improved following intervention under comparable operation," never "Lubrication saved
+  X kWh" — verified live against the real seeded BE-201 case.
+- `MachineCarbonPanel` — mirrors the portfolio-level `CarbonPanel`'s "never a real zero"
+  discipline at machine granularity: `FACTOR_NOT_CONFIGURED`/`FACTOR_NOT_APPLICABLE`
+  render an explanation, never "0 kg".
+- `EnergyOutcomeJourney` — a compact 3-stage stepper (Outcome verification → Energy
+  recovery → Carbon estimate) reusing `CaseWorkflow`'s exact dot/line visual language,
+  picking up where that component's own Condition/Decision/Maintenance stages leave off
+  rather than duplicating them.
+
+All five hooks in `hooks/use-energy.ts` read the backend's `fleet-latest` endpoints
+(`EnergyQueryService`/`AttributionQueryService`/`EnergyOutcomeQueryService`/
+`CarbonQueryService` — pure reads) filtered client-side to one `machine_id`, mirroring
+the pre-existing `useFleetLatestML` pattern — deliberately **not** the backend's
+single-machine `.../latest` routes, which compute-and-persist a fresh row on every GET;
+a page render must never have that side effect.
+
+**A real bug found and fixed during manual verification, not by the type system:**
+`EnergyAssessmentResponse.residual_pct`/`Attribution.energy_residual_pct`/
+`EnergyOutcomeVerification.*_residual_pct` are already percentages
+(`backend/app/energy/domain/residual.py`: `residual_pct = (residual_kw /
+expected_power_kw) * 100.0`) — the first draft of every formatting call site multiplied
+by 100 again, turning IDF-01's real +13.7% into a displayed +1372.0%-shaped value (caught
+as "Power demand is 160.7% below contextual expectation" for BE-201, which should have
+read "1.6% below"). Fixed by centralizing the formatting in `lib/energy-format.ts`
+(`formatPct`/`formatKw`) rather than leaving three independent, individually-fixed copies
+— a regression test (`lib/energy-format.test.ts`) pins the exact real seeded values.
+
+### Fleet, Incidents, Maintenance, Action Readiness, Data Quality, ML, Assistant
+
+- **Fleet** gained URL-synced Site and Area filters (`?site=<id>`, `?area=<name>`,
+  alongside the existing search/attention-only filter), so Site Detail and Area Detail
+  can deep-link a "View this site's/area's fleet →" action into a pre-filtered view —
+  verified live (Harborview Site: 4/24; Pyroprocessing area: 2/24, correctly spanning
+  Harborview and Ridgeline). No new business logic — filtering an already-fetched
+  hierarchy tree is presentation, not aggregation.
+- **Incidents** gained a site-name inline in each row (resolved from the same hierarchy
+  tree the page already fetches) and a small "Energy opportunity" indicator badge when
+  that row's machine currently has `ELEVATED_ENERGY_DEMAND`/`BELOW_EXPECTED_RANGE` —
+  energy stays a light contextual signal here, never a second energy page, per the
+  task's own explicit instruction.
+- **Maintenance**'s list gained a Site column and an "Energy outcome" column
+  (`EnergyOutcomeStatusBadge` or "Not assessed"), and the case detail page gained an
+  "Energy outcome" `SectionCard` (reusing `EnergyOutcomePanel`/`MachineCarbonPanel`) when
+  an `EnergyOutcomeVerification` exists for that case — verified live: BE-201's case
+  shows "Qualified Recovery" in the list and the full pre/post/carbon detail on its page;
+  CV-101's shows "Insufficient Data" in both places, never implying completion means
+  success.
+- **Action Readiness**: Machine Detail's existing "Why: <mode>" evidence disclosure gained
+  one conditional link — "See the data-quality issue blocking this →" — shown only when
+  `mode === "BLOCKED_INSUFFICIENT_EVIDENCE"`, pointing at `/data-quality?machine=<id>`.
+- **Data Quality** already met this pass's "product impact, not just sensor health"
+  requirement before this pass started (`DECISION_IMPACT_LABEL`: No Impact/Confidence
+  Reduced/Assessment Blocked/Action Blocked, plus a per-sensor "Impact on downstream
+  intelligence" breakdown) — inspected, confirmed sufficient, left unchanged.
+  Machine Detail's Energy section links out to it (`?machine=<id>`) rather than
+  duplicating any of that page's own sensor-quality detail.
+- **ML Intelligence** already labels non-decision-authoritative evidence
+  ("Experimental evidence — not used for decision", `EXPERIMENTAL_EVIDENCE` role) and
+  already accepts a `?machineId=` context param — inspected, confirmed sufficient, model
+  lifecycle logic untouched per the task's own instruction not to redesign it.
+- **Assistant**: already accepts `machineId`/`incidentId`/`caseId` context (query params
+  and UI selectors) end to end into the real `AssistantContext` sent to the backend agent
+  — no changes needed for that part. Energy-specific prompts ("Explain this energy
+  deviation") were deliberately **not** added: the backend agent's tool allowlist
+  (`TOOL_LABELS` in `app/assistant/page.tsx`) has no energy/attribution/carbon tool, so a
+  button offering that prompt would either fail or produce an ungrounded answer — exactly
+  the "if architecture does not support context safely, document and defer" case the
+  task itself anticipated. Deferred, not hacked around.
+
+### Legacy `/overview` decision
+
+Reaffirmed Pass A's choice explicitly, per this pass's own request to document it:
+`/overview` remains a real, working page (the fleet-asset-level walkthrough — recently-
+resolved story, "why condition-driven" explainer, commissioning journey) but is neither
+the root redirect (that's `/performance/organization`) nor linked from primary nav —
+reachable only via the Organization Command Center's own small footer link. Rejected
+deleting it (real, still-useful onboarding content) and rejected keeping it as a second
+competing "home" (the task's own explicit anti-goal) — this hybrid was already Pass A's
+decision; Pass B did not find a reason to revisit it.
+
+### Navigation refinement
+
+`PRIMARY_NAV` (a flat 9-item list since Pass A) became three light-touch groups —
+`PERFORMANCE` (Organization/Sites/Fleet), `EXECUTION` (Incidents/Maintenance/Action
+Readiness), and an unlabeled tail (Knowledge/Assistant/Metrics, since none belongs to
+either cluster and a one-item group would be noise). Labels are deliberately smaller/
+lighter than the `ENGINEERING` master label below them — this is still the primary nav,
+not a secondary registry. Not the task's own suggested `INTELLIGENCE` group
+(ML Intelligence + Energy & Efficiency): no dedicated top-level Energy & Efficiency page
+exists (energy lives inside Machine Detail and the Organization/Site pages, per this
+pass's own design), so that group would have one real member (`ML Intelligence`, itself
+already Engineering-grouped) — not implemented, since a group needs more than a token
+member to earn its label.
+
+### Deep links / no dead ends
+
+Beyond Fleet's new site/area filters: Site Detail/Area Detail → Fleet (above); attention
+queue entries → Machine Detail (already Pass A); data-limited attention entries → Data
+Quality filtered by machine (already Pass A); Incidents/Maintenance rows → their detail
+pages (pre-existing); Maintenance Detail's Energy Outcome panel has no further drill-down
+target today (there is no dedicated energy-outcome detail route) — noted here rather than
+inventing one with nothing new to show beyond what the panel already renders in place.
+
+### Status-language cleanup
+
+Eight new tone functions in `lib/terminology.ts` (`energyAssessmentStatusTone`,
+`attributionLevelTone`, `comparabilityStatusTone`, `comparisonConfidenceTone`,
+`energyOutcomeStatusTone`, `energyEstimateStatusTone`,
+`lubricationAssociationStatusTone`, `carbonEstimateStatusTone`) plus matching badges in
+`components/badges.tsx` — every energy-domain enum this pass introduced to the frontend
+goes through the same `StatusPill` + `humanize()` path as every pre-existing enum, so
+`QUALIFIED_ENERGY_RECOVERY` reads "Qualified Energy Recovery" identically everywhere it
+appears (Machine Detail, Maintenance list, Maintenance Detail), never a second, slightly-
+different label invented for the pass.
+
+### Responsive review
+
+Attempted the same `resize_window` MCP tool as Pass A, from a fresh tab, twice, at two
+different target sizes (768×1024 and others) — confirmed via
+`window.innerWidth`/`devicePixelRatio` inspection that the tool changes the OS window but
+not the tab's actual rendered viewport in this environment (`innerWidth` stayed pinned
+regardless of the requested size). This is a genuine, reproducible tooling limitation,
+not a new claim — Pass A hit the same thing. Per this pass's own instruction not to claim
+pixel verification tooling cannot actually do, used the alternate method it names: a
+systematic code-level audit instead of a guess. Grepped every page for `<table>` without
+an `overflow-x-auto` wrapper (zero found) and every new filter bar for a missing
+`flex-wrap` (found one real, fixable issue: `PageHeader`'s breadcrumb `<nav>` was a plain
+`flex` row, and Pass B's own longer breadcrumbs — up to 5 segments on Incident/
+Maintenance Detail — made that a genuine overflow risk it hadn't been at Pass A's 3-4
+segments; fixed with `flex-wrap` in the shared component, verified with no visual
+regression at the one viewport size this environment can actually render).
+
 ## Known limitations
 
 - `/intelligence` (the "Intelligence (raw)" secondary-nav page, deliberately kept as a
@@ -288,10 +476,12 @@ claimed as tested.
   `app/auth/permissions.py` if one is edited without the other (ADR-160) — there is no
   automated check for this today.
 - No automated visual-regression or accessibility-audit tooling is wired into CI;
-  responsiveness/accessibility verification for the Organization Command Center's
-  narrow-viewport behavior specifically was a code-level review, not a pixel-verified
-  one, per the manual-verification note above.
-- Machine Detail has no energy/carbon evidence surface yet — Lubrication Efficiency
-  Intelligence (ADR-176) remains backend-only; the Organization Command Center's energy/
-  carbon sections link out to Data Quality where relevant, never to a
-  Machine-Detail energy tab that doesn't exist.
+  narrow-viewport verification across both Enterprise Experience passes has been a
+  code-level review (table/filter-bar/breadcrumb wrap-safety), not pixel-verified — the
+  `resize_window` MCP tool does not change the actual rendered viewport in this
+  environment, confirmed on two separate attempts across two passes.
+- Maintenance Detail's new "Energy outcome" panel has no dedicated drill-down route of
+  its own (see "Deep links" above) — it is the deepest view of that data today.
+- The Assistant has no energy/attribution/carbon-aware tool in its backend allowlist —
+  energy-specific contextual prompts were deliberately deferred rather than added ahead
+  of that capability (see "Assistant" above).
