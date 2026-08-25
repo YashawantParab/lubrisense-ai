@@ -157,7 +157,14 @@ export function CaseWorkflow({
                   reached ? "text-zinc-700 dark:text-zinc-300" : "text-zinc-300 dark:text-zinc-700"
                 }`}
               >
-                {reached ? stage.headline : "Pending"}
+                {/* Each stage's own `headline` already distinguishes "not reached yet" from
+                    a generic "Pending" (e.g. "Awaiting a maintenance decision," "No
+                    maintenance case opened yet") — a bare "Pending" here discarded that and
+                    could read as contradicting a fully-populated Decision Intelligence panel
+                    elsewhere on the same page (Machine Detail computes a live recommendation
+                    independently of whether a maintenance case/this case-journey stage exists
+                    yet — found during final product review on the IDF-01 demo path). */}
+                {stage.headline}
               </span>
             )}
             {reached && (

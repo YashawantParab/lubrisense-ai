@@ -466,6 +466,54 @@ Maintenance Detail — made that a genuine overflow risk it hadn't been at Pass 
 segments; fixed with `flex-wrap` in the shared component, verified with no visual
 regression at the one viewport size this environment can actually render).
 
+## Final Product Review + Demo Hardening
+
+A pre-external-demonstration review, not a feature pass — three-perspective walkthrough
+(reliability/maintenance leader, product manager, technical/AI reviewer) against fresh
+seeded data, plus a systematic grep-based audit of user-facing copy for misleading claims
+(save/saving/saved, carbon/CO2e, AI, automatic/autonomous, control, optimized, production/
+validated/accuracy/real-time). The audit came back clean — every "automatic"/"autonomous"/
+"control" occurrence in the codebase is a denial of that capability, never a claim of it;
+"save/saved" only appears inside explicit "never claim this" disclaimer text; "production
+validated"/"real-time"/"accuracy" have zero occurrences anywhere. See
+`docs/PRODUCT_DEMO_GUIDE.md` for the demo flow, claims/boundaries summary, and interview
+Q&A this review produced.
+
+Two real, high-value issues were found during the live walkthrough (both on the IDF-01/
+BE-201 flagship demo path) and fixed:
+
+- **Machine Detail's condition/incident divergence note was too narrow.** It only
+  explained a live-condition-vs-incident mismatch while the incident was still *open*
+  (`activeIncident`) — but the exact same mismatch happens right after a fresh reseed on a
+  *resolved* incident too (BE-201's "Current condition: Developing Restriction Pattern"
+  sitting directly above a "Resolved — Diagnosis confirmed by maintenance" case journey,
+  with no explanation bridging them — a real, honest data situation that reads as a
+  contradiction without one). Extended the guard to `relevantIncident` (open or
+  most-recently-resolved) with wording that branches on which case it is, so the note
+  now covers both.
+- **`CaseWorkflow`'s not-yet-reached stages discarded their own more specific headline
+  text for a generic "Pending"** — most visibly on IDF-01, where the case-journey
+  stepper's "Decision" stage read "Pending" directly above a fully-populated Decision
+  Intelligence panel showing a real, live recommendation. The two "Decision"s are
+  genuinely different concepts (a maintenance-case-level decision snapshot vs. the
+  live, continuously-recomputed recommendation), and each stage already computed a
+  precise not-yet-reached headline ("Awaiting a maintenance decision," "No maintenance
+  case opened yet," "Awaiting technician confirmation") that the render logic was
+  silently discarding. Removed the discard — every stage now shows its own real headline
+  regardless of reached state. One shared-component fix, benefiting Incident Detail,
+  Maintenance Detail, and Machine Detail simultaneously.
+
+Both were found by actually reading the rendered page against real reseeded data, not by
+reasoning about the components in the abstract — consistent with how every other bug this
+project has caught was found (see the area-routing bug in Enterprise Experience Pass B).
+
+A third, non-code finding shaped `docs/PRODUCT_DEMO_GUIDE.md`'s pre-demo checklist
+directly: reseeding the hosted demo and then checking it *immediately* can show a
+misleadingly ambiguous condition for the flagship story machines, because the condition
+engine's live re-assessment needs a few minutes of post-seed telemetry to settle back to
+its intended story state — genuine, honest behavior (not a bug to fix), but exactly the
+kind of timing detail a demo-readiness checklist exists to capture.
+
 ## Known limitations
 
 - `/intelligence` (the "Intelligence (raw)" secondary-nav page, deliberately kept as a
@@ -476,10 +524,11 @@ regression at the one viewport size this environment can actually render).
   `app/auth/permissions.py` if one is edited without the other (ADR-160) — there is no
   automated check for this today.
 - No automated visual-regression or accessibility-audit tooling is wired into CI;
-  narrow-viewport verification across both Enterprise Experience passes has been a
-  code-level review (table/filter-bar/breadcrumb wrap-safety), not pixel-verified — the
+  narrow-viewport verification across all three product passes has been a code-level
+  review (table/filter-bar/breadcrumb wrap-safety), not pixel-verified — the
   `resize_window` MCP tool does not change the actual rendered viewport in this
-  environment, confirmed on two separate attempts across two passes.
+  environment, confirmed on three separate attempts across three passes (most recently
+  at 390×844, mobile-sized, during the Final Product Review).
 - Maintenance Detail's new "Energy outcome" panel has no dedicated drill-down route of
   its own (see "Deep links" above) — it is the deepest view of that data today.
 - The Assistant has no energy/attribution/carbon-aware tool in its backend allowlist —

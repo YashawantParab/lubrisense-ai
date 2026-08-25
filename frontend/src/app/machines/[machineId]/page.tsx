@@ -462,22 +462,38 @@ export default function MachineDetailPage({ params }: { params: Promise<{ machin
               )}
             </div>
 
-            {/* An active incident's `incident_type` only updates when `IncidentService`
+            {/* An incident's `incident_type` only updates when `IncidentService`
                 re-correlates it against a new condition — this platform's condition
                 re-assessment (above) and that correlation aren't wired to run in lockstep,
-                so the two can legitimately disagree for a period while the incident is
-                still open. Silently juxtaposing "Current condition: Normal Operation" next
-                to an open "Pump Performance Degradation" incident would misrepresent the
-                machine — this note is real, computed from the same two persisted fields
-                displayed above, not a guess. */}
-            {activeIncident &&
+                so the two can legitimately disagree for a period, whether the incident is
+                still open or was just resolved. Silently juxtaposing "Current condition:
+                Developing Restriction Pattern" next to a "Resolved — verified" case
+                journey would misrepresent the machine as badly as the open-incident case
+                this note originally covered — most visible immediately after a fresh
+                reseed, before enough post-recovery telemetry has accumulated for the
+                condition engine's re-assessment to settle back to Normal Operation. This
+                note is real, computed from the same two persisted fields displayed above,
+                not a guess — it covers `relevantIncident` (open or most-recently-resolved),
+                not just an open one. */}
+            {relevantIncident &&
               intelligence.data &&
-              activeIncident.incident_type !== intelligence.data.condition.condition_type && (
+              relevantIncident.incident_type !== intelligence.data.condition.condition_type && (
                 <p className="-mt-4 text-xs text-amber-600 dark:text-amber-400">
-                  This incident was opened for {humanize(activeIncident.incident_type)}; the
-                  machine&rsquo;s condition has since re-assessed as{" "}
-                  {humanize(intelligence.data.condition.condition_type)}. The incident stays open
-                  until a technician reviews and resolves it.
+                  {activeIncident ? (
+                    <>
+                      This incident was opened for {humanize(activeIncident.incident_type)}; the
+                      machine&rsquo;s condition has since re-assessed as{" "}
+                      {humanize(intelligence.data.condition.condition_type)}. The incident stays
+                      open until a technician reviews and resolves it.
+                    </>
+                  ) : (
+                    <>
+                      This incident was resolved as {humanize(relevantIncident.incident_type)}; the
+                      machine&rsquo;s condition has independently been re-assessed since as{" "}
+                      {humanize(intelligence.data.condition.condition_type)}. Evidence continues to
+                      be evaluated after resolution — this is not a reopened problem.
+                    </>
+                  )}
                 </p>
               )}
 
