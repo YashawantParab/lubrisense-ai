@@ -1,18 +1,18 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import { getNorthStar, getProductMetrics } from "@/lib/api/product-metrics";
 
 export function useProductMetrics() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["product-metrics"],
     queryFn: () => getProductMetrics(),
   });
 }
 
 export function useNorthStar() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["product-metrics", "north-star"],
     queryFn: () => getNorthStar(),
   });

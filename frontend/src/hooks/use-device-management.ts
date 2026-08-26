@@ -1,11 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import { getMachineConfigurationChanges, getMachineDevices } from "@/lib/api/device-management";
 
 export function useMachineDevices(machineId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["device-management", "devices", machineId],
     queryFn: () => getMachineDevices(machineId),
     enabled: Boolean(machineId),
@@ -13,7 +13,7 @@ export function useMachineDevices(machineId: string) {
 }
 
 export function useMachineConfigurationChanges(machineId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["device-management", "changes", machineId],
     queryFn: () => getMachineConfigurationChanges(machineId),
     enabled: Boolean(machineId),

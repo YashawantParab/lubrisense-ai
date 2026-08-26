@@ -1,11 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import { getFleetOverview } from "@/lib/api/overview";
 
 export function useFleetOverview() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["fleet-overview"],
     queryFn: () => getFleetOverview(),
   });

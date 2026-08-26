@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import {
   completeCase,
@@ -18,14 +19,14 @@ import {
 } from "@/lib/api/maintenance";
 
 export function useMaintenanceCases(state?: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["maintenance", "list", state],
     queryFn: () => listCases(state),
   });
 }
 
 export function useMaintenanceCase(caseId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["maintenance", "detail", caseId],
     queryFn: () => getCase(caseId),
     enabled: Boolean(caseId),
@@ -33,7 +34,7 @@ export function useMaintenanceCase(caseId: string) {
 }
 
 export function useMaintenanceFindings(caseId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["maintenance", "findings", caseId],
     queryFn: () => listFindings(caseId),
     enabled: Boolean(caseId),
@@ -41,7 +42,7 @@ export function useMaintenanceFindings(caseId: string) {
 }
 
 export function useMaintenanceActions(caseId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["maintenance", "actions", caseId],
     queryFn: () => listActions(caseId),
     enabled: Boolean(caseId),
@@ -49,7 +50,7 @@ export function useMaintenanceActions(caseId: string) {
 }
 
 export function useMaintenanceFeedback(caseId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["maintenance", "feedback", caseId],
     queryFn: () => getFeedback(caseId),
     enabled: Boolean(caseId),

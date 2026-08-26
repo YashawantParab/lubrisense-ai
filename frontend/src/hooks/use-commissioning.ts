@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import {
   addCommissioningSensor,
@@ -18,14 +19,14 @@ import type {
 } from "@/lib/api/commissioning-types";
 
 export function useCommissioningSessions() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["commissioning", "list"],
     queryFn: () => listCommissioningSessions(),
   });
 }
 
 export function useCommissioningSession(sessionId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["commissioning", "detail", sessionId],
     queryFn: () => getCommissioningSession(sessionId),
     enabled: Boolean(sessionId),

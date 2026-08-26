@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import {
   acknowledgeIncident,
@@ -14,14 +15,14 @@ import {
 } from "@/lib/api/incidents";
 
 export function useIncidents(params?: { machineId?: string; state?: string }) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["incidents", "list", params],
     queryFn: () => listIncidents(params),
   });
 }
 
 export function useIncident(incidentId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["incidents", "detail", incidentId],
     queryFn: () => getIncident(incidentId),
     enabled: Boolean(incidentId),
@@ -29,7 +30,7 @@ export function useIncident(incidentId: string) {
 }
 
 export function useIncidentTimeline(incidentId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["incidents", "timeline", incidentId],
     queryFn: () => getIncidentTimeline(incidentId),
     enabled: Boolean(incidentId),

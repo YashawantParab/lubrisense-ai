@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import { getMachineTelemetry, type MachineTelemetryParams } from "@/lib/api/telemetry";
 
@@ -8,7 +8,7 @@ import { getMachineTelemetry, type MachineTelemetryParams } from "@/lib/api/tele
  * §32), not the final Sensor Intelligence experience; a short poll interval is enough to
  * show the pipeline is actually flowing without building a websocket/SSE path yet. */
 export function useMachineTelemetry(machineId: string, params: MachineTelemetryParams = {}) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["telemetry", "machine", machineId, params],
     queryFn: () => getMachineTelemetry(machineId, params),
     enabled: Boolean(machineId),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import {
   getEnergyAssessmentHistory,
@@ -18,14 +18,14 @@ import {
  * assessment on every GET. A page render must never have that side effect.
  */
 export function useFleetLatestEnergyAssessment() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["energy", "assessment", "fleet-latest"],
     queryFn: () => getFleetLatestEnergyAssessment(),
   });
 }
 
 export function useEnergyAssessmentHistory(machineId: string, limit = 200) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["energy", "assessment", "history", machineId, limit],
     queryFn: () => getEnergyAssessmentHistory(machineId, limit),
     enabled: Boolean(machineId),
@@ -33,21 +33,21 @@ export function useEnergyAssessmentHistory(machineId: string, limit = 200) {
 }
 
 export function useFleetLatestAttribution() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["energy", "attribution", "fleet-latest"],
     queryFn: () => getFleetLatestAttribution(),
   });
 }
 
 export function useFleetLatestEnergyOutcome() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["energy", "outcome", "fleet-latest"],
     queryFn: () => getFleetLatestEnergyOutcome(),
   });
 }
 
 export function useEnergyOutcomeHistory(machineId: string, limit = 50) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["energy", "outcome", "history", machineId, limit],
     queryFn: () => getEnergyOutcomeHistory(machineId, limit),
     enabled: Boolean(machineId),
@@ -55,7 +55,7 @@ export function useEnergyOutcomeHistory(machineId: string, limit = 50) {
 }
 
 export function useFleetLatestCarbon() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["energy", "carbon", "fleet-latest"],
     queryFn: () => getFleetLatestCarbon(),
   });

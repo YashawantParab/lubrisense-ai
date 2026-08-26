@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import {
   getDecisionHistory,
@@ -10,7 +10,7 @@ import {
 } from "@/lib/api/intelligence";
 
 export function useIntelligenceView(machineId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["intelligence", machineId],
     queryFn: () => getIntelligenceView(machineId),
     enabled: Boolean(machineId),
@@ -19,21 +19,21 @@ export function useIntelligenceView(machineId: string) {
 }
 
 export function useFleetLatestConditions() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["conditions", "fleet-latest"],
     queryFn: () => getFleetLatestConditions(),
   });
 }
 
 export function useFleetLatestDecisions() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["decisions", "fleet-latest"],
     queryFn: () => getFleetLatestDecisions(),
   });
 }
 
 export function useDecisionHistory(machineId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["decisions", "history", machineId],
     queryFn: () => getDecisionHistory(machineId),
     enabled: Boolean(machineId),

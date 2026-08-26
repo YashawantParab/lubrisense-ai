@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import { listAuditEvents } from "@/lib/api/audit";
 
@@ -9,7 +9,7 @@ export function useAuditEvents(params?: {
   entityType?: string;
   action?: string;
 }) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["audit-events", params],
     queryFn: () => listAuditEvents(params),
   });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 import { demoLogin } from "@/lib/api/auth";
@@ -27,26 +28,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<DemoRole>(DEFAULT_ROLE);
   const [displayName, setDisplayName] = useState("Demo Admin");
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const switchRole = useCallback((nextRole: DemoRole) => {
-    setIsLoading(true);
-    demoLogin(nextRole)
-      .then((response) => {
-        setDemoAuthToken(response.access_token);
-        setRole(response.role);
-        setDisplayName(response.display_name);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(STORAGE_KEY, response.role);
-        }
-      })
-      .catch(() => {
-        // Demo-login failure (e.g. backend briefly unreachable) — fall back to no
-        // token, which the backend's permissive-mode default treats as full access
-        // locally, so the product stays usable rather than hard-failing every page.
-        setDemoAuthToken(null);
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
+  const switchRole = useCallback(
+    (nextRole: DemoRole) => {
+      setIsLoading(true);
+      // Every authenticated query (`useAuthenticatedQuery`) is paused for as long as
+      // isLoading is true, so it's safe to drop every cached authenticated response
+      // immediately — the previous role's data must never keep rendering once a switch
+      // has been requested, since the new role may have different visibility into the
+      // same data (Hosted Auth Race fix — role-switch requirement). `demoLogin` itself
+      // never goes through `useAuthenticatedQuery`, so it is never gated by this
+      // isLoading flip — no deadlock.
+      queryClient.clear();
+      demoLogin(nextRole)
+        .then((response) => {
+          setDemoAuthToken(response.access_token);
+          setRole(response.role);
+          setDisplayName(response.display_name);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(STORAGE_KEY, response.role);
+          }
+        })
+        .catch(() => {
+          // Demo-login failure (e.g. backend briefly unreachable) — fall back to no
+          // token, which the backend's permissive-mode default treats as full access
+          // locally, so the product stays usable rather than hard-failing every page.
+          setDemoAuthToken(null);
+        })
+        .finally(() => setIsLoading(false));
+    },
+    [queryClient],
+  );
 
   useEffect(() => {
     const stored =

@@ -1,11 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import { getLatestStateEstimates, listStateEstimateHistory } from "@/lib/api/state-estimation";
 
 export function useLatestStateEstimates(machineId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["state-estimation", "latest", machineId],
     queryFn: () => getLatestStateEstimates(machineId),
     enabled: Boolean(machineId),
@@ -14,7 +14,7 @@ export function useLatestStateEstimates(machineId: string) {
 }
 
 export function useStateEstimateHistory(machineId: string, stateType?: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["state-estimation", "history", machineId, stateType],
     queryFn: () => listStateEstimateHistory(machineId, stateType),
     enabled: Boolean(machineId),

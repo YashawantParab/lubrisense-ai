@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import {
   getBaselineSummary,
@@ -13,7 +13,7 @@ import {
 /** Polls every 15s — matches `useQualitySummary`'s minimal developer/product validation
  * convention (Phase 7), not a final production-grade live view. */
 export function useBaselineSummary() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["baselines", "summary"],
     queryFn: () => getBaselineSummary(),
     refetchInterval: 15_000,
@@ -21,7 +21,7 @@ export function useBaselineSummary() {
 }
 
 export function useSensorBaselines(sensorId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["baselines", "sensor", sensorId],
     queryFn: () => getSensorBaselines(sensorId),
     enabled: Boolean(sensorId),
@@ -30,7 +30,7 @@ export function useSensorBaselines(sensorId: string) {
 }
 
 export function useCurrentBaseline(sensorId: string, params: CurrentBaselineParams = {}) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["baselines", "sensor", sensorId, "current", params],
     queryFn: () => getCurrentBaseline(sensorId, params),
     enabled: Boolean(sensorId),
@@ -38,7 +38,7 @@ export function useCurrentBaseline(sensorId: string, params: CurrentBaselinePara
 }
 
 export function useMachineBaselines(machineId: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["baselines", "machine", machineId],
     queryFn: () => getMachineBaselines(machineId),
     enabled: Boolean(machineId),

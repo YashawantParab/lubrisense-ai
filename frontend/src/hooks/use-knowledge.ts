@@ -1,11 +1,12 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
+import { useAuthenticatedQuery } from "@/hooks/use-authenticated-query";
 
 import { askKnowledge, listDocuments } from "@/lib/api/knowledge";
 
 export function useDocuments(status?: string) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["knowledge", "documents", status],
     queryFn: () => listDocuments(status),
   });
