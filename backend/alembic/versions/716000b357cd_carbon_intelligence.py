@@ -149,7 +149,10 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column(
-            "provenance", postgresql.JSONB(astext_type=sa.Text()), server_default="{}", nullable=False
+            "provenance",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="{}",
+            nullable=False,
         ),
         sa.Column("policy_version", sa.String(length=20), nullable=False),
         sa.Column("id", sa.Uuid(), nullable=False),
