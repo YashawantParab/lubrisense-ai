@@ -12,7 +12,7 @@ vi.mock("@/lib/auth/context", () => ({
 function mockAuth(isLoading: boolean) {
   vi.mocked(useAuth).mockReturnValue({
     role: "ADMIN",
-    displayName: "Demo Admin",
+    displayName: "Admin",
     isLoading,
     switchRole: vi.fn(),
     can: () => true,

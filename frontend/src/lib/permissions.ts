@@ -98,3 +98,13 @@ export const ALL_ROLES: DemoRole[] = [
   "DATA_SCIENTIST",
   "ADMIN",
 ];
+
+/** The identity selector's visible option list (Live Demo Quality Cleanup §1) — the
+ * external product experience only ever needs to demonstrate the two roles the rest of
+ * the product actually differentiates on (`can()` checks, permission-gated actions):
+ * a technician who can act on maintenance, and an admin with full access. The other four
+ * `ALL_ROLES` values stay fully defined and permissioned above — required by
+ * `app/auth/permissions.py`'s real RBAC matrix and by `tests/auth/test_permissions.py`
+ * — this constant only trims what the demo *selector* shows, never what the backend
+ * accepts or authorizes. */
+export const VISIBLE_DEMO_ROLES: DemoRole[] = ["TECHNICIAN", "ADMIN"];

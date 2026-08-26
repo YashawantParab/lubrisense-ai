@@ -3,8 +3,11 @@ import { RelativeTime } from "@/components/relative-time";
 
 /**
  * Task §3A — organization name, as-of timestamp, monitored sites/assets, and evidence
- * provenance. Deliberately no marketing copy: every value here is a real backend field
- * (`OrganizationPerformance`), not a headline written for this page.
+ * provenance. Deliberately no marketing copy: every number here is a real backend field
+ * (`OrganizationPerformance`), never a headline written for this page. The one static
+ * line (Live Demo Quality Cleanup §2/§16) is scope description, not a performance claim —
+ * it names the domains this view covers, not a result — and replaces the earlier
+ * "Organization command center" eyebrow/"Demo Tenant" framing this pass removed.
  */
 export function OrganizationHeader({
   organizationName,
@@ -22,12 +25,12 @@ export function OrganizationHeader({
   return (
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p className="text-xs font-semibold tracking-wide text-sky-600 uppercase dark:text-sky-400">
-          Organization command center
-        </p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
           {organizationName}
         </h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          Multi-site reliability, lubrication and efficiency performance
+        </p>
         <p className="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">
           {sites} monitored site{sites === 1 ? "" : "s"} · {monitoredAssets} monitored asset
           {monitoredAssets === 1 ? "" : "s"} · as of <RelativeTime iso={asOf} />

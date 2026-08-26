@@ -6,7 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { demoLogin } from "@/lib/api/auth";
 import { setDemoAuthToken } from "@/lib/api/client";
 import type { DemoRole } from "@/lib/api/auth-types";
-import { type Permission, roleHasPermission } from "@/lib/permissions";
+import { type Permission, VISIBLE_DEMO_ROLES, roleHasPermission } from "@/lib/permissions";
 
 interface AuthState {
   role: DemoRole;
@@ -26,7 +26,7 @@ const DEFAULT_ROLE: DemoRole = "ADMIN";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<DemoRole>(DEFAULT_ROLE);
-  const [displayName, setDisplayName] = useState("Demo Admin");
+  const [displayName, setDisplayName] = useState("Admin");
   const [isLoading, setIsLoading] = useState(true);
   const queryClient = useQueryClient();
 
@@ -66,13 +66,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       typeof window !== "undefined"
         ? (window.localStorage.getItem(STORAGE_KEY) as DemoRole | null)
         : null;
+    // A role stored from before the identity selector was trimmed to Technician/Admin
+    // (Live Demo Quality Cleanup §1) — or any other non-visible role — must not silently
+    // become the active identity: the selector has no option for it, which would render
+    // as a blank/mismatched dropdown. Fall back to the default in that case.
+    const initialRole =
+      stored && (VISIBLE_DEMO_ROLES as string[]).includes(stored) ? stored : DEFAULT_ROLE;
     // Kicks off the initial demo-login request; switchRole's own setState calls all
     // land inside its .then()/.catch()/.finally() callbacks, not synchronously in this
     // effect body — the one intentional exception is `switchRole`'s own leading
     // `setIsLoading(true)`, accepted here since this is a one-time mount fetch, not a
     // render-triggered cascade.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    switchRole(stored ?? DEFAULT_ROLE);
+    switchRole(initialRole);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
   }, []);
 

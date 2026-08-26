@@ -822,6 +822,169 @@ so no backend tests were added; the full backend suite was re-confirmed unaffect
 passed, the same 2 pre-existing, unrelated `tests/knowledge/test_retrieval.py` failures
 from before this pass, reproduced independently via `git stash`).
 
+## Live Demo Quality Cleanup — Identity, Organization Naming, Energy Coverage, Legacy Names
+
+A cleanup pass, not a feature pass: removing the remaining prototype/demo artifacts from
+the live experience and improving the realism of the seeded portfolio without weakening
+any evidence discipline established in earlier passes.
+
+### Identity selector
+
+The visible demo-identity selector (`components/app-shell.tsx`'s `RoleSwitcher`) now
+exposes only **Technician** and **Admin** (`lib/permissions.ts`'s new
+`VISIBLE_DEMO_ROLES`) — no "Demo" prefix/suffix anywhere in the visible UI. The other four
+backend RBAC roles (Viewer, Reliability Engineer, Plant Manager, Data Scientist) are
+untouched — `ALL_ROLES`/`ROLE_PERMISSIONS` still fully define them, since
+`app/auth/permissions.py`'s real matrix and `tests/auth/test_permissions.py` still need
+them. The backend's `DEMO_USERS` display names (`app/auth/demo_users.py`) were normalized
+from "Demo Admin"/"Demo Technician"/etc. to plain "Admin"/"Technician"/etc. — a display
+string change only, no `user_id`, role, or permission changed. `AuthProvider` now clamps
+any stale localStorage role from before this cleanup (e.g. a previously-selected
+Reliability Engineer) back to the default rather than let the trimmed selector render a
+value with no matching option.
+
+### Organization / product naming
+
+The seeded tenant's display name changed from "LubriSense Industrial" to **"Industrial
+Reliability Operations"** (`scripts/seed_demo_data.py`) — the product brand itself stays
+"LubriSense AI" (sidebar). `OrganizationHeader` dropped the "Organization command center"
+eyebrow label entirely and added one static descriptive line, "Multi-site reliability,
+lubrication and efficiency performance" — scope description (what this view covers), not
+a performance claim; the component's own docstring records why this doesn't violate its
+existing "no marketing copy" discipline.
+
+### Legacy asset-name audit (§3)
+
+Re-audited every primary surface (Organization, Sites, Areas, Fleet, Condition
+Intelligence, Energy & Efficiency, ML Intelligence, Incidents, Maintenance, Action
+Readiness, Data Quality, Baselines, Machine Detail, Technical Provenance) for a raw
+`machine_type` enum leading a user-facing label. Found none beyond the two already-known,
+intentional engineering surfaces (`/hierarchy`, `/intelligence` — Technical Provenance) —
+every other surface already routes through `equipmentTypeFor()`/`machine.name` (confirmed
+by grep across `app/` and `components/`, listing every remaining `machine_type` reference
+and manually classifying each). A background/non-curated machine's own real name (e.g.
+"Fan 002") is not a leak — it is that machine's genuine seeded identity, exactly as
+established by the earlier "Industrial asset realism pass"; the leak this section
+specifically guards against (raw enum category standing in for identity) was already
+closed by that pass and remains closed.
+
+### Energy coverage — before/after
+
+Previously, only 5 of the 10 curated machines had ever produced a real `EnergyAssessment`
+with actual telemetry: KILN-01, IDF-01, AF-101, BE-201 (all with real actual/expected
+power), and CR-202 (a real row, but `INSUFFICIENT_BASELINE`). The other five — Ore
+Transfer Conveyor CV-101, Stacker-Reclaimer SR-201, Ball Mill BM-301, Primary Gyratory
+Crusher CR-101, Rolling Mill Stand RM-401 — already had a commissioned `MACHINE_POWER`
+sensor (confirmed: `assess_machine()` returned a real `INSUFFICIENT_DATA` result, never
+`EnergyPowerSensorNotFoundError`) but had never had that sensor's telemetry backfilled by
+any seed script, so `10/24` monitored assets read energy-assessable but only `5/10`
+curated machines actually had a usable reading.
+
+Added deterministic `MACHINE_POWER` telemetry to the five affected scenario scripts
+(`seed_flagship_story.py`/CV-101, `seed_active_restriction.py`/SR-201,
+`seed_leakage.py`/BM-301, `seed_low_reservoir.py`/CR-101,
+`seed_pump_degradation.py`/RM-401), following the exact same jittered-flat-signal +
+`backfill()` pattern `seed_healthy_machine.py` already established for KILN-01. Per each
+scenario's own physics (§6/§7 of the brief), power was kept flat/near-baseline in every
+case — none of these five stories involves a plausible main-driveline energy effect:
+
+- CV-101 / SR-201: a developing hydraulic restriction affects lubrication *delivery*
+  pressure, not main drivetrain friction.
+- BM-301: reservoir leakage is a lubricant-supply issue, not necessarily a main-machine
+  energy impact.
+- CR-101: a declining reservoir is the same supply-side story.
+- RM-401: pump-current degradation is a lubrication-*subsystem* issue — the pump's own
+  electrical draw is never the main asset's driveline load (the exact `PUMP_CURRENT` !=
+  `MACHINE_POWER` distinction CLAUDE.md requires — a separate sensor object was used in
+  every script, never the pump-current value repurposed as power).
+
+Result: **10 of 10 curated machines are now energy-assessable**, all computed by the real
+`EnergyAssessmentService` against real seeded telemetry and a real contextual baseline —
+no hardcoded expected-kW value anywhere. IDF-01's opportunity story, BE-201's qualified
+recovery, and CR-202's insufficient-baseline story are byte-for-byte unchanged (verified
+below) — nothing was "upgraded" to make the demo look more complete.
+
+### Final energy matrix (verified, 4 full local `seed_hosted_demo.py` runs, bit-for-bit identical)
+
+| Asset | Energy status | Actual (kW) | Expected (kW) | Residual | Attribution | Outcome | Carbon |
+|---|---|---|---|---|---|---|---|
+| Ore Transfer Conveyor CV-101 | Within expected range | 28.4 | 28.0 | +1.7% | No evidence | — | Not eligible |
+| Rotary Kiln Drive KILN-01 | Within expected range | 45.0 | 45.0 | -0.2% | No evidence | — | Not eligible |
+| Stacker-Reclaimer SR-201 | Within expected range | 18.9 | 19.0 | -0.7% | No evidence | — | Not eligible |
+| Ball Mill BM-301 | Within expected range | 23.7 | 24.0 | -1.4% | No evidence | — | Not eligible |
+| Primary Gyratory Crusher CR-101 | Within expected range | 33.5 | 32.9 | +1.8% | No evidence | — | Not eligible |
+| Rolling Mill Stand RM-401 | Within expected range | 51.3 | 51.9 | -1.2% | No evidence | — | Not eligible |
+| Kiln ID Fan IDF-01 | Elevated energy demand | 43.2 | 38.0 | +13.7% | Possible | Not yet verified | Not eligible |
+| Apron Feeder AF-101 | Within expected range | 22.4 | 22.0 | +2.0% | No evidence | — | Not eligible |
+| Bucket Elevator BE-201 | Within expected range | 29.6 | 30.1 | -1.6% | No evidence | Qualified recovery (~1.1 kWh) | Estimate available (0.43 kg CO2e) |
+| Secondary Crusher CR-202 | Insufficient baseline | 15.4 | — (no baseline yet) | — | No evidence | — | Not eligible |
+
+Portfolio-level summary: **1 elevated energy demand, 1 insufficient baseline, 8 within
+expected range**; **1 active opportunity** (IDF-01 — elevated + possible attribution,
+outcome not yet verified — never upgraded to make the story stronger, and reads
+identically whether attribution ends up supporting or contradicting it, per §10's own
+"this demonstrates the system's discipline" framing); **1 qualified recovery** (BE-201,
+~1.1 kWh avoided, pre-intervention attribution `NO_EVIDENCE`, unchanged); **1 carbon
+estimate** (0.43 kg CO2e, downstream of BE-201's qualified outcome only).
+
+### AF-101 — a real, fixed bug (§13)
+
+Found and fixed, not merely disclosed: AF-101's own seed script (`seed_data_quality_issue.py`)
+used a single constant reservoir-depletion rate across its entire 3-hour synthetic
+history. A perfectly consistent linear rate has a near-zero MAD, so the live
+`rules-worker` container's own independent real-time trailing-window evaluation — which
+runs continuously against the same database, on its own schedule, regardless of what the
+seed script itself settles against at seed time — would periodically read an ordinary
+noise-driven rate wobble as a huge standardized deviation and fire a spurious
+`RESERVOIR_DEPLETION_ABNORMAL` finding, opening a real `POSSIBLE_LEAKAGE_PATTERN` CRITICAL
+incident directly contradicting this machine's intended "data-quality-limited, not a
+diagnosed fault" story. Confirmed reproducible (the script's own pre-existing self-check
+printed its warning every time before the fix); fixed the same way
+`seed_flagship_story.py`/`seed_leakage.py`/`seed_low_reservoir.py` already solve the
+identical class of bug — giving the post-`issue_start` phase a genuinely, distinctly
+*slower* depletion rate than the healthy phase, so a live re-evaluation's recent-window
+rate can never mathematically read as exceeding the baseline. No rule threshold, window,
+or debounce setting was touched — only this one scenario's own synthetic reservoir
+values. Verified fixed both immediately after seeding and again after waiting through
+multiple live-worker evaluation cycles (~2.5 minutes) with no incident created either
+time.
+
+### Site / organization naming (§14)
+
+Unchanged — Ridgeline, Millbrook, Harborview, Dornbach, and Eastgate Site were already
+polished, generic, non-corporate names from an earlier pass; five sites remain a
+sufficient multi-site organization per this brief's own "do not create more sites merely
+to fill charts" guidance.
+
+### Status-label humanization (§15) — reviewed, not changed
+
+Every raw backend enum already routes through `humanize()` before reaching the UI (e.g.
+`INSUFFICIENT_DATA` → "Insufficient Data") — confirmed no raw enum renders anywhere in
+primary product surfaces. The brief's own prose examples were written in sentence case
+("Insufficient data") rather than this codebase's established title-case convention
+("Insufficient Data"); changing `humanize()`'s casing convention itself would be a
+sweeping, high-blast-radius change touching every badge/label across the entire product
+for a purely cosmetic difference with no functional or clarity benefit — deliberately not
+done. The requirement this section actually protects against (a raw, underscored enum
+value on screen) was already satisfied before this pass.
+
+### Tests added this pass
+
+`lib/permissions.test.ts` (new — visible-role restriction, no-Demo-prefix labels, RBAC
+roles still fully defined, Technician/Admin permission checks); updated
+`organization-header.test.tsx` and `lib/auth/context.test.tsx`/
+`use-authenticated-query.test.tsx` fixtures to the normalized "Industrial Reliability
+Operations"/"Admin"/"Technician" strings. No new backend pytest file: the energy-coverage
+change is pure seed-data (`EnergyAssessmentService`/`AttributionService`/
+`EnergyOutcomeService`/`CarbonService` were not touched, and their existing unit-test
+suites in `tests/energy/` already cover every status this pass exercises — within-range,
+elevated, insufficient-data, insufficient-baseline, data-quality-limited); the
+appropriate validation for a seed-data change is the same empirical, real-engine
+verification this codebase's own scenario scripts already use (a self-checking `WARNING`
+print, e.g. `seed_healthy_machine.py`/`seed_data_quality_issue.py`), which this pass
+performed four times end-to-end with bit-for-bit identical results (see the energy matrix
+above) plus a live-worker-timing check for the AF-101 fix specifically.
+
 ## Known limitations
 
 - `/intelligence` (the "Intelligence (raw)" secondary-nav page, deliberately kept as a

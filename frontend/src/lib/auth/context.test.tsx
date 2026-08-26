@@ -16,7 +16,7 @@ function loginResponse(overrides: Partial<DemoLoginResponse> = {}): DemoLoginRes
     token_type: "bearer",
     role: "ADMIN",
     user_id: "u-1",
-    display_name: "Demo Admin",
+    display_name: "Admin",
     expires_in_seconds: 3600,
     ...overrides,
   };
@@ -100,7 +100,7 @@ describe("AuthProvider", () => {
     expect(screen.getByTestId("loading").textContent).toBe("true");
 
     act(() => {
-      resolveSwitch(loginResponse({ role: "TECHNICIAN", display_name: "Demo Technician" }));
+      resolveSwitch(loginResponse({ role: "TECHNICIAN", display_name: "Technician" }));
     });
     await waitFor(() => expect(screen.getByTestId("role").textContent).toBe("TECHNICIAN"));
     await waitFor(() => expect(screen.getByTestId("loading").textContent).toBe("false"));

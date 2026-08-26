@@ -7,7 +7,7 @@ import { useState } from "react";
 import { StatusPill } from "@/components/status-pill";
 import { useBackendReadiness } from "@/hooks/use-backend-status";
 import { useAuth } from "@/lib/auth/context";
-import { ALL_ROLES, ROLE_LABELS } from "@/lib/permissions";
+import { ROLE_LABELS, VISIBLE_DEMO_ROLES } from "@/lib/permissions";
 import type { DemoRole } from "@/lib/api/auth-types";
 
 interface NavItem {
@@ -148,7 +148,7 @@ function SystemStatusDot() {
 }
 
 function RoleSwitcher() {
-  const { role, displayName, switchRole, isLoading } = useAuth();
+  const { role, switchRole, isLoading } = useAuth();
   return (
     <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
       <span className="hidden sm:inline">Identity</span>
@@ -159,13 +159,12 @@ function RoleSwitcher() {
         className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
         aria-label="Switch demo role"
       >
-        {ALL_ROLES.map((r) => (
+        {VISIBLE_DEMO_ROLES.map((r) => (
           <option key={r} value={r}>
             {ROLE_LABELS[r]}
           </option>
         ))}
       </select>
-      <span className="hidden text-zinc-400 md:inline">({displayName})</span>
     </label>
   );
 }

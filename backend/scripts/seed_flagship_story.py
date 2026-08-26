@@ -245,6 +245,13 @@ async def main() -> None:
         bearing_temps = by_type["BEARING_TEMPERATURE"]
         vibrations = by_type["VIBRATION_RMS"]
         rpm = by_type["RPM"][0]
+        # Live Demo Quality Cleanup §6/§7 — a developing restriction affects lubrication
+        # *delivery* (hydraulic pressure), not the conveyor's main drivetrain friction, so
+        # driveline power is kept flat across every phase exactly like pump_current above
+        # (never automatically elevated just because another subsystem shows a finding).
+        # Distinct sensor from pump_current — see CLAUDE.md's PUMP_CURRENT != MACHINE_POWER
+        # boundary — never conflate lubrication-pump amperage with whole-machine energy.
+        power = by_type["MACHINE_POWER"][0]
 
         # Demo-reset: delete *all* prior telemetry for this one machine — every device_id,
         # every timestamp — not just this script's own window. The flagship machine is a
@@ -363,6 +370,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, reservoir_value(t), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(28.0, 0.5), t)
             for b in bearing_temps:
                 add(b, jitter(42.0, 0.15), t)
             for v in vibrations:
@@ -396,6 +404,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, reservoir_value(t), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(28.0, 0.5), t)
             for b in bearing_temps:
                 add(b, jitter(42.0 + 0.5 * frac, 0.15), t)
             for v in vibrations:
@@ -417,6 +426,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, reservoir_value(t), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(28.0, 0.5), t)
             for b in bearing_temps:
                 add(b, jitter(42.5 + 6.0 * frac, 0.15), t)
             for v in vibrations:
@@ -427,7 +437,7 @@ async def main() -> None:
         await session.commit()
         print(f"Seeded {len(rows)} telemetry rows for machine={machine_id}")
 
-        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id]
+        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id, power.id]
         all_sensor_ids += [b.id for b in bearing_temps]
         all_sensor_ids += [v.id for v in vibrations]
 

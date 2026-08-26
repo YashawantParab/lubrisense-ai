@@ -114,6 +114,32 @@ async def main() -> None:
         def jitter(value: float, magnitude: float) -> float:
             return value + rng.uniform(-magnitude, magnitude)
 
+        # Live Demo Quality Cleanup §13 — the original version of this reservoir signal
+        # used one constant depletion rate across the whole 3h window. A baseline built
+        # from a perfectly consistent linear rate has a near-zero MAD, so even trivial
+        # noise-driven differences between the live rules-worker's own real-time trailing
+        # window and this script's historical baseline occasionally read as a huge
+        # standardized deviation — confirmed reproducible: this scenario's own
+        # post-seed WARNING below fired every time. Same fix `seed_flagship_story.py`/
+        # `seed_leakage.py`/`seed_low_reservoir.py` already use for the identical class of
+        # bug: give the post-`issue_start` phase a genuinely, distinctly *slower* rate than
+        # the healthy phase (never merely equal), so a live re-evaluation's recent-window
+        # rate reads as below the baseline rate regardless of noise — mathematically unable
+        # to trigger RESERVOIR_DEPLETION_ABNORMAL. Only this scenario's own synthetic
+        # telemetry changes; no rule threshold, window, or debounce setting is touched.
+        HEALTHY_RESERVOIR_RATE_PCT_PER_MIN = 0.020
+        ISSUE_RESERVOIR_RATE_PCT_PER_MIN = 0.007
+        _issue_anchor = 58.0 - HEALTHY_RESERVOIR_RATE_PCT_PER_MIN * (
+            (issue_start - healthy_start).total_seconds() / 60.0
+        )
+
+        def reservoir_value(t: datetime) -> float:
+            if t <= issue_start:
+                minutes = (t - healthy_start).total_seconds() / 60.0
+                return 58.0 - HEALTHY_RESERVOIR_RATE_PCT_PER_MIN * minutes
+            minutes_after = (t - issue_start).total_seconds() / 60.0
+            return _issue_anchor - ISSUE_RESERVOIR_RATE_PCT_PER_MIN * minutes_after
+
         rows: list[dict[str, object]] = []
 
         def add(
@@ -141,7 +167,20 @@ async def main() -> None:
             t = healthy_start + (now - healthy_start) * (i / steps)
             add(pressure, jitter(9.0, 0.15), t, circuit=circuit_id)
             add(pump_current, jitter(3.0, 0.05), t)
-            add(reservoir, jitter(58.0 - 0.01 * i, 0.05), t)
+            # Live Demo Quality Cleanup §13 — a near-zero jitter magnitude here (0.05, one
+            # third of every other sensor's ~0.15 "believable noise" convention in this
+            # same file) makes the healthy-window reservoir-rate MAD tiny enough that the
+            # live rules-worker's own real-time trailing window occasionally reads a
+            # normal noise-driven rate wobble as a huge standardized deviation, firing a
+            # spurious RESERVOIR_DEPLETION_ABNORMAL -> POSSIBLE_LEAKAGE_PATTERN incident on
+            # this data-quality showcase machine minutes after seeding — confirmed
+            # reproducible against the live worker stack, contradicting this scenario's own
+            # "data-quality-limited, not a diagnosed physical fault" story. Same fix
+            # `seed_flagship_story.py` already documents for the identical class of bug:
+            # real, believable per-sample noise keeps every baseline's MAD genuinely
+            # positive. Only this one sensor's noise floor changes — no rule threshold,
+            # window, or debounce setting is touched.
+            add(reservoir, jitter(reservoir_value(t), 0.15), t)
             add(rpm, jitter(1450.0, 3.0), t)
             add(power, jitter(22.0, 0.5), t)
             for b in bearing_temps:

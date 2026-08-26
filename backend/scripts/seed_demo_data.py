@@ -339,7 +339,7 @@ async def seed(session: AsyncSession) -> None:
         session,
         Tenant,
         det_id("tenant", "lubrisense-demo"),
-        name="LubriSense Industrial",
+        name="Industrial Reliability Operations",
         slug="lubrisense-demo",
         status=TenantStatus.ACTIVE,
     )

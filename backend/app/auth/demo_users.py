@@ -20,16 +20,14 @@ class DemoUser:
 
 
 DEMO_USERS: dict[UserRole, DemoUser] = {
-    UserRole.VIEWER: DemoUser("demo-viewer", "Demo Viewer", UserRole.VIEWER),
-    UserRole.TECHNICIAN: DemoUser("demo-technician", "Demo Technician", UserRole.TECHNICIAN),
+    UserRole.VIEWER: DemoUser("demo-viewer", "Viewer", UserRole.VIEWER),
+    UserRole.TECHNICIAN: DemoUser("demo-technician", "Technician", UserRole.TECHNICIAN),
     UserRole.RELIABILITY_ENGINEER: DemoUser(
-        "demo-reliability-engineer", "Demo Reliability Engineer", UserRole.RELIABILITY_ENGINEER
+        "demo-reliability-engineer", "Reliability Engineer", UserRole.RELIABILITY_ENGINEER
     ),
-    UserRole.PLANT_MANAGER: DemoUser(
-        "demo-plant-manager", "Demo Plant Manager", UserRole.PLANT_MANAGER
-    ),
+    UserRole.PLANT_MANAGER: DemoUser("demo-plant-manager", "Plant Manager", UserRole.PLANT_MANAGER),
     UserRole.DATA_SCIENTIST: DemoUser(
-        "demo-data-scientist", "Demo Data Scientist", UserRole.DATA_SCIENTIST
+        "demo-data-scientist", "Data Scientist", UserRole.DATA_SCIENTIST
     ),
-    UserRole.ADMIN: DemoUser("demo-admin", "Demo Admin", UserRole.ADMIN),
+    UserRole.ADMIN: DemoUser("demo-admin", "Admin", UserRole.ADMIN),
 }

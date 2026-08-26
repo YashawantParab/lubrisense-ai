@@ -65,6 +65,12 @@ async def main() -> None:
         rpm = by_type["RPM"][0]
         bearing_temps = by_type["BEARING_TEMPERATURE"]
         vibrations = by_type["VIBRATION_RMS"]
+        # Live Demo Quality Cleanup §6/§7 — pump-current degradation is a lubrication
+        # *subsystem* issue, never automatically the main asset's own energy loss (the
+        # pump's own electrical draw is not this machine's driveline load) — driveline
+        # power stays flat. Distinct sensor from pump_current (CLAUDE.md: PUMP_CURRENT !=
+        # MACHINE_POWER) — this scenario's whole point is that distinction never blurs.
+        power = by_type["MACHINE_POWER"][0]
 
         await reset_machine_data(session, tenant_id, machine_id)
 
@@ -99,6 +105,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0, 0.05), t)
             add(reservoir, jitter(57.0 - 0.01 * i, 0.05), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(52.0, 0.9), t)
             for b in bearing_temps:
                 add(b, jitter(41.0, 0.15), t)
             for v in vibrations:
@@ -114,6 +121,7 @@ async def main() -> None:
             add(pump_current, jitter(3.0 + 2.6 * frac, 0.05), t)
             add(reservoir, jitter(55.6 - 0.01 * i, 0.05), t)
             add(rpm, jitter(1450.0, 3.0), t)
+            add(power, jitter(52.0, 0.9), t)
             for b in bearing_temps:
                 add(b, jitter(41.0, 0.15), t)
             for v in vibrations:
@@ -124,7 +132,7 @@ async def main() -> None:
         await session.commit()
         print(f"Seeded {len(rows)} telemetry rows for machine={machine_id}")
 
-        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id]
+        all_sensor_ids = [pressure.id, pump_current.id, reservoir.id, rpm.id, power.id]
         all_sensor_ids += [b.id for b in bearing_temps]
         all_sensor_ids += [v.id for v in vibrations]
 

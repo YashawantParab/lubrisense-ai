@@ -7,14 +7,14 @@ describe("OrganizationHeader", () => {
   it("renders the real organization name and counts, no marketing copy", () => {
     render(
       <OrganizationHeader
-        organizationName="LubriSense Demo Tenant"
+        organizationName="Industrial Reliability Operations"
         asOf={new Date().toISOString()}
         sites={5}
         monitoredAssets={24}
         provenance="MEASURED_PLATFORM_METRIC"
       />,
     );
-    expect(screen.getByText("LubriSense Demo Tenant")).toBeInTheDocument();
+    expect(screen.getByText("Industrial Reliability Operations")).toBeInTheDocument();
     expect(screen.getByText(/5 monitored sites/)).toBeInTheDocument();
     expect(screen.getByText(/24 monitored assets/)).toBeInTheDocument();
   });
